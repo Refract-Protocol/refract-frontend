@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { WalletProvider } from "@/lib/wallet/WalletProvider";
 
 export const metadata: Metadata = {
   title: {
@@ -34,7 +35,7 @@ export default function RootLayout({
         <a href="#main-content" className="pm-skip-link">
           Skip to main content
         </a>
-        {children}
+        <WalletProvider>{children}</WalletProvider>
       </body>
     </html>
   );
