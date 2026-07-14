@@ -1,48 +1,66 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Navbar, Footer } from "@/components/layout";
+import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { WalletButton } from "@/components/wallet";
+import { useWallet } from "@/lib/wallet/WalletProvider";
+import { usePoolStats } from "@/hooks/usePoolStats";
+import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
+import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
+import { ApiUnreachableError } from "@/lib/api/client";
+import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 
-const POOL_DATA = {
-  tvl: 18_400_000,
-  apy: 8.9,
-  sharePrice: 1.0319,
-  utilization: 15.76,
-  premiums30d: 284_000,
-  activePolicies: 247,
-  capacityUsed: 2_900_000,
-  capacityTotal: 18_400_000,
-};
-
+// Illustrative allocation breakdown by coverage category — the backend
+// doesn't currently expose a per-category pool split, so this is presented
+// as UI context rather than fetched data.
 const RISK_BREAKDOWN = [
-  { type: "Stablecoin Depeg", allocated: 22, color: "#8b5cf6", pct: 22 },
-  { type: "Market Crash", allocated: 18, color: "#f59e0b", pct: 18 },
-  { type: "Liquidation Shield", allocated: 35, color: "#10b981", pct: 35 },
-  { type: "Smart Contract Risk", allocated: 15, color: "#ef4444", pct: 15 },
-  { type: "Flight Delay", allocated: 10, color: "#06b6d4", pct: 10 },
+  { type: "Stablecoin Depeg", color: "#8b5cf6", pct: 22 },
+  { type: "Market Crash", color: "#f59e0b", pct: 18 },
+  { type: "Liquidation Shield", color: "#10b981", pct: 35 },
+  { type: "Smart Contract Risk", color: "#ef4444", pct: 15 },
+  { type: "Flight Delay", color: "#06b6d4", pct: 10 },
 ];
 
+type SubmissionState =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "success"; kind: "deposit"; result: ProvideCapitalResponse; demo: boolean }
+  | { status: "success"; kind: "withdraw"; result: WithdrawCapitalResponse; demo: boolean }
+  | { status: "error"; message: string };
+
 export default function ProvidePage() {
+  const wallet = useWallet();
+  const { data: pool, loading: poolLoading, isFixture: poolIsFixture } = usePoolStats();
+  const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
+
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
+  const [submission, setSubmission] = useState<SubmissionState>({ status: "idle" });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const sharesOut = amount ? (parseFloat(amount) / POOL_DATA.sharePrice).toFixed(4) : "—";
-  const usdcOut = amount ? (parseFloat(amount) * POOL_DATA.sharePrice).toFixed(2) : "—";
+  const sharePrice = pool?.sharePrice ?? 1;
+  const userShares = position ? fromStroops(position.shares) : 0;
 
-  // Donut chart for risk breakdown
+  const sharesOut = amount ? (parseFloat(amount) / sharePrice).toFixed(4) : "—";
+  const usdcOut = amount ? (parseFloat(amount) * sharePrice).toFixed(2) : "—";
+
+  const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
+  const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;
+
+  // Donut chart for the illustrative risk breakdown
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const size = 160;
     canvas.width = canvas.height = size * devicePixelRatio;
     ctx.scale(devicePixelRatio, devicePixelRatio);
     const cx = size / 2, cy = size / 2, r = 62, innerR = 42;
     let startAngle = -Math.PI / 2;
 
-    RISK_BREAKDOWN.forEach(seg => {
+    RISK_BREAKDOWN.forEach((seg) => {
       const angle = (seg.pct / 100) * Math.PI * 2;
       ctx.beginPath();
       ctx.arc(cx, cy, r, startAngle, startAngle + angle);
@@ -59,179 +77,327 @@ export default function ProvidePage() {
     });
   }, []);
 
+  const withdrawQuickPct = useMemo(
+    () => [
+      { label: "25%", value: userShares * 0.25 * sharePrice },
+      { label: "50%", value: userShares * 0.5 * sharePrice },
+      { label: "75%", value: userShares * 0.75 * sharePrice },
+      { label: "MAX", value: userShares * sharePrice },
+    ],
+    [userShares, sharePrice]
+  );
+
+  async function handleSubmit() {
+    if (wallet.status !== "connected" || !wallet.address) {
+      await wallet.connect();
+      return;
+    }
+    const parsed = parseFloat(amount || "0");
+    if (parsed <= 0) return;
+
+    setSubmission({ status: "submitting" });
+    try {
+      if (tab === "deposit") {
+        const result = await provideCapital(wallet.address, toStroops(parsed));
+        setSubmission({ status: "success", kind: "deposit", result, demo: false });
+      } else {
+        const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
+        setSubmission({ status: "success", kind: "withdraw", result, demo: false });
+      }
+    } catch (err) {
+      if (err instanceof ApiUnreachableError) {
+        // Backend unreachable in this environment — simulate locally,
+        // clearly labeled, so the flow can still be exercised end-to-end.
+        if (tab === "deposit") {
+          const demoResult: ProvideCapitalResponse = {
+            provider: wallet.address,
+            amountUsdc: toStroops(parsed),
+            sharesOut: toStroops(parsed / sharePrice),
+            sharePrice,
+            txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
+            message: "Simulated locally: the Refract API is not running in this environment.",
+          };
+          setSubmission({ status: "success", kind: "deposit", result: demoResult, demo: true });
+        } else {
+          const demoResult: WithdrawCapitalResponse = {
+            provider: wallet.address,
+            sharesIn: toStroops(parsed / sharePrice),
+            usdcOut: toStroops(parsed),
+            sharePrice,
+            txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
+          };
+          setSubmission({ status: "success", kind: "withdraw", result: demoResult, demo: true });
+        }
+        return;
+      }
+      setSubmission({ status: "error", message: err instanceof Error ? err.message : "Something went wrong" });
+    }
+  }
+
   return (
-    <div style={{ minHeight: "100vh", background: "var(--pm-bg)" }}>
-      {/* Navbar */}
-      <nav style={{
-        position: "sticky", top: 0, zIndex: 50,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 28px", height: 64,
-        background: "rgba(7,5,15,0.9)", backdropFilter: "blur(20px)",
-        borderBottom: "1px solid rgba(139,92,246,0.12)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-            <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#8b5cf6,#5b21b6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px rgba(139,92,246,0.4)" }}>
-              <span style={{ color: "#fff", fontSize: 16 }}>⬡</span>
-            </div>
-            <span style={{ color: "#f0ecff", fontWeight: 800, fontSize: 18, fontFamily: "Syne, sans-serif", letterSpacing: "-0.02em" }}>Refract</span>
-          </Link>
-          <Link href="/cover" style={{ color: "rgba(240,236,255,0.5)", fontSize: 14, textDecoration: "none", fontWeight: 500 }}>Coverage</Link>
-          <Link href="/provide" style={{ color: "#8b5cf6", fontSize: 14, textDecoration: "none", fontWeight: 600 }}>Provide Capital</Link>
-        </div>
-        <button className="pm-btn-primary" style={{ fontSize: 13, padding: "7px 18px" }} onClick={() => setIsConnected(!isConnected)}>
-          {isConnected ? "G3x...k9Mf" : "Connect Wallet"}
-        </button>
-      </nav>
+    <div className="min-h-screen bg-pm-bg">
+      <Navbar right={<WalletButton />} />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 28px" }}>
-        <div style={{ marginBottom: 36 }}>
-          <h1 style={{ fontFamily: "Syne, sans-serif", fontSize: 28, fontWeight: 800, color: "#f0ecff", marginBottom: 8, letterSpacing: "-0.02em" }}>Provide Capital</h1>
-          <p style={{ color: "rgba(240,236,255,0.45)", fontSize: 14 }}>Underwrite Refract policies. Earn premiums when no triggers fire. Pool capital backs all coverage categories.</p>
-        </div>
-
-        {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 28 }}>
-          {[
-            { label: "Pool TVL", value: `$${(POOL_DATA.tvl / 1e6).toFixed(1)}M` },
-            { label: "30d APY", value: `${POOL_DATA.apy}%`, color: "#10b981" },
-            { label: "Share Price", value: `$${POOL_DATA.sharePrice}` },
-            { label: "Utilization", value: `${POOL_DATA.utilization}%` },
-          ].map(s => (
-            <div key={s.label} className="pm-panel" style={{ padding: "18px 20px" }}>
-              <div style={{ color: "rgba(240,236,255,0.4)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{s.label}</div>
-              <div style={{ color: s.color || "#f0ecff", fontSize: 22, fontWeight: 800, fontFamily: "Syne, sans-serif", letterSpacing: "-0.02em" }}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 24, alignItems: "start" }}>
-          {/* Left: Pool info */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Risk breakdown donut */}
-            <div className="pm-panel" style={{ padding: 24 }}>
-              <h3 style={{ color: "#f0ecff", fontSize: 16, fontWeight: 700, fontFamily: "Syne, sans-serif", marginBottom: 20, letterSpacing: "-0.01em" }}>Capital Allocation</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 32, alignItems: "center" }}>
-                <canvas ref={canvasRef} style={{ width: 160, height: 160 }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {RISK_BREAKDOWN.map(seg => (
-                    <div key={seg.type} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: seg.color, flexShrink: 0 }} />
-                        <span style={{ color: "rgba(240,236,255,0.6)", fontSize: 12 }}>{seg.type}</span>
-                      </div>
-                      <span style={{ color: "#f0ecff", fontSize: 12, fontWeight: 600 }}>{seg.pct}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* How it works */}
-            <div className="pm-panel" style={{ padding: 24 }}>
-              <h3 style={{ color: "#f0ecff", fontSize: 16, fontWeight: 700, fontFamily: "Syne, sans-serif", marginBottom: 20, letterSpacing: "-0.01em" }}>How capital provision works</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {[
-                  { n: "01", title: "Deposit USDC", desc: "Receive Refract pool shares (PPS) proportional to your deposit." },
-                  { n: "02", title: "Underwrite policies", desc: "Your capital backs coverage sold to policy buyers. You collect premiums upfront." },
-                  { n: "03", title: "Earn continuously", desc: "Premium yield accrues to your PPS shares, increasing their USDC value over time." },
-                  { n: "04", title: "Shared risk", desc: "If a payout fires, it's split proportionally across all capital providers — not concentrated on any one LP." },
-                ].map(item => (
-                  <div key={item.n} style={{ display: "flex", gap: 16 }}>
-                    <div style={{ width: 28, height: 28, background: "rgba(139,92,246,0.15)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#8b5cf6", fontSize: 11, fontWeight: 700 }}>{item.n}</div>
-                    <div>
-                      <div style={{ color: "#f0ecff", fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{item.title}</div>
-                      <div style={{ color: "rgba(240,236,255,0.45)", fontSize: 12, lineHeight: 1.5 }}>{item.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pool utilization */}
-            <div className="pm-panel" style={{ padding: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <h3 style={{ color: "#f0ecff", fontSize: 15, fontWeight: 700, fontFamily: "Syne, sans-serif", margin: 0, letterSpacing: "-0.01em" }}>Pool Capacity</h3>
-                <span style={{ color: POOL_DATA.utilization > 70 ? "#f59e0b" : "#10b981", fontSize: 13, fontWeight: 700 }}>{POOL_DATA.utilization}% utilized</span>
-              </div>
-              <div style={{ height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
-                <div style={{ height: "100%", width: `${(POOL_DATA.utilization / 80) * 100}%`, background: "linear-gradient(90deg,#8b5cf6,#10b981)", borderRadius: 4 }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: "rgba(240,236,255,0.35)", fontSize: 11 }}>
-                <span>${(POOL_DATA.capacityUsed / 1e6).toFixed(1)}M locked in policies</span>
-                <span>${(POOL_DATA.capacityTotal / 1e6).toFixed(1)}M total / 80% max</span>
-              </div>
-            </div>
+      <main id="main-content">
+        <Container className="py-9 sm:py-10">
+          <div className="mb-8">
+            <h1 className="mb-2 font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
+              Provide Capital
+            </h1>
+            <p className="text-sm text-pm-text/45">
+              Underwrite Refract policies. Earn premiums when no triggers fire. Pool capital backs all coverage
+              categories.
+            </p>
+            {poolIsFixture && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
+                ⚠ Showing fixture data — the Refract API isn&apos;t reachable from this environment.
+              </p>
+            )}
           </div>
 
-          {/* Right: Deposit form */}
-          <div style={{ position: "sticky", top: 80 }}>
-            <div className="pm-panel" style={{ padding: 24 }}>
-              {/* Tab */}
-              <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 4 }}>
-                {(["deposit", "withdraw"] as const).map(t => (
-                  <button key={t} onClick={() => setTab(t)} style={{
-                    flex: 1, padding: "8px 0", borderRadius: 6, border: "none", cursor: "pointer",
-                    background: tab === t ? "rgba(139,92,246,0.15)" : "transparent",
-                    color: tab === t ? "#8b5cf6" : "rgba(240,236,255,0.4)",
-                    fontSize: 13, fontWeight: 600, textTransform: "capitalize",
-                  }}>{t}</button>
+          {/* Stats */}
+          <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+            {poolLoading || !pool
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} padding="sm" className="!p-[18px]">
+                    <Skeleton height={11} width={70} className="mb-2.5" />
+                    <Skeleton height={22} width={90} />
+                  </Card>
+                ))
+              : [
+                  { label: "Pool TVL", value: `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M` },
+                  { label: "30d APY", value: `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
+                  { label: "Share Price", value: `$${pool.sharePrice}` },
+                  { label: "Utilization", value: `${utilizationPct.toFixed(2)}%` },
+                ].map((s) => (
+                  <Card key={s.label} padding="sm" className="!p-[18px]">
+                    <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
+                    <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
+                      {s.value}
+                    </div>
+                  </Card>
                 ))}
-              </div>
+          </div>
 
-              {/* Share price */}
-              <div style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.15)", borderRadius: 8, padding: "10px 14px", marginBottom: 20, display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgba(240,236,255,0.5)", fontSize: 12 }}>PPS share price</span>
-                <span style={{ color: "#8b5cf6", fontSize: 14, fontWeight: 700 }}>${POOL_DATA.sharePrice}</span>
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", color: "rgba(240,236,255,0.5)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                  {tab === "deposit" ? "USDC Amount" : "PPS Shares"}
-                </label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  className="pm-input"
-                  style={{ width: "100%" }}
-                />
-                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                  {["25%", "50%", "75%", "MAX"].map(p => (
-                    <button key={p} style={{ flex: 1, padding: "4px 0", background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)", borderRadius: 4, color: "#8b5cf6", fontSize: 10, cursor: "pointer" }}>{p}</button>
-                  ))}
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
+            {/* Left: Pool info */}
+            <div className="flex flex-col gap-5">
+              <Card padding="md">
+                <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">Capital Allocation</h3>
+                <div className="grid grid-cols-1 items-center gap-8 xs:grid-cols-[160px_1fr]">
+                  <canvas ref={canvasRef} style={{ width: 160, height: 160 }} className="mx-auto xs:mx-0" aria-hidden="true" />
+                  <ul className="flex flex-col gap-2.5">
+                    {RISK_BREAKDOWN.map((seg) => (
+                      <li key={seg.type} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: seg.color }} aria-hidden="true" />
+                          <span className="text-xs text-pm-text/60">{seg.type}</span>
+                        </div>
+                        <span className="text-xs font-semibold text-pm-text">{seg.pct}%</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
+              </Card>
 
-              {amount && (
-                <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ color: "rgba(240,236,255,0.4)", fontSize: 12 }}>{tab === "deposit" ? "PPS shares received" : "USDC received"}</span>
-                    <span style={{ color: "#f0ecff", fontSize: 13, fontWeight: 600 }}>{tab === "deposit" ? sharesOut : usdcOut}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "rgba(240,236,255,0.4)", fontSize: 12 }}>Estimated 30d yield</span>
-                    <span style={{ color: "#10b981", fontSize: 12, fontWeight: 600 }}>
-                      +${((parseFloat(amount || "0") * POOL_DATA.apy) / 100 / 12).toFixed(2)}
+              <Card padding="md">
+                <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">
+                  How capital provision works
+                </h3>
+                <ol className="flex flex-col gap-3.5">
+                  {[
+                    { n: "01", title: "Deposit USDC", desc: "Receive Refract pool shares (PPS) proportional to your deposit." },
+                    { n: "02", title: "Underwrite policies", desc: "Your capital backs coverage sold to policy buyers. You collect premiums upfront." },
+                    { n: "03", title: "Earn continuously", desc: "Premium yield accrues to your PPS shares, increasing their USDC value over time." },
+                    { n: "04", title: "Shared risk", desc: "If a payout fires, it's split proportionally across all capital providers — not concentrated on any one LP." },
+                  ].map((item) => (
+                    <li key={item.n} className="flex gap-4">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-pm-violet/15 text-[11px] font-bold text-pm-violet">
+                        {item.n}
+                      </div>
+                      <div>
+                        <div className="mb-0.5 text-[13px] font-semibold text-pm-text">{item.title}</div>
+                        <div className="text-xs leading-relaxed text-pm-text/45">{item.desc}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+
+              <Card padding="md">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-display text-[15px] font-bold tracking-tight text-pm-text">Pool Capacity</h3>
+                  <span className={`text-[13px] font-bold ${utilizationPct > 70 ? "text-pm-amber" : "text-pm-green"}`}>
+                    {utilizationPct.toFixed(2)}% utilized
+                  </span>
+                </div>
+                <div className="mb-2 h-2 overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-pm-violet to-pm-green"
+                    style={{ width: `${pool ? (utilizationPct / maxUtilizationPct) * 100 : 0}%` }}
+                  />
+                </div>
+                <div className="flex flex-col justify-between gap-1 text-[11px] text-pm-text/35 xs:flex-row">
+                  <span>{pool ? `$${(Number(pool.lockedUsdc) / 1e7 / 1e6).toFixed(1)}M locked in policies` : "—"}</span>
+                  <span>{pool ? `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M total / ${maxUtilizationPct}% max` : "—"}</span>
+                </div>
+              </Card>
+            </div>
+
+            {/* Right: Deposit/withdraw form */}
+            <div className="lg:sticky lg:top-20">
+              {submission.status === "success" ? (
+                <Card padding="md">
+                  <div className="mb-4 flex items-center gap-2.5 text-pm-green">
+                    <span className="text-xl" aria-hidden="true">✓</span>
+                    <span className="font-display text-base font-bold">
+                      {submission.kind === "deposit" ? "Capital provided" : "Withdrawal submitted"}
                     </span>
                   </div>
-                </div>
+                  {submission.demo && (
+                    <p className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
+                      Demo mode: the Refract API wasn&apos;t reachable, so this was simulated client-side —
+                      no real transaction was built or submitted.
+                    </p>
+                  )}
+                  <dl className="flex flex-col gap-2 text-[13px]">
+                    <div className="flex justify-between">
+                      <dt className="text-pm-text/45">{submission.kind === "deposit" ? "Shares received" : "USDC received"}</dt>
+                      <dd className="text-pm-text">
+                        {submission.kind === "deposit"
+                          ? fromStroops(submission.result.sharesOut).toFixed(4)
+                          : formatUsd(fromStroops(submission.result.usdcOut))}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-pm-text/45">Share price</dt>
+                      <dd className="text-pm-text">${submission.result.sharePrice}</dd>
+                    </div>
+                  </dl>
+                  <Button type="button" variant="outline" block className="mt-5" onClick={() => { setSubmission({ status: "idle" }); setAmount(""); }}>
+                    Make another transaction
+                  </Button>
+                </Card>
+              ) : (
+                <Card padding="md">
+                  <div className="mb-6 flex gap-1 rounded-lg bg-white/[0.03] p-1" role="tablist" aria-label="Deposit or withdraw">
+                    {(["deposit", "withdraw"] as const).map((t) => (
+                      <button
+                        key={t}
+                        role="tab"
+                        aria-selected={tab === t}
+                        onClick={() => {
+                          setTab(t);
+                          setAmount("");
+                          setSubmission({ status: "idle" });
+                        }}
+                        className={`flex-1 rounded-md py-2 text-[13px] font-semibold capitalize transition-colors ${
+                          tab === t ? "bg-pm-violet/15 text-pm-violet" : "text-pm-text/40"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mb-5 flex items-center justify-between rounded-lg border border-pm-violet/15 bg-pm-violet/[0.07] px-3.5 py-2.5">
+                    <span className="text-xs text-pm-text/50">PPS share price</span>
+                    <span className="text-sm font-bold text-pm-violet">${sharePrice}</span>
+                  </div>
+
+                  {tab === "withdraw" && wallet.status === "connected" && (
+                    <div className="mb-4 text-xs text-pm-text/40">
+                      Your position: <span className="font-semibold text-pm-text">{userShares.toFixed(4)} shares</span> ·{" "}
+                      {formatUsd(userShares * sharePrice)}
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <Input
+                      label={tab === "deposit" ? "USDC Amount" : "USDC to withdraw"}
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                    <div className="mt-2 flex gap-1.5">
+                      {tab === "deposit"
+                        ? ["1,000", "5,000", "10,000", "25,000"].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setAmount(v.replace(",", ""))}
+                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet"
+                            >
+                              ${v}
+                            </button>
+                          ))
+                        : withdrawQuickPct.map((p) => (
+                            <button
+                              key={p.label}
+                              type="button"
+                              disabled={!position}
+                              onClick={() => setAmount(p.value.toFixed(2))}
+                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet disabled:opacity-30"
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                    </div>
+                  </div>
+
+                  {amount && (
+                    <div className="mb-4 rounded-lg bg-white/[0.02] px-4 py-3.5">
+                      <div className="mb-1.5 flex justify-between">
+                        <span className="text-xs text-pm-text/40">{tab === "deposit" ? "PPS shares received" : "USDC received"}</span>
+                        <span className="text-[13px] font-semibold text-pm-text">{tab === "deposit" ? sharesOut : usdcOut}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-xs text-pm-text/40">Estimated 30d yield</span>
+                        <span className="text-xs font-semibold text-pm-green">
+                          +{formatUsd(((parseFloat(amount || "0") * (pool?.apyBps ?? 890)) / 10000 / 12))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    block
+                    loading={submission.status === "submitting" || wallet.status === "connecting"}
+                    onClick={() => void handleSubmit()}
+                  >
+                    {wallet.status !== "connected"
+                      ? "Connect Wallet"
+                      : tab === "deposit"
+                        ? "Provide Capital"
+                        : "Withdraw USDC"}
+                  </Button>
+
+                  {submission.status === "error" && (
+                    <p role="alert" className="mt-3 text-[12px] text-pm-red">
+                      {submission.message}
+                    </p>
+                  )}
+
+                  <div className="mt-4 rounded-md border border-pm-amber/15 bg-pm-amber/[0.06] px-3.5 py-3">
+                    <p className="m-0 text-[11px] leading-relaxed text-pm-amber/90">
+                      <Badge tone="risk" className="mr-1.5 align-middle">Risk</Badge>
+                      Capital providers share in payout risk. If oracle triggers fire, pool capital covers claims
+                      proportionally.
+                    </p>
+                  </div>
+                </Card>
               )}
-
-              <button className="pm-btn-primary" style={{ width: "100%", padding: "14px 0", fontSize: 15, fontWeight: 700 }}>
-                {!isConnected ? "Connect Wallet" : tab === "deposit" ? "Provide Capital" : "Withdraw USDC"}
-              </button>
-
-              <div style={{ marginTop: 14, padding: "12px 14px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", borderRadius: 6 }}>
-                <p style={{ color: "rgba(245,158,11,0.9)", fontSize: 11, margin: 0, lineHeight: 1.5 }}>
-                  ⚠️ Capital providers share in payout risk. If oracle triggers fire, pool capital covers claims proportionally.
-                </p>
-              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </Container>
+      </main>
+
+      <Footer />
     </div>
   );
 }
