@@ -230,3 +230,81 @@ body {
   pointer-events: none;
   opacity: 0.4;
 }
+
+/* ── Accessibility: focus states ────────────────────────────────────────── */
+a, button, input, [tabindex] {
+  outline: none;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--pm-violet);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.pm-skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  z-index: 100;
+  background: var(--pm-violet);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: var(--pm-r);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.pm-skip-link:focus {
+  top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Loading skeleton ────────────────────────────────────────────────────── */
+.pm-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--pm-surface-2);
+  border-radius: var(--pm-r);
+}
+.pm-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
+  animation: pmShimmer 1.6s infinite;
+}
+@keyframes pmShimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* ── Small helper button size ───────────────────────────────────────────── */
+.pm-btn-sm { padding: 6px 14px; font-size: 12px; }
+.pm-btn-lg { padding: 14px 28px; font-size: 15px; }
+.pm-btn-block { width: 100%; }
+.pm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pm-btn:disabled:hover { transform: none; }
+
+/* ── Card hover-lift (shared) ───────────────────────────────────────────── */
+.pm-card-hover { transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+.pm-card-hover:hover {
+  border-color: var(--pm-border-2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(139,92,246,0.12);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
