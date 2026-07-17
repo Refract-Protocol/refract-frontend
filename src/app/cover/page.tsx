@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
@@ -35,6 +35,7 @@ export default function CoverPage() {
     | { status: "success"; result: BuyPolicyResponse; demo: boolean }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   const ct = coverageTypes?.[selectedType];
 
@@ -142,15 +143,38 @@ export default function CoverPage() {
                 )}
 
                 {coverageTypes && (
-                  <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Coverage type">
+                  <div
+                    className="flex flex-col gap-2.5"
+                    role="radiogroup"
+                    aria-label="Coverage type"
+                    onKeyDown={(e) => {
+                      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+                      e.preventDefault();
+                      const ids = coverageTypes.map((t) => t.id);
+                      const currentIndex = ids.indexOf(selectedType);
+                      let nextIndex = currentIndex;
+                      if (e.key === "ArrowDown") nextIndex = (currentIndex + 1) % ids.length;
+                      if (e.key === "ArrowUp") nextIndex = (currentIndex - 1 + ids.length) % ids.length;
+                      if (e.key === "Home") nextIndex = 0;
+                      if (e.key === "End") nextIndex = ids.length - 1;
+                      const nextId = ids[nextIndex];
+                      setSelectedType(nextId);
+                      setSubmission({ status: "idle" });
+                      radioRefs.current[nextId]?.focus();
+                    }}
+                  >
                     {coverageTypes.map((type) => {
                       const active = selectedType === type.id;
                       return (
                         <button
                           key={type.id}
+                          ref={(el) => {
+                            radioRefs.current[type.id] = el;
+                          }}
                           type="button"
                           role="radio"
                           aria-checked={active}
+                          tabIndex={active ? 0 : -1}
                           onClick={() => {
                             setSelectedType(type.id);
                             setSubmission({ status: "idle" });
