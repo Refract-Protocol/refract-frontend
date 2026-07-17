@@ -247,7 +247,7 @@ export default function ProvidePage() {
             {/* Right: Deposit/withdraw form */}
             <div className="lg:sticky lg:top-20">
               {submission.status === "success" ? (
-                <Card padding="md">
+                <Card padding="md" role="status" aria-live="polite">
                   <div className="mb-4 flex items-center gap-2.5 text-pm-green">
                     <span className="text-xl" aria-hidden="true">✓</span>
                     <span className="font-display text-base font-bold">
