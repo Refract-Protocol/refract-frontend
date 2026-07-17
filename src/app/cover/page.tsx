@@ -265,6 +265,7 @@ export default function CoverPage() {
                       max={365}
                       value={durationDays}
                       onChange={(e) => setDurationDays(Number(e.target.value))}
+                      aria-valuetext={`${durationDays} days, expires ${expiryDate}`}
                       className="pm-slider"
                       style={{ "--pct": `${(durationDays / 365) * 100}%` } as React.CSSProperties}
                     />
