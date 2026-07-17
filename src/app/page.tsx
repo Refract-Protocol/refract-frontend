@@ -3,13 +3,22 @@
 import { useState, useEffect, useRef } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Button, Badge, Card } from "@/components/ui";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
   const ref = useRef(false);
+  const reducedMotion = usePrefersReducedMotion();
+
   useEffect(() => {
     if (ref.current) return;
     ref.current = true;
+
+    if (reducedMotion) {
+      setVal(to);
+      return;
+    }
+
     const duration = 2000;
     const start = performance.now();
     const tick = (now: number) => {
@@ -19,7 +28,7 @@ function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; p
       if (t < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-  }, [to]);
+  }, [to, reducedMotion]);
   return <>{prefix}{val.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</>;
 }
 
