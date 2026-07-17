@@ -63,6 +63,7 @@ const TRIGGER_DETAILS = [
 
 export default function Home() {
   const [activeType, setActiveType] = useState(0);
+  const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const ct = COVERAGE_TYPES[activeType];
 
   return (
@@ -170,12 +171,32 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="mb-8 flex flex-wrap justify-center gap-2.5" role="tablist" aria-label="Coverage category">
+            <div
+              className="mb-8 flex flex-wrap justify-center gap-2.5"
+              role="tablist"
+              aria-label="Coverage category"
+              onKeyDown={(e) => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+                e.preventDefault();
+                let next = activeType;
+                if (e.key === "ArrowLeft") next = (activeType - 1 + COVERAGE_TYPES.length) % COVERAGE_TYPES.length;
+                if (e.key === "ArrowRight") next = (activeType + 1) % COVERAGE_TYPES.length;
+                if (e.key === "Home") next = 0;
+                if (e.key === "End") next = COVERAGE_TYPES.length - 1;
+                setActiveType(next);
+                tabRefs.current[next]?.focus();
+              }}
+            >
               {COVERAGE_TYPES.map((t, i) => (
                 <button
                   key={t.name}
+                  ref={(el) => {
+                    tabRefs.current[i] = el;
+                  }}
+                  type="button"
                   role="tab"
                   aria-selected={activeType === i}
+                  tabIndex={activeType === i ? 0 : -1}
                   onClick={() => setActiveType(i)}
                   className="rounded-lg border px-4 py-2 text-[13px] font-medium transition-colors"
                   style={{
