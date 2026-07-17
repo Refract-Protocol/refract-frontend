@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
@@ -19,6 +19,18 @@ interface NavbarProps {
 export function Navbar({ right }: NavbarProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    }
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [menuOpen]);
 
   return (
     <nav
@@ -63,6 +75,7 @@ export function Navbar({ right }: NavbarProps) {
         <div className="hidden items-center gap-3 md:flex">{right}</div>
 
         <button
+          ref={menuButtonRef}
           type="button"
           className="flex h-9 w-9 items-center justify-center rounded-md border border-pm-border text-pm-text md:hidden"
           aria-expanded={menuOpen}
