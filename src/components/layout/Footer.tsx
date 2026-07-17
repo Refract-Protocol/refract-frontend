@@ -15,15 +15,26 @@ export function Footer() {
           Refract Protocol — Parametric insurance on Stellar/Soroban · Built for DRIPS Wave Hackathon
         </span>
         <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          {FOOTER_LINKS.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="text-xs text-pm-text/40 transition-colors hover:text-pm-text/70"
-            >
-              {link.label}
-            </Link>
-          ))}
+          {FOOTER_LINKS.map((link) => {
+            const external = link.href.startsWith("http");
+            const className = "text-xs text-pm-text/40 transition-colors hover:text-pm-text/70";
+            return external ? (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={className}
+              >
+                {link.label}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            ) : (
+              <Link key={link.label} href={link.href} className={className}>
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </footer>
