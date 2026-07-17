@@ -280,12 +280,25 @@ export default function ProvidePage() {
                 </Card>
               ) : (
                 <Card padding="md">
-                  <div className="mb-6 flex gap-1 rounded-lg bg-white/[0.03] p-1" role="tablist" aria-label="Deposit or withdraw">
+                  <div
+                    className="mb-6 flex gap-1 rounded-lg bg-white/[0.03] p-1"
+                    role="tablist"
+                    aria-label="Deposit or withdraw"
+                    onKeyDown={(e) => {
+                      if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+                      e.preventDefault();
+                      setTab(tab === "deposit" ? "withdraw" : "deposit");
+                      setAmount("");
+                      setSubmission({ status: "idle" });
+                    }}
+                  >
                     {(["deposit", "withdraw"] as const).map((t) => (
                       <button
                         key={t}
+                        type="button"
                         role="tab"
                         aria-selected={tab === t}
+                        tabIndex={tab === t ? 0 : -1}
                         onClick={() => {
                           setTab(t);
                           setAmount("");
