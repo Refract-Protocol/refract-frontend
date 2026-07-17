@@ -284,7 +284,7 @@ export default function CoverPage() {
                   <Skeleton height={220} rounded="md" />
                 </Card>
               ) : submission.status === "success" ? (
-                <Card padding="md">
+                <Card padding="md" role="status" aria-live="polite">
                   <div className="mb-4 flex items-center gap-2.5 text-pm-green">
                     <span className="text-xl" aria-hidden="true">✓</span>
                     <span className="font-display text-base font-bold">Coverage purchased</span>
