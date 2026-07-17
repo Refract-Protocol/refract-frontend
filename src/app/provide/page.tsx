@@ -41,9 +41,13 @@ export default function ProvidePage() {
 
   const sharePrice = pool?.sharePrice ?? 1;
   const userShares = position ? fromStroops(position.shares) : 0;
+  const availableToWithdraw = userShares * sharePrice;
 
   const sharesOut = amount ? (parseFloat(amount) / sharePrice).toFixed(4) : "—";
   const usdcOut = amount ? (parseFloat(amount) * sharePrice).toFixed(2) : "—";
+
+  const withdrawInvalid =
+    tab === "withdraw" && wallet.status === "connected" && parseFloat(amount || "0") > availableToWithdraw;
 
   const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
   const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;
@@ -94,6 +98,7 @@ export default function ProvidePage() {
     }
     const parsed = parseFloat(amount || "0");
     if (parsed <= 0) return;
+    if (tab === "withdraw" && parsed > availableToWithdraw) return;
 
     setSubmission({ status: "submitting" });
     try {
@@ -333,6 +338,7 @@ export default function ProvidePage() {
                       placeholder="0.00"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
+                      error={withdrawInvalid ? `You only have ${formatUsd(availableToWithdraw)} available to withdraw` : undefined}
                     />
                     <div className="mt-2 flex gap-1.5">
                       {tab === "deposit"
@@ -380,6 +386,7 @@ export default function ProvidePage() {
                     variant="primary"
                     size="lg"
                     block
+                    disabled={withdrawInvalid}
                     loading={submission.status === "submitting" || wallet.status === "connecting"}
                     onClick={() => void handleSubmit()}
                   >
