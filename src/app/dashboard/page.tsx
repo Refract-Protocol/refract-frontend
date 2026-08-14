@@ -7,6 +7,7 @@ import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useClaims } from "@/hooks/useClaims";
 import { formatUsd, fromStroops } from "@/lib/format";
+import { stellarExpertTxUrl } from "@/lib/stellar";
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/api/claims";
 
@@ -215,6 +216,17 @@ export default function DashboardPage() {
                           <div className="text-right">
                             <div className="font-display text-lg font-extrabold text-pm-green">{formatUsd(fromStroops(claim.payout))}</div>
                             <div className="font-mono text-[11px] text-pm-text/35">{claim.policyId}</div>
+                            {claim.settlementTxHash && (
+                              <a
+                                href={stellarExpertTxUrl(claim.settlementTxHash)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] text-pm-text/45 underline decoration-pm-text/20 underline-offset-2 transition-colors hover:text-pm-text/70"
+                              >
+                                View transaction
+                                <span className="sr-only"> (opens in a new tab)</span>
+                              </a>
+                            )}
                           </div>
                         </div>
                       </Card>
