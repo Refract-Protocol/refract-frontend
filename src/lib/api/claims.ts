@@ -1,13 +1,6 @@
-/**
- * Mirrors ClaimResult from refract-backend/src/services/claimProcessor.ts —
- * that's the shape the ClaimProcessor emits internally when a policy's
- * oracle condition is evaluated, but there is currently no HTTP route that
- * exposes it (no GET /api/v1/claims/* in refract-backend/src/routes/).
- *
- * TODO(backend): add a route — e.g. GET /api/v1/claims/holder/:address —
- * that surfaces ClaimProcessor's history so the dashboard can read real
- * claim/payout data instead of the fixture in src/lib/fixtures/claims.ts.
- */
+import { apiRequest } from "./client";
+
+/** Mirrors ClaimResult from refract-backend/src/claim/claim-result.ts. */
 export interface ClaimRecord {
   policyId: string;
   holder: string;
@@ -16,4 +9,9 @@ export interface ClaimRecord {
   payout: string;
   reason: string;
   processedAt: number;
+  settlementTxHash?: string;
+}
+
+export function fetchHolderClaims(address: string, signal?: AbortSignal): Promise<{ claims: ClaimRecord[] }> {
+  return apiRequest(`/claims/holder/${address}`, { signal });
 }
