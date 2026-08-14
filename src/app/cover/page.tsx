@@ -29,6 +29,7 @@ export default function CoverPage() {
   const [selectedType, setSelectedType] = useState(0);
   const [coverageAmount, setCoverageAmount] = useState("5000");
   const [durationDays, setDurationDays] = useState(30);
+  const [flightNumber, setFlightNumber] = useState("");
   const [submission, setSubmission] = useState<
     | { status: "idle" }
     | { status: "submitting" }
@@ -53,6 +54,8 @@ export default function CoverPage() {
   });
 
   const amountInvalid = ct ? parseFloat(coverageAmount || "0") <= 0 || parseFloat(coverageAmount) > ct.maxCoverage : false;
+  const isFlightDelay = ct?.id === 4;
+  const flightNumberInvalid = isFlightDelay && flightNumber.trim().length === 0;
 
   async function handleBuy() {
     if (!ct) return;
@@ -60,7 +63,7 @@ export default function CoverPage() {
       await wallet.connect();
       return;
     }
-    if (amountInvalid) return;
+    if (amountInvalid || flightNumberInvalid) return;
 
     setSubmission({ status: "submitting" });
     try {
@@ -69,6 +72,7 @@ export default function CoverPage() {
         coverageType: ct.id,
         coverageAmount: toStroops(parseFloat(coverageAmount)),
         durationDays,
+        ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
       });
       setSubmission({ status: "success", result, demo: false });
     } catch (err) {
@@ -249,6 +253,19 @@ export default function CoverPage() {
                     </div>
                   </div>
 
+                  {isFlightDelay && (
+                    <div className="mb-5">
+                      <Input
+                        label="Flight Number"
+                        type="text"
+                        value={flightNumber}
+                        onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
+                        placeholder="BA249"
+                        error={flightNumberInvalid ? "Enter the flight number this policy should monitor" : undefined}
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <div className="mb-2 flex justify-between">
                       <label htmlFor="duration" className="text-xs text-pm-text/60">
@@ -375,7 +392,7 @@ export default function CoverPage() {
                     variant="primary"
                     size="lg"
                     block
-                    disabled={amountInvalid}
+                    disabled={amountInvalid || flightNumberInvalid}
                     loading={submission.status === "submitting" || wallet.status === "connecting"}
                     onClick={() => void handleBuy()}
                   >
