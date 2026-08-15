@@ -6,6 +6,7 @@ import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
+import { useCoverageBounds } from "@/hooks/useCoverageBounds";
 import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
@@ -26,6 +27,7 @@ const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000];
 export default function CoverPage() {
   const wallet = useWallet();
   const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
+  const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
 
   const [selectedType, setSelectedType] = useState(0);
   const [coverageAmount, setCoverageAmount] = useState("5000");
@@ -55,7 +57,16 @@ export default function CoverPage() {
     year: "numeric",
   });
 
-  const amountInvalid = ct ? parseFloat(coverageAmount || "0") <= 0 || parseFloat(coverageAmount) > ct.maxCoverage : false;
+  // The pool enforces one real global bound across every coverage type,
+  // which can be tighter than a given type's advertised catalog max (see
+  // PolicyService.onChainCoverageBounds' doc comment in the backend) —
+  // clamp against both so this can't approve an amount the pool would
+  // actually reject.
+  const effectiveMin = Math.max(100, chainMinCoverage ?? 0);
+  const effectiveMax = ct ? Math.min(ct.maxCoverage, chainMaxCoverage ?? ct.maxCoverage) : 0;
+  const amountInvalid = ct
+    ? parseFloat(coverageAmount || "0") < effectiveMin || parseFloat(coverageAmount) > effectiveMax
+    : false;
   const isFlightDelay = ct?.id === 4;
   const flightNumberInvalid = isFlightDelay && flightNumber.trim().length === 0;
 
@@ -243,9 +254,13 @@ export default function CoverPage() {
                       value={coverageAmount}
                       onChange={(e) => setCoverageAmount(e.target.value)}
                       placeholder="5000"
-                      min={100}
-                      max={ct.maxCoverage}
-                      error={amountInvalid ? `Enter an amount between $100 and $${ct.maxCoverage.toLocaleString()}` : undefined}
+                      min={effectiveMin}
+                      max={effectiveMax}
+                      error={
+                        amountInvalid
+                          ? `Enter an amount between $${effectiveMin.toLocaleString()} and $${effectiveMax.toLocaleString()}`
+                          : undefined
+                      }
                     />
                     <div className="mt-2 flex gap-1.5">
                       {QUICK_AMOUNTS.map((v) => (

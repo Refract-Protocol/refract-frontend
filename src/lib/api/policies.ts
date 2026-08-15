@@ -50,6 +50,21 @@ export function fetchCoverageTypes(signal?: AbortSignal): Promise<{ coverageType
   return apiRequest("/policies/types", { signal });
 }
 
+export interface CoverageBounds {
+  /** Base-unit strings (1e7 per USDC), or null if the pool contract isn't configured/initialized yet. */
+  minCoverage: string | null;
+  maxCoverage: string | null;
+}
+
+/**
+ * The pool's real, currently-configured min/max coverage — a single
+ * global bound across every coverage type, unlike CoverageTypeInfo.maxCoverage
+ * above (this API's own static per-type catalog). Real on-chain read.
+ */
+export function fetchCoverageBounds(signal?: AbortSignal): Promise<CoverageBounds> {
+  return apiRequest("/policies/coverage-bounds", { signal });
+}
+
 export function fetchHolderPolicies(address: string, signal?: AbortSignal): Promise<{ policies: Policy[] }> {
   return apiRequest(`/policies/holder/${address}`, { signal });
 }
