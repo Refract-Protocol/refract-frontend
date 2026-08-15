@@ -15,3 +15,7 @@ export interface ClaimRecord {
 export function fetchHolderClaims(address: string, signal?: AbortSignal): Promise<{ claims: ClaimRecord[] }> {
   return apiRequest(`/claims/holder/${address}`, { signal });
 }
+
+export function fetchRecentClaims(signal?: AbortSignal): Promise<{ claims: ClaimRecord[] }> {
+  return apiRequest("/claims/recent", { signal });
+}

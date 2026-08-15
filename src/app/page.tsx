@@ -5,8 +5,11 @@ import { Navbar, Footer } from "@/components/layout";
 import { Container, Button, Badge, Card } from "@/components/ui";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOracleStatus } from "@/hooks/useOracleStatus";
+import { useRecentClaims } from "@/hooks/useRecentClaims";
 import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
+import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
+import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -43,11 +46,7 @@ const COVERAGE_TYPES = [
   { icon: "✈️", name: "Flight Delay", desc: "Instant payout for 2hr+ flight delays", color: "#06b6d4", risk: "Low" },
 ];
 
-const RECENT_PAYOUTS = [
-  { type: "Stablecoin Depeg", amount: "$48,200", time: "3 days ago", tx: "abc...def" },
-  { type: "Market Crash", amount: "$120,000", time: "11 days ago", tx: "xyz...123" },
-  { type: "Flight Delay", amount: "$1,400", time: "2 weeks ago", tx: "qrs...789" },
-];
+const COVERAGE_NAME_BY_TYPE = COVERAGE_TYPES.map((c) => c.name);
 
 const ORACLE_FEED_DISPLAY: Record<string, { feed: string; icon: string; formatValue: (r: OracleReading) => string }> = {
   StablecoinDepeg: { feed: "USDC/USD", icon: "🪙", formatValue: (r) => `$${r.value.toFixed(4)}` },
@@ -75,6 +74,7 @@ export default function Home() {
   const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const ct = COVERAGE_TYPES[activeType];
   const oracleStatus = useOracleStatus();
+  const recentClaims = useRecentClaims();
   const anyTriggered = oracleStatus.data?.some((r) => r.severity === "triggered") ?? false;
 
   return (
@@ -282,15 +282,24 @@ export default function Home() {
             <h2 id="payouts-heading" className="mb-7 font-display text-2xl font-extrabold tracking-tight text-pm-text sm:text-[26px]">
               Recent payouts
             </h2>
+            {recentClaims.isFixture && (
+              <p className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
+                ⚠ Showing example data — the Refract API isn&apos;t reachable from this environment.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {RECENT_PAYOUTS.map((p) => (
-                <Card key={p.tx} padding="sm" className="!p-5">
+              {(recentClaims.data ?? []).map((claim) => (
+                <Card key={claim.policyId} padding="sm" className="!p-5">
                   <div className="mb-3 flex items-start justify-between">
-                    <Badge tone="violet">{p.type}</Badge>
-                    <span className="text-[11px] text-pm-text/35">{p.time}</span>
+                    <Badge tone="violet">{COVERAGE_NAME_BY_TYPE[claim.coverageType] ?? "Unknown"}</Badge>
+                    <span className="text-[11px] text-pm-text/35">{formatRelativeTime(claim.processedAt)}</span>
                   </div>
-                  <div className="mb-2 font-display text-2xl font-extrabold tracking-tight text-pm-green">{p.amount}</div>
-                  <div className="font-mono text-[11px] text-pm-text/35">tx: {p.tx}</div>
+                  <div className="mb-2 font-display text-2xl font-extrabold tracking-tight text-pm-green">
+                    {formatUsd(fromStroops(claim.payout))}
+                  </div>
+                  <div className="font-mono text-[11px] text-pm-text/35">
+                    tx: {claim.settlementTxHash ? truncateAddress(claim.settlementTxHash, 3, 3) : "pending"}
+                  </div>
                 </Card>
               ))}
             </div>
