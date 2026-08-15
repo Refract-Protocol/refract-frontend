@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Button, Badge, Card } from "@/components/ui";
+import { Container, Button, Badge, Card, Skeleton } from "@/components/ui";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOracleStatus } from "@/hooks/useOracleStatus";
 import { useRecentClaims } from "@/hooks/useRecentClaims";
+import { usePoolStats } from "@/hooks/usePoolStats";
+import { useClaimStats } from "@/hooks/useClaimStats";
 import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
@@ -75,6 +77,9 @@ export default function Home() {
   const ct = COVERAGE_TYPES[activeType];
   const oracleStatus = useOracleStatus();
   const recentClaims = useRecentClaims();
+  const poolStats = usePoolStats();
+  const claimStats = useClaimStats();
+  const statsLoading = poolStats.loading || claimStats.loading;
   const anyTriggered = oracleStatus.data?.some((r) => r.severity === "triggered") ?? false;
 
   return (
@@ -118,13 +123,38 @@ export default function Home() {
             {/* Stats */}
             <div className="mt-12 grid grid-cols-1 gap-8 border-t border-pm-border pt-8 xs:grid-cols-3">
               {[
-                { val: 18_400_000, prefix: "$", suffix: "", label: "Total Value Protected", dec: 0 },
-                { val: 8.9, prefix: "", suffix: "% APY", label: "Capital Provider Returns", dec: 1 },
-                { val: 247, prefix: "", suffix: "", label: "Policies Active", dec: 0 },
+                {
+                  val: poolStats.data ? fromStroops(poolStats.data.totalUsdc) : 0,
+                  prefix: "$",
+                  suffix: "",
+                  label: "Total Value Protected",
+                  dec: 0,
+                },
+                {
+                  val: poolStats.data ? poolStats.data.apyBps / 100 : 0,
+                  prefix: "",
+                  suffix: "% APY",
+                  label: "Capital Provider Returns",
+                  dec: 1,
+                },
+                {
+                  val: claimStats.data?.activePolicies ?? 0,
+                  prefix: "",
+                  suffix: "",
+                  label: "Policies Active",
+                  dec: 0,
+                },
               ].map((s) => (
                 <div key={s.label}>
                   <div className="font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
-                    <Counter to={s.val} prefix={s.prefix} suffix={s.suffix} decimals={s.dec} />
+                    {statsLoading ? (
+                      <Skeleton height={26} width={90} />
+                    ) : (
+                      // Counter only animates once on mount, so it's keyed on
+                      // loaded-state to remount (and pick up the real value)
+                      // the moment the data actually arrives.
+                      <Counter key="loaded" to={s.val} prefix={s.prefix} suffix={s.suffix} decimals={s.dec} />
+                    )}
                   </div>
                   <div className="mt-0.5 text-xs text-pm-text/40">{s.label}</div>
                 </div>

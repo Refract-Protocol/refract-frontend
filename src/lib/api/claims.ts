@@ -19,3 +19,15 @@ export function fetchHolderClaims(address: string, signal?: AbortSignal): Promis
 export function fetchRecentClaims(signal?: AbortSignal): Promise<{ claims: ClaimRecord[] }> {
   return apiRequest("/claims/recent", { signal });
 }
+
+/** Mirrors ClaimService.getStats()'s response in refract-backend. */
+export interface ClaimStats {
+  activePolicies: number;
+  processedClaims: number;
+  totalPayout: string;
+  settlementConfigured: boolean;
+}
+
+export function fetchClaimStats(signal?: AbortSignal): Promise<ClaimStats> {
+  return apiRequest("/claims/stats", { signal });
+}
