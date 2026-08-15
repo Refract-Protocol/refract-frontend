@@ -10,6 +10,7 @@ import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -33,7 +34,8 @@ export default function CoverPage() {
   const [submission, setSubmission] = useState<
     | { status: "idle" }
     | { status: "submitting" }
-    | { status: "success"; result: BuyPolicyResponse; demo: boolean }
+    | { status: "signing" }
+    | { status: "success"; result: BuyPolicyResponse; demo: boolean; txHash?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -74,7 +76,13 @@ export default function CoverPage() {
         durationDays,
         ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
       });
-      setSubmission({ status: "success", result, demo: false });
+
+      setSubmission({ status: "signing" });
+      if (!wallet.networkPassphrase) {
+        throw new Error("Wallet network isn't available — reconnect and try again");
+      }
+      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+      setSubmission({ status: "success", result, demo: false, txHash });
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
         // Backend isn't reachable in this environment — fall back to a
@@ -326,6 +334,12 @@ export default function CoverPage() {
                       <dt className="text-pm-text/45">Holder</dt>
                       <dd className="font-mono text-pm-text">{truncateAddress(submission.result.policy.holder)}</dd>
                     </div>
+                    {submission.txHash && (
+                      <div className="flex justify-between">
+                        <dt className="text-pm-text/45">Transaction</dt>
+                        <dd className="font-mono text-pm-text">{truncateAddress(submission.txHash)}</dd>
+                      </div>
+                    )}
                   </dl>
                   <Button
                     type="button"
@@ -393,10 +407,18 @@ export default function CoverPage() {
                     size="lg"
                     block
                     disabled={amountInvalid || flightNumberInvalid}
-                    loading={submission.status === "submitting" || wallet.status === "connecting"}
+                    loading={
+                      submission.status === "submitting" ||
+                      submission.status === "signing" ||
+                      wallet.status === "connecting"
+                    }
                     onClick={() => void handleBuy()}
                   >
-                    {wallet.status === "connected" ? "Buy Coverage" : "Connect to Continue"}
+                    {submission.status === "signing"
+                      ? "Confirm in wallet…"
+                      : wallet.status === "connected"
+                        ? "Buy Coverage"
+                        : "Connect to Continue"}
                   </Button>
 
                   {submission.status === "error" && (

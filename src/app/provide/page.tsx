@@ -10,6 +10,8 @@ import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
 import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
+import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -25,8 +27,9 @@ const RISK_BREAKDOWN = [
 type SubmissionState =
   | { status: "idle" }
   | { status: "submitting" }
-  | { status: "success"; kind: "deposit"; result: ProvideCapitalResponse; demo: boolean }
-  | { status: "success"; kind: "withdraw"; result: WithdrawCapitalResponse; demo: boolean }
+  | { status: "signing" }
+  | { status: "success"; kind: "deposit"; result: ProvideCapitalResponse; demo: boolean; txHash?: string }
+  | { status: "success"; kind: "withdraw"; result: WithdrawCapitalResponse; demo: boolean; txHash?: string }
   | { status: "error"; message: string };
 
 export default function ProvidePage() {
@@ -104,10 +107,20 @@ export default function ProvidePage() {
     try {
       if (tab === "deposit") {
         const result = await provideCapital(wallet.address, toStroops(parsed));
-        setSubmission({ status: "success", kind: "deposit", result, demo: false });
+        setSubmission({ status: "signing" });
+        if (!wallet.networkPassphrase) {
+          throw new Error("Wallet network isn't available — reconnect and try again");
+        }
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
       } else {
         const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
-        setSubmission({ status: "success", kind: "withdraw", result, demo: false });
+        setSubmission({ status: "signing" });
+        if (!wallet.networkPassphrase) {
+          throw new Error("Wallet network isn't available — reconnect and try again");
+        }
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
       }
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
@@ -278,6 +291,12 @@ export default function ProvidePage() {
                       <dt className="text-pm-text/45">Share price</dt>
                       <dd className="text-pm-text">${submission.result.sharePrice}</dd>
                     </div>
+                    {submission.txHash && (
+                      <div className="flex justify-between">
+                        <dt className="text-pm-text/45">Transaction</dt>
+                        <dd className="font-mono text-pm-text">{truncateAddress(submission.txHash)}</dd>
+                      </div>
+                    )}
                   </dl>
                   <Button type="button" variant="outline" block className="mt-5" onClick={() => { setSubmission({ status: "idle" }); setAmount(""); }}>
                     Make another transaction
@@ -387,14 +406,20 @@ export default function ProvidePage() {
                     size="lg"
                     block
                     disabled={withdrawInvalid}
-                    loading={submission.status === "submitting" || wallet.status === "connecting"}
+                    loading={
+                      submission.status === "submitting" ||
+                      submission.status === "signing" ||
+                      wallet.status === "connecting"
+                    }
                     onClick={() => void handleSubmit()}
                   >
-                    {wallet.status !== "connected"
-                      ? "Connect Wallet"
-                      : tab === "deposit"
-                        ? "Provide Capital"
-                        : "Withdraw USDC"}
+                    {submission.status === "signing"
+                      ? "Confirm in wallet…"
+                      : wallet.status !== "connected"
+                        ? "Connect Wallet"
+                        : tab === "deposit"
+                          ? "Provide Capital"
+                          : "Withdraw USDC"}
                   </Button>
 
                   {submission.status === "error" && (

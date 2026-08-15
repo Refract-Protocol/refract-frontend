@@ -15,6 +15,8 @@ interface WalletState {
   status: WalletStatus;
   address: string | null;
   network: string | null;
+  /** Needed to sign transactions via Freighter and to submit them to the matching Soroban RPC. */
+  networkPassphrase: string | null;
   /** True once we've finished the initial "was this dApp already authorized?" check. */
   ready: boolean;
   /** Freighter browser extension not detected at all (vs. detected-but-locked/denied). */
@@ -36,6 +38,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     status: "idle",
     address: null,
     network: null,
+    networkPassphrase: null,
     ready: false,
     installed: false,
     error: null,
@@ -67,13 +70,24 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const [{ address, error: addrErr }, { network }] = await Promise.all([getAddress(), getNetwork()]);
+        const [{ address, error: addrErr }, { network, networkPassphrase }] = await Promise.all([
+          getAddress(),
+          getNetwork(),
+        ]);
         if (cancelled) return;
         if (addrErr || !address) {
           setState((s) => ({ ...s, ready: true, installed: true }));
           return;
         }
-        setState({ status: "connected", address, network, ready: true, installed: true, error: null });
+        setState({
+          status: "connected",
+          address,
+          network,
+          networkPassphrase,
+          ready: true,
+          installed: true,
+          error: null,
+        });
       } catch {
         if (!cancelled) setState((s) => ({ ...s, ready: true, installed: true }));
       }
@@ -99,9 +113,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, status: "error", error: error?.message ?? "Connection was declined" }));
         return;
       }
-      const { network } = await getNetwork();
+      const { network, networkPassphrase } = await getNetwork();
       localStorage.setItem(STORAGE_KEY, "1");
-      setState({ status: "connected", address, network, ready: true, installed: true, error: null });
+      setState({
+        status: "connected",
+        address,
+        network,
+        networkPassphrase,
+        ready: true,
+        installed: true,
+        error: null,
+      });
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -115,7 +137,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // Freighter has no dApp-initiated "revoke" call — disconnecting here just
     // forgets the local session. Re-connecting will re-prompt the extension.
     localStorage.removeItem(STORAGE_KEY);
-    setState((s) => ({ ...s, status: "idle", address: null, network: null, error: null }));
+    setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
   }, []);
 
   const value = useMemo<WalletContextValue>(
