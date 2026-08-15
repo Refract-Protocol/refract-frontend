@@ -7,6 +7,7 @@ import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
 import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
+import { useLockupStatus } from "@/hooks/useLockupStatus";
 import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
@@ -36,6 +37,7 @@ export default function ProvidePage() {
   const wallet = useWallet();
   const { data: pool, loading: poolLoading, isFixture: poolIsFixture } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
+  const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
 
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
@@ -49,6 +51,7 @@ export default function ProvidePage() {
   const sharesOut = amount ? (parseFloat(amount) / sharePrice).toFixed(4) : "—";
   const usdcOut = amount ? (parseFloat(amount) * sharePrice).toFixed(2) : "—";
 
+  const isLocked = lockupExpiresAt !== null && lockupExpiresAt * 1000 > Date.now();
   const withdrawInvalid =
     tab === "withdraw" && wallet.status === "connected" && parseFloat(amount || "0") > availableToWithdraw;
 
@@ -102,6 +105,7 @@ export default function ProvidePage() {
     const parsed = parseFloat(amount || "0");
     if (parsed <= 0) return;
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
+    if (tab === "withdraw" && isLocked) return;
 
     setSubmission({ status: "submitting" });
     try {
@@ -349,6 +353,18 @@ export default function ProvidePage() {
                     </div>
                   )}
 
+                  {tab === "withdraw" && isLocked && lockupExpiresAt && (
+                    <div className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
+                      🔒 Withdrawals unlock on{" "}
+                      {new Date(lockupExpiresAt * 1000).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                      .
+                    </div>
+                  )}
+
                   <div className="mb-4">
                     <Input
                       label={tab === "deposit" ? "USDC Amount" : "USDC to withdraw"}
@@ -405,7 +421,7 @@ export default function ProvidePage() {
                     variant="primary"
                     size="lg"
                     block
-                    disabled={withdrawInvalid}
+                    disabled={withdrawInvalid || (tab === "withdraw" && isLocked)}
                     loading={
                       submission.status === "submitting" ||
                       submission.status === "signing" ||
@@ -417,9 +433,11 @@ export default function ProvidePage() {
                       ? "Confirm in wallet…"
                       : wallet.status !== "connected"
                         ? "Connect Wallet"
-                        : tab === "deposit"
-                          ? "Provide Capital"
-                          : "Withdraw USDC"}
+                        : tab === "withdraw" && isLocked
+                          ? "Locked"
+                          : tab === "deposit"
+                            ? "Provide Capital"
+                            : "Withdraw USDC"}
                   </Button>
 
                   {submission.status === "error" && (
