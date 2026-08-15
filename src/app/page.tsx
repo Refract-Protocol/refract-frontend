@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Button, Badge, Card } from "@/components/ui";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { useOracleStatus } from "@/hooks/useOracleStatus";
+import type { OracleReading } from "@/lib/api/oracle";
+import type { BadgeTone } from "@/components/ui/Badge";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -46,12 +49,18 @@ const RECENT_PAYOUTS = [
   { type: "Flight Delay", amount: "$1,400", time: "2 weeks ago", tx: "qrs...789" },
 ];
 
-const ORACLE_FEEDS = [
-  { feed: "USDC/USD", value: "$1.0002", icon: "🪙" },
-  { feed: "Market 24h", value: "-1.4%", icon: "📊" },
-  { feed: "BTC Crash Index", value: "0.08", icon: "📉" },
-  { feed: "Aave Collateral", value: "92.1%", icon: "🏦" },
-];
+const ORACLE_FEED_DISPLAY: Record<string, { feed: string; icon: string; formatValue: (r: OracleReading) => string }> = {
+  StablecoinDepeg: { feed: "USDC/USD", icon: "🪙", formatValue: (r) => `$${r.value.toFixed(4)}` },
+  MarketCrash: { feed: "Market 24h", icon: "📊", formatValue: (r) => `${r.value >= 0 ? "+" : ""}${r.value.toFixed(2)}%` },
+  SmartContractRisk: { feed: "Protocol TVL 24h", icon: "🔐", formatValue: (r) => `${r.value >= 0 ? "+" : ""}${r.value.toFixed(2)}%` },
+};
+
+const SEVERITY_BADGE_TONE: Record<OracleReading["severity"], BadgeTone> = {
+  low: "safe",
+  medium: "risk",
+  high: "danger",
+  triggered: "danger",
+};
 
 const TRIGGER_DETAILS = [
   "USDC price < $0.95 for 15+ min",
@@ -65,6 +74,8 @@ export default function Home() {
   const [activeType, setActiveType] = useState(0);
   const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const ct = COVERAGE_TYPES[activeType];
+  const oracleStatus = useOracleStatus();
+  const anyTriggered = oracleStatus.data?.some((r) => r.severity === "triggered") ?? false;
 
   return (
     <div className="min-h-screen bg-pm-bg">
@@ -127,29 +138,51 @@ export default function Home() {
               <div className="mb-6 flex items-center justify-between">
                 <span className="text-xs uppercase tracking-wide text-pm-text/60">Live Oracle Status</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="pm-glow h-[7px] w-[7px] rounded-full bg-pm-green" aria-hidden="true" />
-                  <span className="text-[11px] font-semibold text-pm-green">All systems nominal</span>
+                  <span
+                    className={`pm-glow h-[7px] w-[7px] rounded-full ${anyTriggered ? "bg-pm-red" : "bg-pm-green"}`}
+                    aria-hidden="true"
+                  />
+                  <span className={`text-[11px] font-semibold ${anyTriggered ? "text-pm-red" : "text-pm-green"}`}>
+                    {anyTriggered ? "Trigger active" : "All systems nominal"}
+                  </span>
                 </div>
               </div>
 
               <ul>
-                {ORACLE_FEEDS.map((item) => (
-                  <li key={item.feed} className="flex items-center justify-between border-b border-pm-violet/[0.08] py-3 last:border-none">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base" aria-hidden="true">{item.icon}</span>
-                      <span className="text-[13px] text-pm-text/70">{item.feed}</span>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-[13px] font-semibold text-pm-text">{item.value}</span>
-                      <Badge tone="safe">Safe</Badge>
-                    </div>
-                  </li>
-                ))}
+                {(oracleStatus.data ?? []).map((reading) => {
+                  const display = ORACLE_FEED_DISPLAY[reading.coverageType];
+                  if (!display) return null;
+                  return (
+                    <li
+                      key={reading.coverageType}
+                      className="flex items-center justify-between border-b border-pm-violet/[0.08] py-3 last:border-none"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base" aria-hidden="true">{display.icon}</span>
+                        <span className="text-[13px] text-pm-text/70">{display.feed}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono text-[13px] font-semibold text-pm-text">{display.formatValue(reading)}</span>
+                        <Badge tone={SEVERITY_BADGE_TONE[reading.severity]}>
+                          {reading.severity === "low" ? "Safe" : reading.severity === "triggered" ? "Triggered" : "Elevated"}
+                        </Badge>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
 
-              <div className="mt-5 rounded-lg border border-pm-green/15 bg-pm-green/[0.06] px-3.5 py-3">
-                <div className="mb-0.5 text-xs font-semibold text-pm-green">No triggers active</div>
-                <div className="text-[11px] text-pm-text/40">Oracles refreshed every 60 seconds</div>
+              <div
+                className={`mt-5 rounded-lg border px-3.5 py-3 ${
+                  anyTriggered ? "border-pm-red/15 bg-pm-red/[0.06]" : "border-pm-green/15 bg-pm-green/[0.06]"
+                }`}
+              >
+                <div className={`mb-0.5 text-xs font-semibold ${anyTriggered ? "text-pm-red" : "text-pm-green"}`}>
+                  {anyTriggered ? "One or more triggers active" : "No triggers active"}
+                </div>
+                <div className="text-[11px] text-pm-text/40">
+                  {oracleStatus.isFixture ? "Example data — Refract API unreachable" : "Oracles refreshed every 60 seconds"}
+                </div>
               </div>
             </Card>
             <div
