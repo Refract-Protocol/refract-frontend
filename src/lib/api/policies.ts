@@ -32,12 +32,26 @@ export interface Policy {
   createdAt: string;
 }
 
+/**
+ * Trigger parameters are a discriminated union keyed by coverage type id so
+ * that adding a future parameterised coverage type stays type-safe. The
+ * flight-delay type (id 4) is the only one that currently carries parameters:
+ * the oracle (AviationStack) resolves the flight by designator and departure
+ * date, so both are required for the trigger to be payable.
+ */
+export interface FlightDelayTriggerParams {
+  flightNumber: string;
+  departureDate: string;
+}
+
+export type TriggerParams = { coverageType: 4; params: FlightDelayTriggerParams };
+
 export interface BuyPolicyParams {
   holder: string;
   coverageType: number;
   coverageAmount: string;
   durationDays: number;
-  triggerParams?: Record<string, unknown>;
+  triggerParams?: TriggerParams;
 }
 
 export interface BuyPolicyResponse {
