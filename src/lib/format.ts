@@ -1,5 +1,7 @@
 /** Shared number/currency formatting helpers used across pages. */
 
+import { usePreferencesStore } from "@/lib/store/preferencesStore";
+
 const USDC_DECIMALS = 7;
 
 /** Converts a human USDC amount (e.g. 5000) to the integer base-unit string the backend expects (1e7 per USDC). */
@@ -12,8 +14,21 @@ export function fromStroops(value: string | number): number {
   return Number(value) / 10 ** USDC_DECIMALS;
 }
 
+/**
+ * Resolves the locale used for display formatting. Falls back to "en-US"
+ * (today's behaviour) when the store is unavailable, e.g. during SSR or
+ * before the persisted preferences have hydrated.
+ */
+function resolveLocale(): string {
+  try {
+    return usePreferencesStore.getState().locale || "en-US";
+  } catch {
+    return "en-US";
+  }
+}
+
 export function formatUsd(value: number, opts: Intl.NumberFormatOptions = {}): string {
-  return value.toLocaleString("en-US", {
+  return value.toLocaleString(resolveLocale(), {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
