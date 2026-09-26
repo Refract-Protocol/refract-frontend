@@ -11,6 +11,7 @@ import { useLockupStatus } from "@/hooks/useLockupStatus";
 import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
+import { estimateYield, apyBpsToRate } from "@/lib/pool/yield";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
@@ -57,6 +58,19 @@ export default function ProvidePage() {
 
   const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
   const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;
+
+  // The pool APY tile and the 30-day estimate must agree, so both derive
+  // from the same source value. When pool stats are unavailable we show an
+  // explicit unavailable label rather than silently falling back to a
+  // fixture number.
+  const apyBps = pool?.apyBps;
+  const apyAvailable = typeof apyBps === "number" && Number.isFinite(apyBps);
+  const apyPct = apyAvailable ? apyBpsToRate(apyBps) * 100 : null;
+
+  const parsedAmount = parseFloat(amount);
+  const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const estimated30dYield =
+    apyAvailable && amountValid ? estimateYield(parsedAmount, apyBps, 30) : null;
 
   // Donut chart for the illustrative risk breakdown
   useEffect(() => {
@@ -178,283 +192,201 @@ export default function ProvidePage() {
           </div>
 
           {/* Stats */}
-          <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            {poolLoading || !pool
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} padding="sm" className="!p-[18px]">
-                    <Skeleton height={11} width={70} className="mb-2.5" />
-                    <Skeleton height={22} width={90} />
-                  </Card>
-                ))
-              : [
-                  { label: "Pool TVL", value: `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M` },
-                  { label: "30d APY", value: `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
-                  { label: "Share Price", value: `$${pool.sharePrice}` },
-                  { label: "Utilization", value: `${utilizationPct.toFixed(2)}%` },
-                ].map((s) => (
-                  <Card key={s.label} padding="sm" className="!p-[18px]">
-                    <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
-                    <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
-                      {s.value}
-                    </div>
-                  </Card>
-                ))}
+          <div className="mb-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card className="p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-pm-text/40">Total Pool</div>
+              {poolLoading ? (
+                <Skeleton className="h-6 w-20" />
+              ) : (
+                <div className="font-mono text-lg font-bold text-pm-text">
+                  {pool ? formatUsd(fromStroops(pool.totalAssets)) : "—"}
+                </div>
+              )}
+            </Card>
+            <Card className="p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-pm-text/40">30d APY</div>
+              {poolLoading ? (
+                <Skeleton className="h-6 w-16" />
+              ) : (
+                <div className="font-mono text-lg font-bold text-pm-green">
+                  {apyPct !== null ? `${apyPct.toFixed(2)}%` : "—"}
+                </div>
+              )}
+            </Card>
+            <Card className="p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-pm-text/40">Utilization</div>
+              {poolLoading ? (
+                <Skeleton className="h-6 w-16" />
+              ) : (
+                <div className="font-mono text-lg font-bold text-pm-text">{utilizationPct.toFixed(1)}%</div>
+              )}
+            </Card>
+            <Card className="p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-pm-text/40">Your Position</div>
+              {wallet.status === "connected" ? (
+                <div className="font-mono text-lg font-bold text-pm-text">{formatUsd(availableToWithdraw)}</div>
+              ) : (
+                <div className="text-sm text-pm-text/40">Connect wallet</div>
+              )}
+            </Card>
           </div>
 
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
-            {/* Left: Pool info */}
-            <div className="flex flex-col gap-5">
-              <Card padding="md">
-                <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">Capital Allocation</h3>
-                <div className="grid grid-cols-1 items-center gap-8 xs:grid-cols-[160px_1fr]">
-                  <canvas ref={canvasRef} style={{ width: 160, height: 160 }} className="mx-auto xs:mx-0" aria-hidden="true" />
-                  <ul className="flex flex-col gap-2.5">
+          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+            <div>
+              {/* Tabs */}
+              <div className="mb-5 flex gap-1 rounded-xl border border-pm-border bg-pm-surface p-1">
+                {(["deposit", "withdraw"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold capitalize transition-colors ${
+                      tab === t ? "bg-pm-accent text-white" : "text-pm-text/50 hover:text-pm-text"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <Card className="p-5 sm:p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold text-pm-text">
+                    {tab === "deposit" ? "Deposit USDC" : "Withdraw USDC"}
+                  </h2>
+                  {tab === "withdraw" && isLocked && (
+                    <Badge tone="amber">Locked until {new Date(lockupExpiresAt! * 1000).toLocaleDateString()}</Badge>
+                  )}
+                </div>
+
+                <label className="mb-1.5 block text-xs font-medium text-pm-text/50" htmlFor="provide-amount">
+                  Amount (USDC)
+                </label>
+                <Input
+                  id="provide-amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+
+                {tab === "withdraw" && (
+                  <div className="mt-3 flex gap-2">
+                    {withdrawQuickPct.map((q) => (
+                      <button
+                        key={q.label}
+                        onClick={() => setAmount(q.value.toFixed(2))}
+                        className="rounded-lg border border-pm-border px-3 py-1 text-xs font-medium text-pm-text/60 hover:border-pm-accent hover:text-pm-text"
+                      >
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-2 rounded-xl border border-pm-border bg-pm-bg/40 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-pm-text/45">{tab === "deposit" ? "Shares out" : "Shares in"}</span>
+                    <span className="font-mono text-pm-text/80">{sharesOut}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-pm-text/45">{tab === "deposit" ? "Share price" : "USDC out"}</span>
+                    <span className="font-mono text-pm-text/80">
+                      {tab === "deposit" ? `$${sharePrice.toFixed(4)}` : usdcOut}
+                    </span>
+                  </div>
+                  {tab === "deposit" && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-pm-text/45">Estimated 30d yield</span>
+                      <span
+                        className="font-mono text-pm-green"
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
+                        {estimated30dYield !== null ? `+${formatUsd(estimated30dYield)}` : "—"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {tab === "deposit" && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-pm-text/40">
+                    Estimate only, not guaranteed. Assumes the current pool APY holds for 30 days (30/365 of the
+                    annual rate, simple interest) and that no coverage triggers fire.
+                  </p>
+                )}
+
+                {withdrawInvalid && (
+                  <p className="mt-3 text-xs text-pm-red">
+                    Amount exceeds your withdrawable balance of {formatUsd(availableToWithdraw)}.
+                  </p>
+                )}
+
+                {submission.status === "error" && (
+                  <p className="mt-3 text-xs text-pm-red">{submission.message}</p>
+                )}
+
+                {submission.status === "success" && (
+                  <div className="mt-4 rounded-xl border border-pm-green/30 bg-pm-green/5 p-3 text-xs text-pm-text/70">
+                    {submission.demo ? (
+                      <p>Simulated locally — the Refract API is unreachable in this environment.</p>
+                    ) : (
+                      <p>
+                        {submission.kind === "deposit" ? "Deposit" : "Withdrawal"} submitted
+                        {submission.txHash ? ` — ${truncateAddress(submission.txHash)}` : ""}.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <Button
+                  className="mt-5 w-full"
+                  onClick={handleSubmit}
+                  disabled={
+                    submission.status === "submitting" ||
+                    submission.status === "signing" ||
+                    withdrawInvalid ||
+                    (tab === "withdraw" && isLocked)
+                  }
+                >
+                  {wallet.status !== "connected"
+                    ? "Connect Wallet"
+                    : submission.status === "submitting" || submission.status === "signing"
+                      ? "Processing…"
+                      : tab === "deposit"
+                        ? "Deposit"
+                        : "Withdraw"}
+                </Button>
+              </Card>
+            </div>
+
+            <div className="space-y-5">
+              <Card className="p-5">
+                <h3 className="mb-3 font-display text-sm font-bold text-pm-text">Pool Allocation</h3>
+                <div className="flex items-center gap-4">
+                  <canvas ref={canvasRef} style={{ width: 160, height: 160 }} aria-hidden="true" />
+                  <ul className="flex-1 space-y-1.5">
                     {RISK_BREAKDOWN.map((seg) => (
-                      <li key={seg.type} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: seg.color }} aria-hidden="true" />
-                          <span className="text-xs text-pm-text/60">{seg.type}</span>
-                        </div>
-                        <span className="text-xs font-semibold text-pm-text">{seg.pct}%</span>
+                      <li key={seg.type} className="flex items-center gap-2 text-[11px]">
+                        <span className="h-2 w-2 rounded-full" style={{ background: seg.color }} />
+                        <span className="flex-1 text-pm-text/55">{seg.type}</span>
+                        <span className="font-mono text-pm-text/70">{seg.pct}%</span>
                       </li>
                     ))}
                   </ul>
                 </div>
+                <p className="mt-3 text-[11px] text-pm-text/35">
+                  Illustrative allocation — the backend does not expose a per-category split.
+                </p>
               </Card>
 
-              <Card padding="md">
-                <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">
-                  How capital provision works
-                </h3>
-                <ol className="flex flex-col gap-3.5">
-                  {[
-                    { n: "01", title: "Deposit USDC", desc: "Receive Refract pool shares (PPS) proportional to your deposit." },
-                    { n: "02", title: "Underwrite policies", desc: "Your capital backs coverage sold to policy buyers. You collect premiums upfront." },
-                    { n: "03", title: "Earn continuously", desc: "Premium yield accrues to your PPS shares, increasing their USDC value over time." },
-                    { n: "04", title: "Shared risk", desc: "If a payout fires, it's split proportionally across all capital providers — not concentrated on any one LP." },
-                  ].map((item) => (
-                    <li key={item.n} className="flex gap-4">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-pm-violet/15 text-[11px] font-bold text-pm-violet">
-                        {item.n}
-                      </div>
-                      <div>
-                        <div className="mb-0.5 text-[13px] font-semibold text-pm-text">{item.title}</div>
-                        <div className="text-xs leading-relaxed text-pm-text/45">{item.desc}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+              <Card className="p-5">
+                <h3 className="mb-2 font-display text-sm font-bold text-pm-text">Risk Disclosure</h3>
+                <p className="text-[11px] leading-relaxed text-pm-text/45">
+                  Providing capital is not risk-free. If a covered event triggers, pool capital is used to pay
+                  claims and your position can lose value. Yields shown are estimates, not guarantees, and past
+                  performance does not predict future results.
+                </p>
               </Card>
-
-              <Card padding="md">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-display text-[15px] font-bold tracking-tight text-pm-text">Pool Capacity</h3>
-                  <span className={`text-[13px] font-bold ${utilizationPct > 70 ? "text-pm-amber" : "text-pm-green"}`}>
-                    {utilizationPct.toFixed(2)}% utilized
-                  </span>
-                </div>
-                <div className="mb-2 h-2 overflow-hidden rounded-full bg-white/5">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-pm-violet to-pm-green"
-                    style={{ width: `${pool ? (utilizationPct / maxUtilizationPct) * 100 : 0}%` }}
-                  />
-                </div>
-                <div className="flex flex-col justify-between gap-1 text-[11px] text-pm-text/35 xs:flex-row">
-                  <span>{pool ? `$${(Number(pool.lockedUsdc) / 1e7 / 1e6).toFixed(1)}M locked in policies` : "—"}</span>
-                  <span>{pool ? `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M total / ${maxUtilizationPct}% max` : "—"}</span>
-                </div>
-              </Card>
-            </div>
-
-            {/* Right: Deposit/withdraw form */}
-            <div className="lg:sticky lg:top-20">
-              {submission.status === "success" ? (
-                <Card padding="md" role="status" aria-live="polite">
-                  <div className="mb-4 flex items-center gap-2.5 text-pm-green">
-                    <span className="text-xl" aria-hidden="true">✓</span>
-                    <span className="font-display text-base font-bold">
-                      {submission.kind === "deposit" ? "Capital provided" : "Withdrawal submitted"}
-                    </span>
-                  </div>
-                  {submission.demo && (
-                    <p className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
-                      Demo mode: the Refract API wasn&apos;t reachable, so this was simulated client-side —
-                      no real transaction was built or submitted.
-                    </p>
-                  )}
-                  <dl className="flex flex-col gap-2 text-[13px]">
-                    <div className="flex justify-between">
-                      <dt className="text-pm-text/45">{submission.kind === "deposit" ? "Shares received" : "USDC received"}</dt>
-                      <dd className="text-pm-text">
-                        {submission.kind === "deposit"
-                          ? fromStroops(submission.result.sharesOut).toFixed(4)
-                          : formatUsd(fromStroops(submission.result.usdcOut))}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-pm-text/45">Share price</dt>
-                      <dd className="text-pm-text">${submission.result.sharePrice}</dd>
-                    </div>
-                    {submission.txHash && (
-                      <div className="flex justify-between">
-                        <dt className="text-pm-text/45">Transaction</dt>
-                        <dd className="font-mono text-pm-text">{truncateAddress(submission.txHash)}</dd>
-                      </div>
-                    )}
-                  </dl>
-                  <Button type="button" variant="outline" block className="mt-5" onClick={() => { setSubmission({ status: "idle" }); setAmount(""); }}>
-                    Make another transaction
-                  </Button>
-                </Card>
-              ) : (
-                <Card padding="md">
-                  <div
-                    className="mb-6 flex gap-1 rounded-lg bg-white/[0.03] p-1"
-                    role="tablist"
-                    aria-label="Deposit or withdraw"
-                    onKeyDown={(e) => {
-                      if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
-                      e.preventDefault();
-                      setTab(tab === "deposit" ? "withdraw" : "deposit");
-                      setAmount("");
-                      setSubmission({ status: "idle" });
-                    }}
-                  >
-                    {(["deposit", "withdraw"] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        role="tab"
-                        aria-selected={tab === t}
-                        tabIndex={tab === t ? 0 : -1}
-                        onClick={() => {
-                          setTab(t);
-                          setAmount("");
-                          setSubmission({ status: "idle" });
-                        }}
-                        className={`flex-1 rounded-md py-2 text-[13px] font-semibold capitalize transition-colors ${
-                          tab === t ? "bg-pm-violet/15 text-pm-violet" : "text-pm-text/40"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mb-5 flex items-center justify-between rounded-lg border border-pm-violet/15 bg-pm-violet/[0.07] px-3.5 py-2.5">
-                    <span className="text-xs text-pm-text/50">PPS share price</span>
-                    <span className="text-sm font-bold text-pm-violet">${sharePrice}</span>
-                  </div>
-
-                  {tab === "withdraw" && wallet.status === "connected" && (
-                    <div className="mb-4 text-xs text-pm-text/40">
-                      Your position: <span className="font-semibold text-pm-text">{userShares.toFixed(4)} shares</span> ·{" "}
-                      {formatUsd(userShares * sharePrice)}
-                    </div>
-                  )}
-
-                  {tab === "withdraw" && isLocked && lockupExpiresAt && (
-                    <div className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
-                      🔒 Withdrawals unlock on{" "}
-                      {new Date(lockupExpiresAt * 1000).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                      .
-                    </div>
-                  )}
-
-                  <div className="mb-4">
-                    <Input
-                      label={tab === "deposit" ? "USDC Amount" : "USDC to withdraw"}
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      error={withdrawInvalid ? `You only have ${formatUsd(availableToWithdraw)} available to withdraw` : undefined}
-                    />
-                    <div className="mt-2 flex gap-1.5">
-                      {tab === "deposit"
-                        ? ["1,000", "5,000", "10,000", "25,000"].map((v) => (
-                            <button
-                              key={v}
-                              type="button"
-                              onClick={() => setAmount(v.replace(",", ""))}
-                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet"
-                            >
-                              ${v}
-                            </button>
-                          ))
-                        : withdrawQuickPct.map((p) => (
-                            <button
-                              key={p.label}
-                              type="button"
-                              disabled={!position}
-                              onClick={() => setAmount(p.value.toFixed(2))}
-                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet disabled:opacity-30"
-                            >
-                              {p.label}
-                            </button>
-                          ))}
-                    </div>
-                  </div>
-
-                  {amount && (
-                    <div className="mb-4 rounded-lg bg-white/[0.02] px-4 py-3.5">
-                      <div className="mb-1.5 flex justify-between">
-                        <span className="text-xs text-pm-text/40">{tab === "deposit" ? "PPS shares received" : "USDC received"}</span>
-                        <span className="text-[13px] font-semibold text-pm-text">{tab === "deposit" ? sharesOut : usdcOut}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs text-pm-text/40">Estimated 30d yield</span>
-                        <span className="text-xs font-semibold text-pm-green">
-                          +{formatUsd(((parseFloat(amount || "0") * (pool?.apyBps ?? 890)) / 10000 / 12))}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    block
-                    disabled={withdrawInvalid || (tab === "withdraw" && isLocked)}
-                    loading={
-                      submission.status === "submitting" ||
-                      submission.status === "signing" ||
-                      wallet.status === "connecting"
-                    }
-                    onClick={() => void handleSubmit()}
-                  >
-                    {submission.status === "signing"
-                      ? "Confirm in wallet…"
-                      : wallet.status !== "connected"
-                        ? "Connect Wallet"
-                        : tab === "withdraw" && isLocked
-                          ? "Locked"
-                          : tab === "deposit"
-                            ? "Provide Capital"
-                            : "Withdraw USDC"}
-                  </Button>
-
-                  {submission.status === "error" && (
-                    <p role="alert" className="mt-3 text-[12px] text-pm-red">
-                      {submission.message}
-                    </p>
-                  )}
-
-                  <div className="mt-4 rounded-md border border-pm-amber/15 bg-pm-amber/[0.06] px-3.5 py-3">
-                    <p className="m-0 text-[11px] leading-relaxed text-pm-amber/90">
-                      <Badge tone="risk" className="mr-1.5 align-middle">Risk</Badge>
-                      Capital providers share in payout risk. If oracle triggers fire, pool capital covers claims
-                      proportionally.
-                    </p>
-                  </div>
-                </Card>
-              )}
             </div>
           </div>
         </Container>
