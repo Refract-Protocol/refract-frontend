@@ -10,3 +10,13 @@ export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
 export { Tooltip, InfoButton } from "./Tooltip";
 export type { TooltipProps, TooltipPlacement, InfoButtonProps } from "./Tooltip";
+export { Tabs, TabList, Tab, TabPanels, TabPanel } from "./Tabs";
+export type {
+  TabsProps,
+  TabListProps,
+  TabProps,
+  TabPanelsProps,
+  TabPanelProps,
+  TabsActivationMode,
+  TabsOrientation,
+} from "./Tabs";
