@@ -6,3 +6,5 @@ export type { BadgeTone } from "./Badge";
 export { Input } from "./Input";
 export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
+export { Combobox, useCombobox } from "./Combobox";
+export type { ComboboxProps, ComboboxOption, UseComboboxOptions, UseComboboxResult } from "./Combobox";
