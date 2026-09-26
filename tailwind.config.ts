@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,21 +11,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        "pm-bg": "#07050f",
-        "pm-panel": "#0e0b1a",
-        "pm-surface": "#0f0c1a",
-        "pm-surface-2": "#17132a",
-        "pm-surface-3": "#201b38",
-        "pm-border": "rgba(139,92,246,0.12)",
-        "pm-border-2": "rgba(139,92,246,0.3)",
-        "pm-violet": "#8b5cf6",
-        "pm-violet-2": "#7c3aed",
-        "pm-green": "#10b981",
-        "pm-amber": "#f59e0b",
-        "pm-red": "#ef4444",
-        "pm-text": "#ede9f8",
-        "pm-muted": "#7b6fa8",
-        "pm-muted-2": "#4a4070",
+        "pm-bg": "var(--pm-bg)",
+        "pm-panel": "var(--pm-panel)",
+        "pm-surface": "var(--pm-surface)",
+        "pm-surface-2": "var(--pm-surface-2)",
+        "pm-surface-3": "var(--pm-surface-3)",
+        "pm-border": "var(--pm-border)",
+        "pm-border-2": "var(--pm-border-2)",
+        "pm-violet": "var(--pm-violet)",
+        "pm-violet-2": "var(--pm-violet-2)",
+        "pm-green": "var(--pm-green)",
+        "pm-amber": "var(--pm-amber)",
+        "pm-red": "var(--pm-red)",
+        "pm-text": "var(--pm-text)",
+        "pm-muted": "var(--pm-muted)",
+        "pm-muted-2": "var(--pm-muted-2)",
       },
       fontFamily: {
         display: ["Syne", "sans-serif"],

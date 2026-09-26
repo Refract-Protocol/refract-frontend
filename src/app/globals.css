@@ -5,7 +5,42 @@
 @tailwind utilities;
 
 /* ── Refract Design Tokens ─────────────────────────────────────────────────── */
+/* Light theme is the default (:root); dark values live under .dark. */
 :root {
+  /* Backgrounds */
+  --pm-bg:        #f7f6fb;
+  --pm-surface:   #ffffff;
+  --pm-surface-2: #f1eff8;
+  --pm-surface-3: #e6e2f2;
+  --pm-border:    rgba(124,58,237,0.18);
+  --pm-border-2:  rgba(124,58,237,0.35);
+
+  /* Brand — violet */
+  --pm-violet:    #7c3aed;
+  --pm-violet-2:  #6d28d9;
+  --pm-violet-dim: rgba(124,58,237,0.1);
+  --pm-violet-glow: rgba(124,58,237,0.2);
+
+  /* Status */
+  --pm-safe:      #047857;   /* covered */
+  --pm-safe-bg:   rgba(4,120,87,0.1);
+  --pm-risk:      #b45309;   /* at risk */
+  --pm-risk-bg:   rgba(180,83,9,0.1);
+  --pm-danger:    #b91c1c;   /* triggered */
+  --pm-danger-bg: rgba(185,28,28,0.1);
+
+  /* Text */
+  --pm-text:   #1a1530;
+  --pm-muted:  #4b4568;
+  --pm-muted-2: #6b6488;
+
+  /* Radius */
+  --pm-r:    8px;
+  --pm-r-lg: 16px;
+  --pm-r-xl: 24px;
+}
+
+.dark {
   /* Backgrounds */
   --pm-bg:        #07050f;
   --pm-surface:   #0f0c1a;
@@ -32,11 +67,6 @@
   --pm-text:   #ede9f8;
   --pm-muted:  #7b6fa8;
   --pm-muted-2: #4a4070;
-
-  /* Radius */
-  --pm-r:    8px;
-  --pm-r-lg: 16px;
-  --pm-r-xl: 24px;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
@@ -272,39 +302,5 @@ input:focus-visible,
 }
 
 /* ── Loading skeleton ────────────────────────────────────────────────────── */
-.pm-skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--pm-surface-2);
-  border-radius: var(--pm-r);
-}
-.pm-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
-  animation: pmShimmer 1.6s infinite;
-}
-@keyframes pmShimmer {
-  100% { transform: translateX(100%); }
-}
 
-/* ── Small helper button size ───────────────────────────────────────────── */
-.pm-btn-sm { padding: 6px 14px; font-size: 12px; }
-.pm-btn-lg { padding: 14px 28px; font-size: 15px; }
-.pm-btn-block { width: 100%; }
-.pm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.pm-btn:disabled:hover { transform: none; }
-
-/* ── Card hover-lift (shared) ───────────────────────────────────────────── */
-.pm-card-hover { transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-.pm-card-hover:hover {
-  border-color: var(--pm-border-2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.12);
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* … truncated 1112 chars — edit only what you need near the top … */
