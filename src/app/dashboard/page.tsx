@@ -16,9 +16,10 @@ const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
 
 type PolicyStatus = "active" | "paid" | "expired";
 
-function policyStatus(policy: Policy, claims: ClaimRecord[]): PolicyStatus {
+function policyStatus(policy: Policy, claims: ClaimRecord[], claimsLoading: boolean): PolicyStatus {
   const claim = claims.find((c) => c.policyId === policy.id);
   if (claim?.triggered) return "paid";
+  if (claimsLoading) return policy.isActive ? "active" : "expired";
   return policy.isActive ? "active" : "expired";
 }
 
@@ -32,16 +33,18 @@ export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
-  const claims = useClaims(address, policies);
+  const { data: claims, loading: claimsLoading, error: claimsError } = useClaims(address, policies);
 
   const summary = policies
     ? {
-        active: policies.filter((p) => policyStatus(p, claims) === "active").length,
+        active: policies.filter((p) => policyStatus(p, claims, claimsLoading) === "active").length,
         totalCoverage: policies.reduce((sum, p) => sum + fromStroops(p.coverageAmount), 0),
         totalPremiums: policies.reduce((sum, p) => sum + fromStroops(p.premium), 0),
         totalPayouts: claims.filter((c) => c.triggered).reduce((sum, c) => sum + fromStroops(c.payout), 0),
       }
     : null;
+
+  const summaryLoading = loading || claimsLoading || !summary;
 
   return (
     <div className="min-h-screen bg-pm-bg">
@@ -88,7 +91,7 @@ export default function DashboardPage() {
             <>
               {/* Summary */}
               <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-                {loading || !summary
+                {summaryLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <Card key={i} padding="sm" className="!p-[18px]">
                         <Skeleton height={11} width={70} className="mb-2.5" />
@@ -142,7 +145,7 @@ export default function DashboardPage() {
                 {!loading && policies && policies.length > 0 && (
                   <div className="flex flex-col gap-3">
                     {policies.map((policy) => {
-                      const status = policyStatus(policy, claims);
+                      const status = policyStatus(policy, claims, claimsLoading);
                       const badge = STATUS_BADGE[status];
                       return (
                         <Card key={policy.id} padding="md" className="!py-4">
@@ -160,22 +163,13 @@ export default function DashboardPage() {
                                   <span className="text-sm font-semibold text-pm-text">{policy.coverageTypeName}</span>
                                   <Badge tone={badge.tone}>{badge.label}</Badge>
                                 </div>
-                                <div className="font-mono text-[11px] text-pm-text/35">{policy.id}</div>
+                                <div className="text-xs text-pm-text/40">
+                                  Coverage {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} · Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })}
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-6 sm:justify-end">
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">Coverage</div>
-                                <div className="text-sm font-semibold text-pm-text">{formatUsd(fromStroops(policy.coverageAmount))}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">
-                                  {status === "expired" || status === "paid" ? "Expired" : "Expires"}
-                                </div>
-                                <div className="text-sm font-semibold text-pm-text">
-                                  {new Date(policy.expiresAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                </div>
-                              </div>
+                            <div className="text-xs text-pm-text/40">
+                              {policy.isActive ? "Active" : "Inactive"}
                             </div>
                           </div>
                         </Card>
@@ -185,49 +179,68 @@ export default function DashboardPage() {
                 )}
               </section>
 
-              {/* Claims / payout history */}
+              {/* Claims */}
               <section aria-labelledby="claims-heading">
                 <h2 id="claims-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
-                  Claim &amp; Payout History
+                  Claim History
                 </h2>
 
-                {!loading && claims.length === 0 && (
+                {claimsError && (
+                  <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
+                    <p className="text-sm text-pm-red">Couldn&apos;t load claims: {claimsError}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3 inline-flex"
+                      onClick={() => window.location.reload()}
+                    >
+                      Retry
+                    </Button>
+                  </Card>
+                )}
+
+                {!claimsError && claimsLoading && (
+                  <div className="flex flex-col gap-3" role="status" aria-label="Loading claims">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} height={84} rounded="md" />
+                    ))}
+                  </div>
+                )}
+
+                {!claimsError && !claimsLoading && claims.length === 0 && (
                   <Card className="py-12 text-center">
                     <p className="text-sm text-pm-text/45">No claims triggered yet — no news is good news.</p>
                   </Card>
                 )}
 
-                {claims.length > 0 && (
+                {!claimsError && !claimsLoading && claims.length > 0 && (
                   <div className="flex flex-col gap-3">
                     {claims.map((claim) => (
-                      <Card key={claim.policyId} padding="md" className="!py-4">
+                      <Card key={claim.id} padding="md" className="!py-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3.5">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pm-green/10 text-lg" aria-hidden="true">
-                              💰
-                            </span>
-                            <div>
-                              <div className="mb-0.5 text-sm font-semibold text-pm-text">
-                                {new Date(claim.processedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </div>
-                              <div className="text-xs text-pm-text/45">{claim.reason}</div>
+                          <div>
+                            <div className="mb-0.5 flex items-center gap-2">
+                              <span className="text-sm font-semibold text-pm-text">
+                                {claim.triggered ? "Payout" : "Claim"}
+                              </span>
+                              <Badge tone={claim.triggered ? "violet" : "neutral"}>
+                                {claim.triggered ? "Paid Out" : "Pending"}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-pm-text/40">
+                              Policy {claim.policyId} · {formatUsd(fromStroops(claim.payout), { maximumFractionDigits: 0 })}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="font-display text-lg font-extrabold text-pm-green">{formatUsd(fromStroops(claim.payout))}</div>
-                            <div className="font-mono text-[11px] text-pm-text/35">{claim.policyId}</div>
-                            {claim.settlementTxHash && (
-                              <a
-                                href={stellarExpertTxUrl(claim.settlementTxHash)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[11px] text-pm-text/45 underline decoration-pm-text/20 underline-offset-2 transition-colors hover:text-pm-text/70"
-                              >
-                                View transaction
-                                <span className="sr-only"> (opens in a new tab)</span>
-                              </a>
-                            )}
-                          </div>
+                          {claim.txHash && (
+                            <a
+                              href={stellarExpertTxUrl(claim.txHash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-pm-violet hover:underline"
+                            >
+                              View transaction
+                            </a>
+                          )}
                         </div>
                       </Card>
                     ))}

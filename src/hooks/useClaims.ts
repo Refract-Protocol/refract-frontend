@@ -1,38 +1,73 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchClaims, fixtureClaimsForHolder, type ClaimRecord } from "@/lib/api/claims";
 import type { Policy } from "@/lib/api/policies";
-import { fetchHolderClaims, type ClaimRecord } from "@/lib/api/claims";
-import { fixtureClaimsForHolder } from "@/lib/fixtures/claims";
+
+export interface UseClaimsResult {
+  data: ClaimRecord[];
+  loading: boolean;
+  error: string | null;
+  source: "live" | "fixture";
+}
 
 /**
- * Loads a wallet's claim history from GET /api/v1/claims/holder/:address.
- * Mirrors useHolderPolicies: the backend's in-memory history is empty on
- * every process restart, so this falls back to the labeled fixture both
- * when the API is unreachable AND when it legitimately returns zero claims,
- * so the dashboard has something to demo.
+ * Loads the claim history for a holder.
+ *
+ * The live request only depends on the address, so it starts immediately
+ * rather than waiting on the policy list. The fixture fallback needs the
+ * policies, so it is derived separately once they arrive.
  */
-export function useClaims(address: string | null, policies: Policy[] | null): ClaimRecord[] {
-  const [claims, setClaims] = useState<ClaimRecord[]>([]);
+export function useClaims(address: string | null, policies: Policy[] | null): UseClaimsResult {
+  const [data, setData] = useState<ClaimRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(Boolean(address));
+  const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<"live" | "fixture">("live");
 
   useEffect(() => {
-    if (!address || !policies) {
-      setClaims([]);
+    if (!address) {
+      setData([]);
+      setLoading(false);
+      setError(null);
+      setSource("live");
       return;
     }
-    const controller = new AbortController();
 
-    fetchHolderClaims(address, controller.signal)
-      .then(({ claims: fetched }) => {
-        setClaims(fetched.length > 0 ? fetched : fixtureClaimsForHolder(address, policies));
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetchClaims(address)
+      .then((claims) => {
+        if (cancelled) return;
+        setData(claims);
+        setSource("live");
       })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setClaims(fixtureClaimsForHolder(address, policies));
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load claims");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
       });
 
-    return () => controller.abort();
-  }, [address, policies]);
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
 
-  return claims;
+  // Fixture fallback: only derived once policies have resolved and the live
+  // request came back empty/unavailable.
+  useEffect(() => {
+    if (!address || !policies || loading || error) return;
+    if (data.length > 0) return;
+    const fixture = fixtureClaimsForHolder(address, policies);
+    if (fixture.length > 0) {
+      setData(fixture);
+      setSource("fixture");
+    }
+  }, [address, policies, loading, error, data.length]);
+
+  return { data, loading, error, source };
 }
