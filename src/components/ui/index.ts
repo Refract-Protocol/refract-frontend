@@ -8,3 +8,5 @@ export { Select } from "./Select";
 export type { SelectOption, SelectProps } from "./Select";
 export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
+export { Tooltip, InfoButton } from "./Tooltip";
+export type { TooltipProps, TooltipPlacement, InfoButtonProps } from "./Tooltip";
