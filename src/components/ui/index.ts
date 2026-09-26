@@ -20,3 +20,8 @@ export type {
   TabsActivationMode,
   TabsOrientation,
 } from "./Tabs";
+export { RadioCardGroup, RadioCardGroupRoot } from "./RadioCardGroup";
+export type {
+  RadioCardGroupProps,
+  RadioCardOption,
+} from "./RadioCardGroup";
