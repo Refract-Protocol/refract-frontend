@@ -8,3 +8,5 @@ export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
 export { Combobox, useCombobox } from "./Combobox";
 export type { ComboboxProps, ComboboxOption, UseComboboxOptions, UseComboboxResult } from "./Combobox";
+export { Slider } from "./Slider";
+export type { SliderProps } from "./Slider";
