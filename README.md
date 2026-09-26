@@ -10,7 +10,17 @@ pool and earn premium yield. See also `refract-contracts` and `refract-backend`.
 
 - **Next.js 14** (App Router) + **React 18**
 - **Tailwind CSS** with a custom violet design system (`src/app/globals.css`)
-- **Framer Motion** for animation, **Zustand** for client state
+- **CSS motion system** for animation (see `src/app/globals.css`), **Zustand** for client state
+
+## Motion
+
+Animation is handled entirely in CSS via the documented motion section of
+`src/app/globals.css` (named duration/easing tokens plus the `fadeUp`,
+`shieldPulse`, `pmShimmer`, and `spin` keyframes). Reduced motion is honoured by
+`usePrefersReducedMotion` (`src/hooks/usePrefersReducedMotion.ts`) as the single
+JS-side source of truth, with the `prefers-reduced-motion` override in
+`globals.css` as the belt-and-braces fallback. No component animates outside
+this policy.
 
 ## Routes
 

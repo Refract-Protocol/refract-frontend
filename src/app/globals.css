@@ -37,6 +37,19 @@
   --pm-r:    8px;
   --pm-r-lg: 16px;
   --pm-r-xl: 24px;
+
+  /* Motion tokens — named durations & easings (single source of truth).
+     All CSS animations/transitions should reference these instead of
+     scattering literal durations across files. */
+  --pm-duration-fast:   0.15s;
+  --pm-duration-base:   0.2s;
+  --pm-duration-slow:   0.4s;
+  --pm-duration-slower: 0.5s;
+  --pm-duration-spin:   0.6s;
+  --pm-duration-pulse:  2s;
+  --pm-ease-standard:   ease;
+  --pm-ease-out:        ease-out;
+  --pm-ease-linear:     linear;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
@@ -98,7 +111,7 @@ body {
   cursor: pointer;
   border: none;
   outline: none;
-  transition: all 0.2s;
+  transition: all var(--pm-duration-base);
   white-space: nowrap;
 }
 
@@ -132,7 +145,7 @@ body {
   padding: 10px 14px;
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--pm-duration-base);
 }
 .pm-input:focus { border-color: var(--pm-violet); }
 .pm-input::placeholder { color: var(--pm-muted-2); }
@@ -166,23 +179,61 @@ body {
 .risk-heat-medium { background: linear-gradient(135deg, rgba(245,158,11,0.08), transparent 70%); }
 .risk-heat-high   { background: linear-gradient(135deg, rgba(239,68,68,0.08),  transparent 70%); }
 
-/* ── Animations ──────────────────────────────────────────────────────────── */
+/* ── Motion ────────────────────────────────────────────────────────────────
+   Documented motion policy for Refract.
+
+   Decision (issue #37): framer-motion is NOT adopted. It was a declared
+   production dependency with zero imports, so it has been removed from
+   package.json and the README stack. All motion is expressed with the CSS
+   keyframes/transitions below, driven by the named tokens in :root.
+
+   Reduced-motion policy (single documented rule):
+   - JS side: `usePrefersReducedMotion` (src/hooks/usePrefersReducedMotion.ts)
+     is the single source of truth for components that need to branch in JS.
+   - CSS side: the `@media (prefers-reduced-motion: reduce)` override at the
+     bottom of this file is the belt-and-braces fallback that neutralises
+     every animation/transition declared here.
+   No component may animate without going through one of these two paths.
+   Motion is never required to convey state (e.g. the Counter value is
+   readable instantly under reduced motion).
+   ─────────────────────────────────────────────────────────────────────────── */
+
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-up { animation: fadeUp 0.4s ease forwards; }
+.animate-fade-up { animation: fadeUp var(--pm-duration-slow) var(--pm-ease-standard) forwards; }
 
 @keyframes shieldPulse {
   0%   { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
   70%  { box-shadow: 0 0 0 16px rgba(139,92,246,0); }
   100% { box-shadow: 0 0 0 0 rgba(139,92,246,0); }
 }
-.pm-glow { animation: shieldPulse 2s infinite; }
+.pm-glow { animation: shieldPulse var(--pm-duration-pulse) infinite; }
 
 @keyframes orbit {
   from { transform: rotate(0deg) translateX(120px) rotate(0deg); }
   to   { transform: rotate(360deg) translateX(120px) rotate(-360deg); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.pm-spin { animation: spin var(--pm-duration-spin) var(--pm-ease-linear) infinite; }
+
+@keyframes pmShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.pm-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--pm-surface-2) 25%,
+    var(--pm-surface-3) 50%,
+    var(--pm-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: pmShimmer 1.4s var(--pm-ease-linear) infinite;
 }
 
 /* ── Coverage card ───────────────────────────────────────────────────────── */
@@ -218,7 +269,7 @@ body {
   height: 100%;
   border-radius: 3px;
   background: linear-gradient(90deg, var(--pm-violet), var(--pm-safe));
-  transition: width 0.5s ease;
+  transition: width var(--pm-duration-slower) var(--pm-ease-standard);
 }
 
 /* ── Noise overlay (subtle texture) ─────────────────────────────────────── */
@@ -256,12 +307,15 @@ input:focus-visible,
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: top 0.15s ease;
+  transition: top var(--pm-duration-fast) var(--pm-ease-standard);
 }
 .pm-skip-link:focus {
   top: 16px;
 }
 
+/* Reduced-motion fallback: neutralises every animation/transition above.
+   This is the CSS half of the documented motion policy (see the Motion
+   section header). The JS half is `usePrefersReducedMotion`. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -273,38 +327,7 @@ input:focus-visible,
 
 /* ── Loading skeleton ────────────────────────────────────────────────────── */
 .pm-skeleton {
-  position: relative;
-  overflow: hidden;
   background: var(--pm-surface-2);
   border-radius: var(--pm-r);
-}
-.pm-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
-  animation: pmShimmer 1.6s infinite;
-}
-@keyframes pmShimmer {
-  100% { transform: translateX(100%); }
-}
-
-/* ── Small helper button size ───────────────────────────────────────────── */
-.pm-btn-sm { padding: 6px 14px; font-size: 12px; }
-.pm-btn-lg { padding: 14px 28px; font-size: 15px; }
-.pm-btn-block { width: 100%; }
-.pm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.pm-btn:disabled:hover { transform: none; }
-
-/* ── Card hover-lift (shared) ───────────────────────────────────────────── */
-.pm-card-hover { transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-.pm-card-hover:hover {
-  border-color: var(--pm-border-2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.12);
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  overflow: hidden;
 }
