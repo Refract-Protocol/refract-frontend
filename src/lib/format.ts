@@ -1,47 +1,75 @@
-/** Shared number/currency formatting helpers used across pages. */
+// Shared money formatting helpers.
+//
+// Currency values coming from the API are base-unit strings (see
+// `src/lib/api/policies.ts` and `src/lib/api/pool.ts`). USDC uses 7 decimals,
+// so every base-unit -> human conversion must go through `fromStroops`.
 
-const USDC_DECIMALS = 7;
+export const USDC_DECIMALS = 7;
 
-/** Converts a human USDC amount (e.g. 5000) to the integer base-unit string the backend expects (1e7 per USDC). */
-export function toStroops(amount: number): string {
-  return BigInt(Math.round(amount * 10 ** USDC_DECIMALS)).toString();
+/** Scale factor between a USDC base unit and one whole USDC. */
+export const USDC_BASE_UNIT = 10 ** USDC_DECIMALS;
+
+/**
+ * Convert a USDC base-unit value (string or number) into whole USDC.
+ *
+ * Uses `BigInt` for string input so very large base-unit strings keep full
+ * precision; number input is divided directly (numbers are already floats).
+ */
+export function fromStroops(value: string | number | bigint): number {
+  if (typeof value === 'bigint') {
+    return Number(value) / USDC_BASE_UNIT;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return 0;
+    try {
+      return Number(BigInt(trimmed)) / USDC_BASE_UNIT;
+    } catch {
+      return Number(trimmed) / USDC_BASE_UNIT;
+    }
+  }
+  return value / USDC_BASE_UNIT;
 }
 
-/** Converts a base-unit string (1e7 per USDC) back to a human float. */
-export function fromStroops(value: string | number): number {
-  return Number(value) / 10 ** USDC_DECIMALS;
-}
-
-export function formatUsd(value: number, opts: Intl.NumberFormatOptions = {}): string {
-  return value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
+/** Format a whole-USDC amount as a USD string with thousands separators. */
+export function formatUsd(value: number): string {
+  return `$${value.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-    ...opts,
-  });
+  })}`;
 }
 
+/**
+ * Format a whole-USDC amount as a compact USD string (e.g. `$1.2M`).
+ *
+ * Handles values under 1,000 (rendered with cents), negatives, and uses
+ * consistent thousands separators for the sub-million range.
+ */
 export function formatCompactUsd(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return formatUsd(value);
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+
+  if (abs >= 1_000_000_000) {
+    return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}$${abs.toLocaleString('en-US', {
+      maximumFractionDigits: 0,
+    })}`;
+  }
+  return `${sign}$${abs.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-/** Renders a past timestamp (ms since epoch) as "3 days ago", "2 weeks ago", etc. */
-export function formatRelativeTime(timestampMs: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
-  const units: [string, number][] = [
-    ["year", 31_536_000],
-    ["month", 2_592_000],
-    ["week", 604_800],
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ];
-  for (const [unit, secondsInUnit] of units) {
-    const count = Math.floor(seconds / secondsInUnit);
-    if (count >= 1) return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
-  }
-  return "just now";
+/**
+ * Format a share price. Share prices are quoted to 4 decimal places, which is
+ * the precision the pool contract reports and the precision the UI relies on.
+ */
+export function formatSharePrice(value: number): string {
+  return `$${value.toFixed(4)}`;
 }

@@ -1,3 +1,24 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=1e7]",
+        "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of the literal 1e7."
+      },
+      {
+        "selector": "BinaryExpression[operator='**'][right.value=7]",
+        "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of 10 ** 7."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/lib/format.ts"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
 }
