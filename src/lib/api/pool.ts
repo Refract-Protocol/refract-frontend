@@ -57,6 +57,25 @@ export function fetchLockupStatus(address: string, signal?: AbortSignal): Promis
   return apiRequest(`/pool/lockup/${address}`, { signal });
 }
 
+/**
+ * Real on-chain USDC trustline balance for an address.
+ *
+ * `balance` is a base-unit (stroops) string and must be run through `fromStroops`
+ * before display. `hasTrustline` distinguishes an account that simply holds zero
+ * USDC from one that has never established the USDC trustline at all — the two
+ * need different, actionable messaging in the deposit flow.
+ */
+export interface UsdcBalance {
+  address: string;
+  balance: string;
+  hasTrustline: boolean;
+}
+
+/** Real on-chain read; never falls back to a fixture (see useLockupStatus precedent). */
+export function fetchUsdcBalance(address: string, signal?: AbortSignal): Promise<UsdcBalance> {
+  return apiRequest(`/account/${address}/usdc-balance`, { signal });
+}
+
 export function provideCapital(provider: string, amount: string): Promise<ProvideCapitalResponse> {
   return apiRequest("/pool/provide", { method: "POST", body: { provider, amount } });
 }
