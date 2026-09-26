@@ -8,11 +8,9 @@ import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useClaims } from "@/hooks/useClaims";
 import { formatUsd, fromStroops } from "@/lib/format";
 import { stellarExpertTxUrl } from "@/lib/stellar";
+import { getCoverageIcon, getCoverageColor } from "@/lib/coverage/metadata";
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/api/claims";
-
-const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
-const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
 
 type PolicyStatus = "active" | "paid" | "expired";
 
@@ -153,23 +151,25 @@ export default function DashboardPage() {
                             <div className="flex items-center gap-3.5">
                               <span
                                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg"
-                                style={{ background: `${COVERAGE_COLORS[policy.coverageType]}18` }}
+                                style={{ background: `${getCoverageColor(policy.coverageType)}18` }}
                                 aria-hidden="true"
                               >
-                                {COVERAGE_ICONS[policy.coverageType]}
+                                {getCoverageIcon(policy.coverageType)}
                               </span>
                               <div>
-                                <div className="mb-0.5 flex items-center gap-2">
-                                  <span className="text-sm font-semibold text-pm-text">{policy.coverageTypeName}</span>
-                                  <Badge tone={badge.tone}>{badge.label}</Badge>
+                                <div className="mb-0.5 font-display text-[15px] font-bold text-pm-text">
+                                  {policy.coverageTypeName}
                                 </div>
                                 <div className="text-xs text-pm-text/40">
-                                  Coverage {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} · Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })}
+                                  {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} coverage
                                 </div>
                               </div>
                             </div>
-                            <div className="text-xs text-pm-text/40">
-                              {policy.isActive ? "Active" : "Inactive"}
+                            <div className="flex items-center gap-3">
+                              <Badge tone={badge.tone}>{badge.label}</Badge>
+                              <span className="font-display text-sm font-bold text-pm-text">
+                                {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 2 })}
+                              </span>
                             </div>
                           </div>
                         </Card>
@@ -188,59 +188,51 @@ export default function DashboardPage() {
                 {claimsError && (
                   <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
                     <p className="text-sm text-pm-red">Couldn&apos;t load claims: {claimsError}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mt-3 inline-flex"
-                      onClick={() => window.location.reload()}
-                    >
-                      Retry
-                    </Button>
                   </Card>
                 )}
 
-                {!claimsError && claimsLoading && (
+                {claimsLoading && (
                   <div className="flex flex-col gap-3" role="status" aria-label="Loading claims">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} height={84} rounded="md" />
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <Skeleton key={i} height={72} rounded="md" />
                     ))}
                   </div>
                 )}
 
-                {!claimsError && !claimsLoading && claims.length === 0 && (
-                  <Card className="py-12 text-center">
-                    <p className="text-sm text-pm-text/45">No claims triggered yet — no news is good news.</p>
+                {!claimsLoading && claims.length === 0 && (
+                  <Card className="py-10 text-center">
+                    <p className="text-sm text-pm-text/45">No claims filed yet.</p>
                   </Card>
                 )}
 
-                {!claimsError && !claimsLoading && claims.length > 0 && (
+                {!claimsLoading && claims.length > 0 && (
                   <div className="flex flex-col gap-3">
                     {claims.map((claim) => (
                       <Card key={claim.id} padding="md" className="!py-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <div className="mb-0.5 flex items-center gap-2">
-                              <span className="text-sm font-semibold text-pm-text">
-                                {claim.triggered ? "Payout" : "Claim"}
-                              </span>
-                              <Badge tone={claim.triggered ? "violet" : "neutral"}>
-                                {claim.triggered ? "Paid Out" : "Pending"}
-                              </Badge>
+                            <div className="mb-0.5 font-display text-[15px] font-bold text-pm-text">
+                              {claim.coverageTypeName ?? "Unknown coverage"}
                             </div>
                             <div className="text-xs text-pm-text/40">
-                              Policy {claim.policyId} · {formatUsd(fromStroops(claim.payout), { maximumFractionDigits: 0 })}
+                              {formatUsd(fromStroops(claim.payout), { maximumFractionDigits: 0 })} payout
                             </div>
                           </div>
-                          {claim.txHash && (
-                            <a
-                              href={stellarExpertTxUrl(claim.txHash)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-pm-violet hover:underline"
-                            >
-                              View transaction
-                            </a>
-                          )}
+                          <div className="flex items-center gap-3">
+                            <Badge tone={claim.triggered ? "violet" : "neutral"}>
+                              {claim.triggered ? "Paid Out" : "Pending"}
+                            </Badge>
+                            {claim.txHash && (
+                              <a
+                                href={stellarExpertTxUrl(claim.txHash)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-pm-violet hover:underline"
+                              >
+                                View tx
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </Card>
                     ))}
