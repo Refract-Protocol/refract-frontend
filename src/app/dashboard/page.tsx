@@ -31,7 +31,7 @@ const STATUS_BADGE: Record<PolicyStatus, { tone: "safe" | "violet" | "neutral"; 
 export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
-  const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
+  const { data: policies, loading, error, source } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
 
   const summary = policies
@@ -56,10 +56,14 @@ export default function DashboardPage() {
             <p className="text-sm text-pm-text/45">
               Your active policies, claim status, and payout history in one place.
             </p>
-            {isFixture && (
+            {source === "fixture-unreachable" && (
               <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
-                ⚠ Showing fixture data — either the Refract API isn&apos;t reachable, or it has no
-                recorded policies for this address yet.
+                ⚠ Showing fixture data — the Refract API isn&apos;t reachable right now.
+              </p>
+            )}
+            {source === "fixture-demo" && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
+                ⚠ Showing demo fixture data — demo mode is enabled for this address.
               </p>
             )}
           </div>
@@ -160,77 +164,28 @@ export default function DashboardPage() {
                                   <span className="text-sm font-semibold text-pm-text">{policy.coverageTypeName}</span>
                                   <Badge tone={badge.tone}>{badge.label}</Badge>
                                 </div>
-                                <div className="font-mono text-[11px] text-pm-text/35">{policy.id}</div>
+                                <div className="text-xs text-pm-text/40">
+                                  {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} coverage
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-6 sm:justify-end">
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">Coverage</div>
-                                <div className="text-sm font-semibold text-pm-text">{formatUsd(fromStroops(policy.coverageAmount))}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">
-                                  {status === "expired" || status === "paid" ? "Expired" : "Expires"}
-                                </div>
-                                <div className="text-sm font-semibold text-pm-text">
-                                  {new Date(policy.expiresAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                </div>
-                              </div>
+                            <div className="flex items-center gap-4 text-xs text-pm-text/45">
+                              <span>Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })}</span>
+                              {policy.txHash && (
+                                <a
+                                  href={stellarExpertTxUrl(policy.txHash)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-pm-violet hover:underline"
+                                >
+                                  View tx
+                                </a>
+                              )}
                             </div>
                           </div>
                         </Card>
                       );
                     })}
-                  </div>
-                )}
-              </section>
-
-              {/* Claims / payout history */}
-              <section aria-labelledby="claims-heading">
-                <h2 id="claims-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
-                  Claim &amp; Payout History
-                </h2>
-
-                {!loading && claims.length === 0 && (
-                  <Card className="py-12 text-center">
-                    <p className="text-sm text-pm-text/45">No claims triggered yet — no news is good news.</p>
-                  </Card>
-                )}
-
-                {claims.length > 0 && (
-                  <div className="flex flex-col gap-3">
-                    {claims.map((claim) => (
-                      <Card key={claim.policyId} padding="md" className="!py-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3.5">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pm-green/10 text-lg" aria-hidden="true">
-                              💰
-                            </span>
-                            <div>
-                              <div className="mb-0.5 text-sm font-semibold text-pm-text">
-                                {new Date(claim.processedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </div>
-                              <div className="text-xs text-pm-text/45">{claim.reason}</div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-display text-lg font-extrabold text-pm-green">{formatUsd(fromStroops(claim.payout))}</div>
-                            <div className="font-mono text-[11px] text-pm-text/35">{claim.policyId}</div>
-                            {claim.settlementTxHash && (
-                              <a
-                                href={stellarExpertTxUrl(claim.settlementTxHash)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[11px] text-pm-text/45 underline decoration-pm-text/20 underline-offset-2 transition-colors hover:text-pm-text/70"
-                              >
-                                View transaction
-                                <span className="sr-only"> (opens in a new tab)</span>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
                   </div>
                 )}
               </section>
