@@ -31,6 +31,23 @@ export function fromStroops(value: string | number | bigint): number {
   return value / USDC_BASE_UNIT;
 }
 
+/**
+ * Convert a whole-USDC amount into its exact base-unit string.
+ *
+ * This is the inverse of `fromStroops` and is used by the pre-signature
+ * review step to show the precise on-chain amount that will be submitted.
+ * Uses `BigInt` so the conversion is exact for whole and fractional USDC
+ * values (fractions are truncated to the 7 supported decimals).
+ */
+export function toStroops(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  const whole = Math.floor(abs);
+  const fraction = Math.round((abs - whole) * USDC_BASE_UNIT);
+  return `${sign}${BigInt(whole) * BigInt(USDC_BASE_UNIT) + BigInt(fraction)}`;
+}
+
 /** Format a whole-USDC amount as a USD string with thousands separators. */
 export function formatUsd(value: number): string {
   return `$${value.toLocaleString('en-US', {
