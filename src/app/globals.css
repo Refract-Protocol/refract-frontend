@@ -5,33 +5,49 @@
 @tailwind utilities;
 
 /* ── Refract Design Tokens ─────────────────────────────────────────────────── */
+/*
+ * globals.css is the single authoritative source of truth for every colour and
+ * radius token. tailwind.config.ts references these custom properties (e.g.
+ * `pm-border: "var(--pm-border)"`) instead of hardcoding values, so a token can
+ * never drift between the two files. `npm run tokens:check` enforces this.
+ *
+ * Colour tokens are stored as space-separated RGB channel triplets so Tailwind
+ * can compose opacity modifiers (`border-pm-border/60`) via the
+ * `<alpha-value>` placeholder. Always consume them through `rgb(var(--pm-*))`
+ * or the Tailwind utilities — never as a bare `var(--pm-*)` colour.
+ */
 :root {
   /* Backgrounds */
-  --pm-bg:        #07050f;
-  --pm-surface:   #0f0c1a;
-  --pm-surface-2: #17132a;
-  --pm-surface-3: #201b38;
-  --pm-border:    rgba(139,92,246,0.15);
-  --pm-border-2:  rgba(139,92,246,0.3);
+  --pm-bg:        7 5 15;
+  --pm-surface:   15 12 26;
+  --pm-surface-2: 23 19 42;
+  --pm-surface-3: 32 27 56;
+  --pm-border:    139 92 246;
+  --pm-border-2:  139 92 246;
 
   /* Brand — violet */
-  --pm-violet:    #8b5cf6;
-  --pm-violet-2:  #7c3aed;
-  --pm-violet-dim: rgba(139,92,246,0.12);
-  --pm-violet-glow: rgba(139,92,246,0.25);
+  --pm-violet:     139 92 246;
+  --pm-violet-2:   124 58 237;
+  --pm-violet-dim: 139 92 246;
+  --pm-violet-glow: 139 92 246;
 
   /* Status */
-  --pm-safe:      #10b981;   /* covered */
-  --pm-safe-bg:   rgba(16,185,129,0.1);
-  --pm-risk:      #f59e0b;   /* at risk */
-  --pm-risk-bg:   rgba(245,158,11,0.1);
-  --pm-danger:    #ef4444;   /* triggered */
-  --pm-danger-bg: rgba(239,68,68,0.1);
+  --pm-safe:   16 185 129;   /* covered */
+  --pm-risk:   245 158 11;   /* at risk */
+  --pm-danger: 239 68 68;    /* triggered */
 
   /* Text */
-  --pm-text:   #ede9f8;
-  --pm-muted:  #7b6fa8;
-  --pm-muted-2: #4a4070;
+  --pm-text:    237 233 248;
+  --pm-muted:   123 111 168;
+  --pm-muted-2: 74 64 112;
+
+  /* Alpha levels for tokens that are always used at a fixed opacity */
+  --pm-border-a:     0.15;
+  --pm-border-2-a:   0.3;
+  --pm-violet-dim-a: 0.12;
+  --pm-safe-bg-a:    0.1;
+  --pm-risk-bg-a:    0.1;
+  --pm-danger-bg-a:  0.1;
 
   /* Radius */
   --pm-r:    8px;
@@ -41,7 +57,7 @@
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { background: var(--pm-bg); color: var(--pm-text); }
+html, body { background: rgb(var(--pm-bg)); color: rgb(var(--pm-text)); }
 
 body {
   font-family: "Inter", system-ui, sans-serif;
@@ -56,17 +72,17 @@ body {
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--pm-surface); }
-::-webkit-scrollbar-thumb { background: var(--pm-surface-3); border-radius: 2px; }
+::-webkit-scrollbar-track { background: rgb(var(--pm-surface)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--pm-surface-3)); border-radius: 2px; }
 
 /* ── Layout utilities ────────────────────────────────────────────────────── */
 .pm-panel {
-  background: var(--pm-surface);
-  border: 1px solid var(--pm-border);
+  background: rgb(var(--pm-surface));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
   border-radius: var(--pm-r-lg);
 }
 
-.pm-divider { border: none; border-top: 1px solid var(--pm-border); }
+.pm-divider { border: none; border-top: 1px solid rgb(var(--pm-border) / var(--pm-border-a)); }
 
 /* ── Status tags ─────────────────────────────────────────────────────────── */
 .pm-tag {
@@ -80,10 +96,10 @@ body {
   letter-spacing: 0.03em;
 }
 
-.pm-tag-safe   { background: var(--pm-safe-bg);   color: var(--pm-safe); }
-.pm-tag-risk   { background: var(--pm-risk-bg);   color: var(--pm-risk); }
-.pm-tag-danger { background: var(--pm-danger-bg); color: var(--pm-danger); }
-.pm-tag-violet { background: var(--pm-violet-dim); color: var(--pm-violet); }
+.pm-tag-safe   { background: rgb(var(--pm-safe) / var(--pm-safe-bg-a));       color: rgb(var(--pm-safe)); }
+.pm-tag-risk   { background: rgb(var(--pm-risk) / var(--pm-risk-bg-a));       color: rgb(var(--pm-risk)); }
+.pm-tag-danger { background: rgb(var(--pm-danger) / var(--pm-danger-bg-a));   color: rgb(var(--pm-danger)); }
+.pm-tag-violet { background: rgb(var(--pm-violet) / var(--pm-violet-dim-a));  color: rgb(var(--pm-violet)); }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .pm-btn {
@@ -103,39 +119,39 @@ body {
 }
 
 .pm-btn-primary {
-  background: var(--pm-violet);
+  background: rgb(var(--pm-violet));
   color: white;
 }
-.pm-btn-primary:hover { background: var(--pm-violet-2); transform: translateY(-1px); }
+.pm-btn-primary:hover { background: rgb(var(--pm-violet-2)); transform: translateY(-1px); }
 
 .pm-btn-outline {
   background: transparent;
-  color: var(--pm-violet);
-  border: 1px solid var(--pm-border-2);
+  color: rgb(var(--pm-violet));
+  border: 1px solid rgb(var(--pm-border-2) / var(--pm-border-2-a));
 }
-.pm-btn-outline:hover { background: var(--pm-violet-dim); }
+.pm-btn-outline:hover { background: rgb(var(--pm-violet) / var(--pm-violet-dim-a)); }
 
 .pm-btn-ghost {
   background: transparent;
-  color: var(--pm-muted);
-  border: 1px solid var(--pm-border);
+  color: rgb(var(--pm-muted));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
 }
-.pm-btn-ghost:hover { color: var(--pm-text); border-color: var(--pm-border-2); }
+.pm-btn-ghost:hover { color: rgb(var(--pm-text)); border-color: rgb(var(--pm-border-2) / var(--pm-border-2-a)); }
 
 /* ── Inputs ──────────────────────────────────────────────────────────────── */
 .pm-input {
   width: 100%;
-  background: var(--pm-surface-2);
-  border: 1px solid var(--pm-border);
+  background: rgb(var(--pm-surface-2));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
   border-radius: var(--pm-r);
-  color: var(--pm-text);
+  color: rgb(var(--pm-text));
   padding: 10px 14px;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
 }
-.pm-input:focus { border-color: var(--pm-violet); }
-.pm-input::placeholder { color: var(--pm-muted-2); }
+.pm-input:focus { border-color: rgb(var(--pm-violet)); }
+.pm-input::placeholder { color: rgb(var(--pm-muted-2)); }
 
 /* ── Slider ──────────────────────────────────────────────────────────────── */
 .pm-slider {
@@ -144,8 +160,8 @@ body {
   height: 4px;
   background: linear-gradient(
     to right,
-    var(--pm-violet) var(--pct, 50%),
-    var(--pm-surface-3) var(--pct, 50%)
+    rgb(var(--pm-violet)) var(--pct, 50%),
+    rgb(var(--pm-surface-3)) var(--pct, 50%)
   );
   border-radius: 2px;
   cursor: pointer;
@@ -155,18 +171,20 @@ body {
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  background: var(--pm-violet);
+  background: rgb(var(--pm-violet));
   border-radius: 50%;
   cursor: pointer;
-  box-shadow: 0 0 0 4px rgba(139,92,246,0.2);
+  box-shadow: 0 0 0 4px rgb(var(--pm-violet) / 0.2);
 }
 
 /* ── Risk heat gradient (signature element) ──────────────────────────────── */
-.risk-heat-low    { background: linear-gradient(135deg, rgba(16,185,129,0.08), transparent 70%); }
-.risk-heat-medium { background: linear-gradient(135deg, rgba(245,158,11,0.08), transparent 70%); }
-.risk-heat-high   { background: linear-gradient(135deg, rgba(239,68,68,0.08),  transparent 70%); }
+.risk-heat-low    { background: linear-gradient(135deg, rgb(var(--pm-safe) / 0.08), transparent 70%); }
+.risk-heat-medium { background: linear-gradient(135deg, rgb(var(--pm-risk) / 0.08), transparent 70%); }
+.risk-heat-high   { background: linear-gradient(135deg, rgb(var(--pm-danger) / 0.08),  transparent 70%); }
 
 /* ── Animations ──────────────────────────────────────────────────────────── */
+/* `fadeUp` is defined once here; tailwind.config.ts references this keyframe
+ * via `animation.fade-up` instead of redeclaring it. */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -174,9 +192,9 @@ body {
 .animate-fade-up { animation: fadeUp 0.4s ease forwards; }
 
 @keyframes shieldPulse {
-  0%   { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
-  70%  { box-shadow: 0 0 0 16px rgba(139,92,246,0); }
-  100% { box-shadow: 0 0 0 0 rgba(139,92,246,0); }
+  0%   { box-shadow: 0 0 0 0 rgb(var(--pm-violet) / 0.4); }
+  70%  { box-shadow: 0 0 0 16px rgb(var(--pm-violet) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--pm-violet) / 0); }
 }
 .pm-glow { animation: shieldPulse 2s infinite; }
 
@@ -187,8 +205,8 @@ body {
 
 /* ── Coverage card ───────────────────────────────────────────────────────── */
 .coverage-card {
-  background: var(--pm-surface);
-  border: 1px solid var(--pm-border);
+  background: rgb(var(--pm-surface));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
   border-radius: var(--pm-r-xl);
   padding: 28px;
   cursor: pointer;
@@ -197,27 +215,27 @@ body {
   overflow: hidden;
 }
 .coverage-card:hover {
-  border-color: var(--pm-border-2);
+  border-color: rgb(var(--pm-border-2) / var(--pm-border-2-a));
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.12);
+  box-shadow: 0 8px 32px rgb(var(--pm-violet) / 0.12);
 }
 .coverage-card.selected {
-  border-color: var(--pm-violet);
-  background: var(--pm-surface-2);
+  border-color: rgb(var(--pm-violet));
+  background: rgb(var(--pm-surface-2));
 }
 
 /* ── Pool gauge ──────────────────────────────────────────────────────────── */
 .pool-gauge-track {
   width: 100%;
   height: 6px;
-  background: var(--pm-surface-3);
+  background: rgb(var(--pm-surface-3));
   border-radius: 3px;
   overflow: hidden;
 }
 .pool-gauge-fill {
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--pm-violet), var(--pm-safe));
+  background: linear-gradient(90deg, rgb(var(--pm-violet)), rgb(var(--pm-safe)));
   transition: width 0.5s ease;
 }
 
@@ -239,7 +257,7 @@ a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--pm-violet);
+  outline: 2px solid rgb(var(--pm-violet));
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -249,7 +267,7 @@ input:focus-visible,
   left: 16px;
   top: -48px;
   z-index: 100;
-  background: var(--pm-violet);
+  background: rgb(var(--pm-violet));
   color: #fff;
   padding: 10px 18px;
   border-radius: var(--pm-r);
@@ -272,39 +290,5 @@ input:focus-visible,
 }
 
 /* ── Loading skeleton ────────────────────────────────────────────────────── */
-.pm-skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--pm-surface-2);
-  border-radius: var(--pm-r);
-}
-.pm-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
-  animation: pmShimmer 1.6s infinite;
-}
-@keyframes pmShimmer {
-  100% { transform: translateX(100%); }
-}
 
-/* ── Small helper button size ───────────────────────────────────────────── */
-.pm-btn-sm { padding: 6px 14px; font-size: 12px; }
-.pm-btn-lg { padding: 14px 28px; font-size: 15px; }
-.pm-btn-block { width: 100%; }
-.pm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.pm-btn:disabled:hover { transform: none; }
-
-/* ── Card hover-lift (shared) ───────────────────────────────────────────── */
-.pm-card-hover { transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-.pm-card-hover:hover {
-  border-color: var(--pm-border-2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.12);
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* … truncated 1112 chars — edit only what you need near the top … */
