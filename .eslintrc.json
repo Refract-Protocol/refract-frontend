@@ -1,3 +1,24 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/^#(?:[0-9a-fA-F]{3,4}){1,2}$/]",
+        "message": "Hard-coded hex colours are not allowed in JSX. Use design tokens from src/lib/coverage/metadata.ts or CSS custom properties (see CONTRIBUTING.md)."
+      },
+      {
+        "selector": "Literal[value=/rgba?\\(/]",
+        "message": "Hard-coded rgb()/rgba() colours are not allowed in JSX. Use design tokens from src/lib/coverage/metadata.ts or CSS custom properties (see CONTRIBUTING.md)."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/lib/coverage/metadata.ts", "src/lib/coverage/colors.ts", "src/app/global-error.tsx"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
 }
