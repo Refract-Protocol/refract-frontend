@@ -34,20 +34,10 @@ const config: Config = {
       screens: {
         xs: "420px",
       },
-      keyframes: {
-        fadeUp: {
-          from: { opacity: "0", transform: "translateY(16px)" },
-          to: { opacity: "1", transform: "translateY(0)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-468px 0" },
-          "100%": { backgroundPosition: "468px 0" },
-        },
-      },
-      animation: {
-        "fade-up": "fadeUp 0.4s ease forwards",
-        shimmer: "shimmer 1.6s linear infinite",
-      },
+      // NOTE: `fadeUp` and `shimmer` keyframes were removed here to collapse
+      // duplicate definitions. `fadeUp` now lives solely in globals.css and
+      // `shimmer` was superseded by `pmShimmer` (also in globals.css).
+      // See issue #39.
     },
   },
   plugins: [],

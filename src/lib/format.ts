@@ -22,12 +22,6 @@ export function formatUsd(value: number, opts: Intl.NumberFormatOptions = {}): s
   });
 }
 
-export function formatCompactUsd(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return formatUsd(value);
-}
-
 /** Renders a past timestamp (ms since epoch) as "3 days ago", "2 weeks ago", etc. */
 export function formatRelativeTime(timestampMs: number): string {
   const seconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
