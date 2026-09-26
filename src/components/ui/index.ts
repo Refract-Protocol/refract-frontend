@@ -13,3 +13,5 @@ export type {
   StatCardAccent,
   StatCardTrend,
 } from "./StatCard";
+export { Meter } from "./Meter";
+export type { MeterProps, MeterTone } from "./Meter";
