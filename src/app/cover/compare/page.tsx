@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Button, Input, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Button, Input, Skeleton, ListRowSkeletons } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";

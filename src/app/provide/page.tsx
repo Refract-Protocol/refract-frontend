@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, StatCardSkeletonGrid } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
@@ -203,28 +203,25 @@ export default function ProvidePage() {
           </div>
 
           {/* Stats */}
-          <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            {poolLoading || !pool
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} padding="sm" className="!p-[18px]">
-                    <Skeleton height={11} width={70} className="mb-2.5" />
-                    <Skeleton height={22} width={90} />
-                  </Card>
-                ))
-              : [
-                  { label: "Pool TVL", value: `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M` },
-                  { label: "30d APY", value: `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
-                  { label: "Share Price", value: `$${pool.sharePrice}` },
-                  { label: "Utilization", value: `${utilizationPct.toFixed(2)}%` },
-                ].map((s) => (
-                  <Card key={s.label} padding="sm" className="!p-[18px]">
-                    <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
-                    <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
-                      {s.value}
-                    </div>
-                  </Card>
-                ))}
-          </div>
+          {poolLoading || !pool ? (
+            <StatCardSkeletonGrid className="mb-7" ariaLabel="Loading pool stats" />
+          ) : (
+            <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+              {[
+                { label: "Pool TVL", value: `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M` },
+                { label: "30d APY", value: `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
+                { label: "Share Price", value: `$${pool.sharePrice}` },
+                { label: "Utilization", value: `${utilizationPct.toFixed(2)}%` },
+              ].map((s) => (
+                <Card key={s.label} padding="sm" className="!p-[18px]">
+                  <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
+                  <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
+                    {s.value}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
             {/* Left: Pool info */}

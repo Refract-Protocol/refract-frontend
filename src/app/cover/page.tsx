@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, ListRowSkeletons } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
@@ -194,11 +194,7 @@ function CoverPageContent() {
                 )}
 
                 {typesLoading && (
-                  <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} height={72} rounded="md" />
-                    ))}
-                  </div>
+                  <ListRowSkeletons count={5} height={72} ariaLabel="Loading coverage types" />
                 )}
 
                 {coverageTypes && (

@@ -1,7 +1,7 @@
 "use client";
 
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Button, Skeleton, StatCardSkeletonGrid, ListRowSkeletons } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
@@ -93,28 +93,25 @@ export default function DashboardPage() {
           ) : (
             <>
               {/* Summary */}
-              <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-                {loading || !summary
-                  ? Array.from({ length: 4 }).map((_, i) => (
-                      <Card key={i} padding="sm" className="!p-[18px]">
-                        <Skeleton height={11} width={70} className="mb-2.5" />
-                        <Skeleton height={22} width={90} />
-                      </Card>
-                    ))
-                  : [
-                      { label: "Active Policies", value: summary.active.toString() },
-                      { label: "Total Coverage", value: formatUsd(summary.totalCoverage, { maximumFractionDigits: 0 }) },
-                      { label: "Premiums Paid", value: formatUsd(summary.totalPremiums, { maximumFractionDigits: 0 }) },
-                      { label: "Total Payouts", value: formatUsd(summary.totalPayouts, { maximumFractionDigits: 0 }), accent: summary.totalPayouts > 0 },
-                    ].map((s) => (
-                      <Card key={s.label} padding="sm" className="!p-[18px]">
-                        <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
-                        <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
-                          {s.value}
-                        </div>
-                      </Card>
-                    ))}
-              </div>
+              {loading || !summary ? (
+                <StatCardSkeletonGrid className="mb-7" ariaLabel="Loading summary statistics" />
+              ) : (
+                <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+                  {[
+                    { label: "Active Policies", value: summary.active.toString() },
+                    { label: "Total Coverage", value: formatUsd(summary.totalCoverage, { maximumFractionDigits: 0 }) },
+                    { label: "Premiums Paid", value: formatUsd(summary.totalPremiums, { maximumFractionDigits: 0 }) },
+                    { label: "Total Payouts", value: formatUsd(summary.totalPayouts, { maximumFractionDigits: 0 }), accent: summary.totalPayouts > 0 },
+                  ].map((s) => (
+                    <Card key={s.label} padding="sm" className="!p-[18px]">
+                      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
+                      <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
+                        {s.value}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
 
               {/* Portfolio Risk Visualization */}
               {!loading && riskSummary && riskSummary.breakdowns.length > 0 && (
@@ -254,11 +251,7 @@ export default function DashboardPage() {
                 )}
 
                 {loading && (
-                  <div className="flex flex-col gap-3" role="status" aria-label="Loading policies">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} height={84} rounded="md" />
-                    ))}
-                  </div>
+                  <ListRowSkeletons count={3} height={84} ariaLabel="Loading policies" className="gap-3" />
                 )}
 
                 {!loading && policies && policies.length === 0 && (
