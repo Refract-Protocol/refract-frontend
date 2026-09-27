@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { NotificationCenter } from "@/components/NotificationCenter";
 
 const NAV_LINKS = [
   { label: "Coverage", href: "/cover" },
@@ -72,17 +73,22 @@ export function Navbar({ right }: NavbarProps) {
           </div>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">{right}</div>
+        <div className="hidden items-center gap-3 md:flex">
+          <NotificationCenter />
+          {right}
+        </div>
 
-        <button
-          ref={menuButtonRef}
-          type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-pm-border text-pm-text md:hidden"
-          aria-expanded={menuOpen}
-          aria-controls="mobile-nav"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
+        <div className="flex items-center gap-2 md:hidden">
+          <NotificationCenter />
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-pm-border text-pm-text"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
           <span aria-hidden="true" className="relative block h-3.5 w-4">
             <span
               className={cn(
@@ -104,6 +110,7 @@ export function Navbar({ right }: NavbarProps) {
             />
           </span>
         </button>
+        </div>
       </div>
 
       {menuOpen && (
