@@ -12,6 +12,7 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { validateBuyCoverage } from "@/lib/validation/coverage";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -57,18 +58,16 @@ export default function CoverPage() {
     year: "numeric",
   });
 
-  // The pool enforces one real global bound across every coverage type,
-  // which can be tighter than a given type's advertised catalog max (see
-  // PolicyService.onChainCoverageBounds' doc comment in the backend) —
-  // clamp against both so this can't approve an amount the pool would
-  // actually reject.
   const effectiveMin = Math.max(100, chainMinCoverage ?? 0);
   const effectiveMax = ct ? Math.min(ct.maxCoverage, chainMaxCoverage ?? ct.maxCoverage) : 0;
-  const amountInvalid = ct
-    ? parseFloat(coverageAmount || "0") < effectiveMin || parseFloat(coverageAmount) > effectiveMax
-    : false;
   const isFlightDelay = ct?.id === 4;
-  const flightNumberInvalid = isFlightDelay && flightNumber.trim().length === 0;
+
+  const validation = validateBuyCoverage(
+    { coverageAmount, flightNumber },
+    { effectiveMin, effectiveMax, isFlightDelay }
+  );
+  const amountInvalid = !validation.isValid && !!validation.errors.coverageAmount;
+  const flightNumberInvalid = !validation.isValid && !!validation.errors.flightNumber;
 
   async function handleBuy() {
     if (!ct) return;
