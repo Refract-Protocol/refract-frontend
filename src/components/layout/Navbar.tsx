@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const NAV_LINKS = [
   { label: "Coverage", href: "/cover" },
@@ -84,6 +85,7 @@ export function Navbar({ right }: NavbarProps) {
               ⌘K
             </kbd>
           </button>
+          <ThemeToggle />
           {right}
         </div>
 

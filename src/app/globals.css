@@ -5,9 +5,28 @@
 @tailwind utilities;
 
 /* ── Refract Design Tokens ─────────────────────────────────────────────────── */
-:root {
-  /* Backgrounds */
+/* ── Refract Design Tokens ─────────────────────────────────────────────────── */
+:root, [data-theme="dark"] {
+  /* RGB channel tokens for Tailwind /alpha-value utilities */
+  --pm-bg-rgb:        7 5 15;
+  --pm-panel-rgb:     14 11 26;
+  --pm-surface-rgb:   15 12 26;
+  --pm-surface-2-rgb: 23 19 42;
+  --pm-surface-3-rgb: 32 27 56;
+  --pm-border-rgb:    139 92 246;
+  --pm-border-2-rgb:  139 92 246;
+  --pm-violet-rgb:    139 92 246;
+  --pm-violet-2-rgb:  124 58 237;
+  --pm-green-rgb:     16 185 129;
+  --pm-amber-rgb:     245 158 11;
+  --pm-red-rgb:       239 68 68;
+  --pm-text-rgb:      237 233 248;
+  --pm-muted-rgb:     123 111 168;
+  --pm-muted-2-rgb:   74 64 112;
+
+  /* Direct CSS Tokens */
   --pm-bg:        #07050f;
+  --pm-panel:     #0e0b1a;
   --pm-surface:   #0f0c1a;
   --pm-surface-2: #17132a;
   --pm-surface-3: #201b38;
@@ -21,22 +40,69 @@
   --pm-violet-glow: rgba(139,92,246,0.25);
 
   /* Status */
-  --pm-safe:      #10b981;   /* covered */
+  --pm-safe:      #10b981;
   --pm-safe-bg:   rgba(16,185,129,0.1);
-  --pm-risk:      #f59e0b;   /* at risk */
+  --pm-risk:      #f59e0b;
   --pm-risk-bg:   rgba(245,158,11,0.1);
-  --pm-danger:    #ef4444;   /* triggered */
+  --pm-danger:    #ef4444;
   --pm-danger-bg: rgba(239,68,68,0.1);
 
   /* Text */
-  --pm-text:   #ede9f8;
-  --pm-muted:  #7b6fa8;
+  --pm-text:    #ede9f8;
+  --pm-muted:   #7b6fa8;
   --pm-muted-2: #4a4070;
 
   /* Radius */
   --pm-r:    8px;
   --pm-r-lg: 16px;
   --pm-r-xl: 24px;
+}
+
+[data-theme="light"] {
+  /* RGB channel tokens for Tailwind /alpha-value utilities */
+  --pm-bg-rgb:        248 247 252;
+  --pm-panel-rgb:     255 255 255;
+  --pm-surface-rgb:   255 255 255;
+  --pm-surface-2-rgb: 241 238 251;
+  --pm-surface-3-rgb: 230 224 248;
+  --pm-border-rgb:    124 58 237;
+  --pm-border-2-rgb:  124 58 237;
+  --pm-violet-rgb:    109 40 217;
+  --pm-violet-2-rgb:  91 33 182;
+  --pm-green-rgb:     5 150 105;
+  --pm-amber-rgb:     217 119 6;
+  --pm-red-rgb:       220 38 38;
+  --pm-text-rgb:      24 19 41;
+  --pm-muted-rgb:     104 95 136;
+  --pm-muted-2-rgb:   155 145 191;
+
+  /* Direct CSS Tokens */
+  --pm-bg:        #f8f7fc;
+  --pm-panel:     #ffffff;
+  --pm-surface:   #ffffff;
+  --pm-surface-2: #f1eefb;
+  --pm-surface-3: #e6e0f8;
+  --pm-border:    rgba(124,58,237,0.15);
+  --pm-border-2:  rgba(124,58,237,0.3);
+
+  /* Brand — violet */
+  --pm-violet:    #6d28d9;
+  --pm-violet-2:  #5b21b6;
+  --pm-violet-dim: rgba(109,40,217,0.12);
+  --pm-violet-glow: rgba(109,40,217,0.2);
+
+  /* Status */
+  --pm-safe:      #059669;
+  --pm-safe-bg:   rgba(5,150,105,0.12);
+  --pm-risk:      #d97706;
+  --pm-risk-bg:   rgba(217,119,6,0.12);
+  --pm-danger:    #dc2626;
+  --pm-danger-bg: rgba(220,38,38,0.12);
+
+  /* Text */
+  --pm-text:    #181329;
+  --pm-muted:   #685f88;
+  --pm-muted-2: #9b91bf;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
