@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { ACTIVE_NETWORK } from "@/lib/network";
 
 const NAV_LINKS = [
   { label: "Coverage", href: "/cover" },
@@ -51,6 +52,17 @@ export function Navbar({ right }: NavbarProps) {
             </div>
             <span className="font-display text-lg font-extrabold tracking-tight text-pm-text">Refract</span>
           </Link>
+          <span
+            className={cn(
+              "-ml-6 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide",
+              ACTIVE_NETWORK.id === "mainnet"
+                ? "border-pm-green/30 bg-pm-green/10 text-pm-green"
+                : "border-pm-amber/30 bg-pm-amber/10 text-pm-amber"
+            )}
+            title={`Connected to ${ACTIVE_NETWORK.label}`}
+          >
+            {ACTIVE_NETWORK.badge}
+          </span>
 
           <div className="hidden items-center gap-8 md:flex">
             {NAV_LINKS.map((item) => {

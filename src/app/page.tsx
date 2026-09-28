@@ -12,6 +12,7 @@ import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { ACTIVE_NETWORK } from "@/lib/network";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -99,7 +100,7 @@ export default function Home() {
           <div>
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-pm-violet/25 bg-pm-violet/10 px-3.5 py-1.5">
               <span className="h-[7px] w-[7px] rounded-full bg-pm-green shadow-[0_0_8px_#10b981]" aria-hidden="true" />
-              <span className="text-xs font-medium text-pm-text/70">Live on Stellar Testnet</span>
+              <span className="text-xs font-medium text-pm-text/70">Live on {ACTIVE_NETWORK.label}</span>
             </div>
 
             <h1 className="mb-5 font-display text-[clamp(34px,7vw,60px)] font-extrabold leading-[1.05] tracking-tight text-pm-text">

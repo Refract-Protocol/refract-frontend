@@ -22,16 +22,20 @@ interface WalletState {
   /** Freighter browser extension not detected at all (vs. detected-but-locked/denied). */
   installed: boolean;
   error: string | null;
+  /** User-declared Ledger-via-Freighter session: signing takes longer and needs on-device confirmation. */
+  hardwareWallet: boolean;
 }
 
 interface WalletContextValue extends WalletState {
   connect: () => Promise<void>;
   disconnect: () => void;
+  setHardwareWallet: (value: boolean) => void;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 const STORAGE_KEY = "refract:wallet-connected";
+const HARDWARE_KEY = "refract:wallet-hardware";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
@@ -42,6 +46,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     ready: false,
     installed: false,
     error: null,
+    hardwareWallet: false,
   });
 
   // On mount: silently rehydrate a previously-granted connection (no popup) —
@@ -50,6 +55,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function hydrate() {
+      try {
+        const hardwareWallet = localStorage.getItem(HARDWARE_KEY) === "1";
+        if (hardwareWallet && !cancelled) setState((s) => ({ ...s, hardwareWallet }));
+      } catch {
+        // storage unavailable — keep the software-wallet default
+      }
+
       const installed = typeof window !== "undefined" && Boolean(window.freighterApi);
       if (!installed) {
         if (!cancelled) setState((s) => ({ ...s, ready: true, installed: false }));
@@ -79,7 +91,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setState((s) => ({ ...s, ready: true, installed: true }));
           return;
         }
-        setState({
+        setState((s) => ({
+          ...s,
           status: "connected",
           address,
           network,
@@ -87,7 +100,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           ready: true,
           installed: true,
           error: null,
-        });
+        }));
       } catch {
         if (!cancelled) setState((s) => ({ ...s, ready: true, installed: true }));
       }
@@ -115,7 +128,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
       const { network, networkPassphrase } = await getNetwork();
       localStorage.setItem(STORAGE_KEY, "1");
-      setState({
+      setState((s) => ({
+        ...s,
         status: "connected",
         address,
         network,
@@ -123,7 +137,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         ready: true,
         installed: true,
         error: null,
-      });
+      }));
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -140,9 +154,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
   }, []);
 
+  const setHardwareWallet = useCallback((value: boolean) => {
+    try {
+      if (value) localStorage.setItem(HARDWARE_KEY, "1");
+      else localStorage.removeItem(HARDWARE_KEY);
+    } catch {
+      // storage unavailable — the choice still applies for this session
+    }
+    setState((s) => ({ ...s, hardwareWallet: value }));
+  }, []);
+
   const value = useMemo<WalletContextValue>(
-    () => ({ ...state, connect, disconnect }),
-    [state, connect, disconnect]
+    () => ({ ...state, connect, disconnect, setHardwareWallet }),
+    [state, connect, disconnect, setHardwareWallet]
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
