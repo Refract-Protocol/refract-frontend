@@ -1,0 +1,160 @@
+# STOPGAP: hand-authored OpenAPI spec for refract-backend's /api/v1 routes.
+# refract-backend does not publish an OpenAPI spec yet, so this file is the
+# frontend's checked-in contract, transcribed from refract-backend/src/routes/*.ts.
+# When the backend changes a route shape, update this file and run
+# `npm run api:generate` (see CONTRIBUTING.md). Once the backend publishes its
+# own spec, point API_SPEC at it and delete this file.
+openapi: 3.0.3
+info:
+  title: Refract API
+  version: 0.1.0
+paths: {}
+components:
+  schemas:
+    PoolStats:
+      type: object
+      required: [totalUsdc, totalShares, lockedUsdc, premiumAccrued, availableUsdc, utilizationBps, apyBps, sharePrice, maxUtilizationBps]
+      properties:
+        totalUsdc: { type: string }
+        totalShares: { type: string }
+        lockedUsdc: { type: string }
+        premiumAccrued: { type: string }
+        availableUsdc: { type: string }
+        utilizationBps: { type: number }
+        apyBps: { type: number }
+        sharePrice: { type: number }
+        maxUtilizationBps: { type: number }
+    UserPoolPosition:
+      type: object
+      required: [address, shares, usdcValue, premiumEarned, pct]
+      properties:
+        address: { type: string }
+        shares: { type: string }
+        usdcValue: { type: string }
+        premiumEarned: { type: string }
+        pct: { type: string }
+    ProvideCapitalResponse:
+      type: object
+      required: [provider, amountUsdc, sharesOut, sharePrice, txXdr, message]
+      properties:
+        provider: { type: string }
+        amountUsdc: { type: string }
+        sharesOut: { type: string }
+        sharePrice: { type: number }
+        txXdr: { type: string }
+        message: { type: string }
+    WithdrawCapitalResponse:
+      type: object
+      required: [provider, sharesIn, usdcOut, sharePrice, txXdr]
+      properties:
+        provider: { type: string }
+        sharesIn: { type: string }
+        usdcOut: { type: string }
+        sharePrice: { type: number }
+        txXdr: { type: string }
+    LockupStatus:
+      type: object
+      required: [lockupExpiresAt]
+      properties:
+        lockupExpiresAt:
+          type: string
+          nullable: true
+          description: Unix seconds, or null if the address has never deposited (so isn't locked).
+    RiskLevel:
+      type: string
+      enum: [low, medium, high, critical]
+    CoverageTypeInfo:
+      type: object
+      required: [id, name, description, riskLevel, riskMultiplier, baseRatePct, maxCoverage, trigger, icon]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        description: { type: string }
+        riskLevel: { $ref: "#/components/schemas/RiskLevel" }
+        riskMultiplier: { type: number }
+        baseRatePct: { type: number }
+        maxCoverage: { type: number }
+        trigger: { type: string }
+        icon: { type: string }
+    Policy:
+      type: object
+      required: [id, holder, coverageType, coverageTypeName, coverageAmount, premium, durationDays, expiresAt, isActive, createdAt]
+      properties:
+        id: { type: string }
+        holder: { type: string }
+        coverageType: { type: number }
+        coverageTypeName: { type: string }
+        coverageAmount: { type: string }
+        premium: { type: string }
+        durationDays: { type: number }
+        expiresAt: { type: number }
+        isActive: { type: boolean }
+        createdAt: { type: string }
+    BuyPolicyParams:
+      type: object
+      required: [holder, coverageType, coverageAmount, durationDays]
+      properties:
+        holder: { type: string }
+        coverageType: { type: number }
+        coverageAmount: { type: string }
+        durationDays: { type: number }
+        triggerParams:
+          type: object
+          additionalProperties: true
+    BuyPolicyResponse:
+      type: object
+      required: [policy, txXdr, message]
+      properties:
+        policy: { $ref: "#/components/schemas/Policy" }
+        txXdr: { type: string }
+        message: { type: string }
+    CoverageBounds:
+      type: object
+      required: [minCoverage, maxCoverage]
+      properties:
+        minCoverage:
+          type: string
+          nullable: true
+          description: Base-unit string (1e7 per USDC), or null if the pool contract isn't configured/initialized yet.
+        maxCoverage: { type: string, nullable: true }
+    OracleReading:
+      type: object
+      required: [coverageType, type, value, threshold, severity, message]
+      properties:
+        coverageType: { type: string }
+        type:
+          type: string
+          enum: [oracle_update]
+        value: { type: number }
+        threshold: { type: number }
+        severity:
+          type: string
+          enum: [low, medium, high, triggered]
+        message: { type: string }
+    ClaimRecord:
+      type: object
+      required: [policyId, holder, coverageType, triggered, payout, reason, processedAt]
+      properties:
+        policyId: { type: string }
+        holder: { type: string }
+        coverageType: { type: number }
+        triggered: { type: boolean }
+        payout: { type: string }
+        reason: { type: string }
+        processedAt: { type: number }
+        settlementTxHash: { type: string }
+    ClaimStats:
+      type: object
+      required: [activePolicies, processedClaims, totalPayout, settlementConfigured]
+      properties:
+        activePolicies: { type: number }
+        processedClaims: { type: number }
+        totalPayout: { type: string }
+        settlementConfigured: { type: boolean }
+    SubmitTxResult:
+      type: object
+      required: [confirmed, txHash]
+      properties:
+        confirmed: { type: boolean }
+        txHash: { type: string }
+        error: { type: string }

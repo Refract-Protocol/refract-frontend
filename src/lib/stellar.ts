@@ -1,9 +1,11 @@
-/**
- * Refract only runs on Stellar testnet right now (see refract-backend's
- * .env.example — STELLAR_NETWORK defaults to testnet, and mainnet keys are
- * explicitly disallowed there). Hardcoded to the testnet explorer until
- * there's a mainnet deploy and the network becomes configurable here too.
- */
+import { STELLAR_NETWORK } from "./network";
+
+const EXPLORER_BASE = `https://stellar.expert/explorer/${STELLAR_NETWORK}`;
+
 export function stellarExpertTxUrl(txHash: string): string {
-  return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
+  return `${EXPLORER_BASE}/tx/${txHash}`;
+}
+
+export function stellarExpertContractUrl(address: string): string {
+  return `${EXPLORER_BASE}/contract/${address}`;
 }

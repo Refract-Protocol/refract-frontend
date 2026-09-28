@@ -21,8 +21,28 @@ npm run dev      # http://localhost:3000
 ```bash
 npm run lint
 npm run typecheck
+npm run api:check-drift
+npm test
 npm run build
 ```
+
+## Regenerating API types
+
+The response/request types in `src/lib/api/*.ts` are generated from
+`openapi/refract-api.yaml` into `src/lib/api/generated/schema.d.ts` with
+[`openapi-typescript`](https://openapi-ts.dev). `refract-backend` does not
+publish an OpenAPI spec yet, so that YAML is a **hand-authored stopgap**
+transcribed from `refract-backend/src/routes/*.ts`.
+
+When a backend route shape changes:
+
+1. Update the matching schema in `openapi/refract-api.yaml`.
+2. Run `npm run api:generate` and commit both files.
+3. If it's a new type, re-export it from the relevant `src/lib/api/*.ts` file
+   (`export type Foo = ApiSchemas["Foo"];`).
+
+CI runs `npm run api:check-drift`, which fails if the committed generated file
+doesn't match what the spec produces. Never edit `schema.d.ts` by hand.
 
 ## Coding standards
 

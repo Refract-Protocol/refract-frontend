@@ -7,6 +7,7 @@ import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
+import { useEstimatedFee } from "@/hooks/useEstimatedFee";
 import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
@@ -28,6 +29,7 @@ export default function CoverPage() {
   const wallet = useWallet();
   const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
   const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
+  const networkFee = useEstimatedFee("buy");
 
   const [selectedType, setSelectedType] = useState(0);
   const [coverageAmount, setCoverageAmount] = useState("5000");
@@ -414,6 +416,12 @@ export default function CoverPage() {
                       <span className="font-display text-2xl font-extrabold text-pm-violet">{formatUsd(premium)}</span>
                     </div>
                     <div className="mt-0.5 text-right text-[11px] text-pm-text/30">One-time payment · USDC</div>
+                    {networkFee && (
+                      <div className="mt-2 flex justify-between">
+                        <span className="text-[11px] text-pm-text/40">Network fee</span>
+                        <span className="text-[11px] text-pm-text/60">{networkFee} est. network fee</span>
+                      </div>
+                    )}
                   </div>
 
                   <Button

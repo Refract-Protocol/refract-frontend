@@ -26,6 +26,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: API types drift check
+        run: npm run api:check-drift
+
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
         env:

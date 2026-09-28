@@ -8,6 +8,7 @@ import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
 import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
 import { useLockupStatus } from "@/hooks/useLockupStatus";
+import { useEstimatedFee } from "@/hooks/useEstimatedFee";
 import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
@@ -40,6 +41,7 @@ export default function ProvidePage() {
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
 
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
+  const networkFee = useEstimatedFee(tab === "deposit" ? "provide" : "withdraw");
   const [amount, setAmount] = useState("");
   const [submission, setSubmission] = useState<SubmissionState>({ status: "idle" });
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -413,6 +415,12 @@ export default function ProvidePage() {
                           +{formatUsd(((parseFloat(amount || "0") * (pool?.apyBps ?? 890)) / 10000 / 12))}
                         </span>
                       </div>
+                      {networkFee && (
+                        <div className="mt-1.5 flex justify-between">
+                          <span className="text-xs text-pm-text/40">Network fee</span>
+                          <span className="text-xs text-pm-text/60">{networkFee} est. network fee</span>
+                        </div>
+                      )}
                     </div>
                   )}
 

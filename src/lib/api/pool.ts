@@ -1,43 +1,15 @@
 import { apiRequest } from "./client";
+import type { ApiSchemas } from "./generated";
 
-/** Mirrors refract-backend/src/routes/pool.ts response shapes exactly. */
+/** Types are generated from openapi/refract-api.yaml, which mirrors refract-backend/src/routes/pool.ts response shapes. */
 
-export interface PoolStats {
-  totalUsdc: string;
-  totalShares: string;
-  lockedUsdc: string;
-  premiumAccrued: string;
-  availableUsdc: string;
-  utilizationBps: number;
-  apyBps: number;
-  sharePrice: number;
-  maxUtilizationBps: number;
-}
+export type PoolStats = ApiSchemas["PoolStats"];
 
-export interface UserPoolPosition {
-  address: string;
-  shares: string;
-  usdcValue: string;
-  premiumEarned: string;
-  pct: string;
-}
+export type UserPoolPosition = ApiSchemas["UserPoolPosition"];
 
-export interface ProvideCapitalResponse {
-  provider: string;
-  amountUsdc: string;
-  sharesOut: string;
-  sharePrice: number;
-  txXdr: string;
-  message: string;
-}
+export type ProvideCapitalResponse = ApiSchemas["ProvideCapitalResponse"];
 
-export interface WithdrawCapitalResponse {
-  provider: string;
-  sharesIn: string;
-  usdcOut: string;
-  sharePrice: number;
-  txXdr: string;
-}
+export type WithdrawCapitalResponse = ApiSchemas["WithdrawCapitalResponse"];
 
 export function fetchPoolStats(signal?: AbortSignal): Promise<PoolStats> {
   return apiRequest("/pool/stats", { signal });
@@ -47,10 +19,7 @@ export function fetchUserPoolPosition(address: string, signal?: AbortSignal): Pr
   return apiRequest(`/pool/user/${address}`, { signal });
 }
 
-export interface LockupStatus {
-  /** Unix seconds, or null if the address has never deposited (so isn't locked). */
-  lockupExpiresAt: string | null;
-}
+export type LockupStatus = ApiSchemas["LockupStatus"];
 
 /** Real on-chain read (unlike stats/user, which stay mocked pending the Postgres wiring). */
 export function fetchLockupStatus(address: string, signal?: AbortSignal): Promise<LockupStatus> {

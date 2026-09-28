@@ -1,14 +1,8 @@
 import { apiRequest } from "./client";
+import type { ApiSchemas } from "./generated";
 
-/** Mirrors OracleReading from refract-backend/src/oracle/oracle-reading.ts. */
-export interface OracleReading {
-  coverageType: string;
-  type: "oracle_update";
-  value: number;
-  threshold: number;
-  severity: "low" | "medium" | "high" | "triggered";
-  message: string;
-}
+/** Types are generated from openapi/refract-api.yaml, which mirrors OracleReading from refract-backend/src/oracle/oracle-reading.ts. */
+export type OracleReading = ApiSchemas["OracleReading"];
 
 export function fetchOracleStatus(signal?: AbortSignal): Promise<{ readings: OracleReading[] }> {
   return apiRequest("/oracle/status", { signal });

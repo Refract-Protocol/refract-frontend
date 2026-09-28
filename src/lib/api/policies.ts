@@ -1,60 +1,26 @@
 import { apiRequest } from "./client";
+import type { ApiSchemas } from "./generated";
 
 /**
- * Types mirror refract-backend/src/routes/policies.ts exactly — see that
- * file for the source of truth. coverageAmount/premium are base-unit
+ * Types are generated from openapi/refract-api.yaml, a transcription of
+ * refract-backend/src/routes/policies.ts (the source of truth). coverageAmount/premium are base-unit
  * strings (1e7 per USDC), matching the Soroban contract's integer amounts.
  */
-export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type RiskLevel = ApiSchemas["RiskLevel"];
 
-export interface CoverageTypeInfo {
-  id: number;
-  name: string;
-  description: string;
-  riskLevel: RiskLevel;
-  riskMultiplier: number;
-  baseRatePct: number;
-  maxCoverage: number;
-  trigger: string;
-  icon: string;
-}
+export type CoverageTypeInfo = ApiSchemas["CoverageTypeInfo"];
 
-export interface Policy {
-  id: string;
-  holder: string;
-  coverageType: number;
-  coverageTypeName: string;
-  coverageAmount: string;
-  premium: string;
-  durationDays: number;
-  expiresAt: number;
-  isActive: boolean;
-  createdAt: string;
-}
+export type Policy = ApiSchemas["Policy"];
 
-export interface BuyPolicyParams {
-  holder: string;
-  coverageType: number;
-  coverageAmount: string;
-  durationDays: number;
-  triggerParams?: Record<string, unknown>;
-}
+export type BuyPolicyParams = ApiSchemas["BuyPolicyParams"];
 
-export interface BuyPolicyResponse {
-  policy: Policy;
-  txXdr: string;
-  message: string;
-}
+export type BuyPolicyResponse = ApiSchemas["BuyPolicyResponse"];
 
 export function fetchCoverageTypes(signal?: AbortSignal): Promise<{ coverageTypes: CoverageTypeInfo[] }> {
   return apiRequest("/policies/types", { signal });
 }
 
-export interface CoverageBounds {
-  /** Base-unit strings (1e7 per USDC), or null if the pool contract isn't configured/initialized yet. */
-  minCoverage: string | null;
-  maxCoverage: string | null;
-}
+export type CoverageBounds = ApiSchemas["CoverageBounds"];
 
 /**
  * The pool's real, currently-configured min/max coverage — a single
