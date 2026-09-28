@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 import type { Policy } from "@/lib/api/policies";
 import { fetchHolderClaims, type ClaimRecord } from "@/lib/api/claims";
 import { fixtureClaimsForHolder } from "@/lib/fixtures/claims";
@@ -26,8 +27,9 @@ export function useClaims(address: string | null, policies: Policy[] | null): Cl
       .then(({ claims: fetched }) => {
         setClaims(fetched.length > 0 ? fetched : fixtureClaimsForHolder(address, policies));
       })
-      .catch(() => {
+      .catch((err) => {
         if (controller.signal.aborted) return;
+        reportFallback("useClaims", err);
         setClaims(fixtureClaimsForHolder(address, policies));
       });
 

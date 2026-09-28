@@ -9,7 +9,8 @@ import { usePoolStats } from "@/hooks/usePoolStats";
 import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
 import { useLockupStatus } from "@/hooks/useLockupStatus";
 import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type WithdrawCapitalResponse } from "@/lib/api/pool";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { ApiUnreachableError, describeApiError } from "@/lib/api/client";
+import { track } from "@/lib/analytics/track";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
@@ -99,6 +100,7 @@ export default function ProvidePage() {
 
   async function handleSubmit() {
     if (wallet.status !== "connected" || !wallet.address) {
+      track("wallet_connect_clicked", { source: "provide" });
       await wallet.connect();
       return;
     }
@@ -107,6 +109,7 @@ export default function ProvidePage() {
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
     if (tab === "withdraw" && isLocked) return;
 
+    track(tab === "deposit" ? "deposit_initiated" : "withdraw_initiated", { amountUsdc: parsed });
     setSubmission({ status: "submitting" });
     try {
       if (tab === "deposit") {
@@ -116,6 +119,7 @@ export default function ProvidePage() {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        track("deposit_confirmed", { amountUsdc: parsed, provider: wallet.address, txHash });
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
       } else {
         const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
@@ -124,6 +128,7 @@ export default function ProvidePage() {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        track("withdraw_confirmed", { amountUsdc: parsed, provider: wallet.address, txHash });
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
       }
     } catch (err) {
@@ -139,6 +144,7 @@ export default function ProvidePage() {
             txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
             message: "Simulated locally: the Refract API is not running in this environment.",
           };
+          track("deposit_confirmed", { amountUsdc: parsed, demo: true });
           setSubmission({ status: "success", kind: "deposit", result: demoResult, demo: true });
         } else {
           const demoResult: WithdrawCapitalResponse = {
@@ -148,11 +154,12 @@ export default function ProvidePage() {
             sharePrice,
             txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
           };
+          track("withdraw_confirmed", { amountUsdc: parsed, demo: true });
           setSubmission({ status: "success", kind: "withdraw", result: demoResult, demo: true });
         }
         return;
       }
-      setSubmission({ status: "error", message: err instanceof Error ? err.message : "Something went wrong" });
+      setSubmission({ status: "error", message: describeApiError(err, "Something went wrong") });
     }
   }
 

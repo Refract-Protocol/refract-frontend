@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 import { fetchOracleStatus, type OracleReading } from "@/lib/api/oracle";
 import { FIXTURE_ORACLE_READINGS } from "@/lib/fixtures/oracle";
 
@@ -22,8 +23,9 @@ export function useOracleStatus(): OracleStatusState {
     const controller = new AbortController();
     fetchOracleStatus(controller.signal)
       .then(({ readings }) => setState({ data: readings, loading: false, isFixture: false }))
-      .catch(() => {
+      .catch((err) => {
         if (controller.signal.aborted) return;
+        reportFallback("useOracleStatus", err);
         setState({ data: FIXTURE_ORACLE_READINGS, loading: false, isFixture: true });
       });
     return () => controller.abort();

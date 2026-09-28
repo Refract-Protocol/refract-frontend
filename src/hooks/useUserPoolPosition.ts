@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchUserPoolPosition, type UserPoolPosition } from "@/lib/api/pool";
 import { fixtureUserPoolPosition } from "@/lib/fixtures/poolStats";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { isTransientError } from "@/lib/api/client";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 
 interface UserPositionState {
   data: UserPoolPosition | null;
@@ -26,7 +27,8 @@ export function useUserPoolPosition(address: string | null): UserPositionState {
       .then((data) => setState({ data, loading: false, isFixture: false }))
       .catch((err) => {
         if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
+        if (isTransientError(err)) {
+          reportFallback("useUserPoolPosition", err);
           setState({ data: fixtureUserPoolPosition(address), loading: false, isFixture: true });
           return;
         }

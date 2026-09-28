@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchCoverageTypes, type CoverageTypeInfo } from "@/lib/api/policies";
 import { FIXTURE_COVERAGE_TYPES } from "@/lib/fixtures/coverageTypes";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { isTransientError } from "@/lib/api/client";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 
 interface CoverageTypesState {
   data: CoverageTypeInfo[] | null;
@@ -35,7 +36,8 @@ export function useCoverageTypes(): CoverageTypesState {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
+        if (isTransientError(err)) {
+          reportFallback("useCoverageTypes", err);
           setState({ data: FIXTURE_COVERAGE_TYPES, loading: false, error: null, isFixture: true });
           return;
         }
