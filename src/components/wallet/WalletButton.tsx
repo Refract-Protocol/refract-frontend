@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWallet, truncateAddress } from "@/lib/wallet/WalletProvider";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { track } from "@/lib/analytics/track";
 
 /**
  * Freighter connect/disconnect control. Client-side only, no secrets —
@@ -15,6 +16,14 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const prevStatus = useRef(status);
+
+  useEffect(() => {
+    if (status === "connected" && prevStatus.current !== "connected" && address) {
+      track("wallet_connected", { address, network });
+    }
+    prevStatus.current = status;
+  }, [status, address, network]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -109,7 +118,10 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
         type="button"
         size={size}
         variant="primary"
-        onClick={() => void connect()}
+        onClick={() => {
+          track("wallet_connect_clicked", { source: "navbar" });
+          void connect();
+        }}
         loading={status === "connecting"}
       >
         {status === "connecting" ? "Connecting…" : "Connect Wallet"}

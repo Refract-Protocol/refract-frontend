@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchHolderPolicies, type Policy } from "@/lib/api/policies";
 import { fixtureHolderPolicies } from "@/lib/fixtures/policies";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { isTransientError } from "@/lib/api/client";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 
 interface HolderPoliciesState {
   data: Policy[] | null;
@@ -41,7 +42,8 @@ export function useHolderPolicies(address: string | null): HolderPoliciesState {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
+        if (isTransientError(err)) {
+          reportFallback("useHolderPolicies", err);
           setState({ data: fixtureHolderPolicies(address), loading: false, error: null, isFixture: true });
           return;
         }

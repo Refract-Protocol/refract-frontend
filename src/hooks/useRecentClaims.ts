@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 import { fetchRecentClaims, type ClaimRecord } from "@/lib/api/claims";
 import { FIXTURE_RECENT_CLAIMS } from "@/lib/fixtures/recentClaims";
 
@@ -30,8 +31,9 @@ export function useRecentClaims(): RecentClaimsState {
             : { data: FIXTURE_RECENT_CLAIMS, loading: false, isFixture: true }
         );
       })
-      .catch(() => {
+      .catch((err) => {
         if (controller.signal.aborted) return;
+        reportFallback("useRecentClaims", err);
         setState({ data: FIXTURE_RECENT_CLAIMS, loading: false, isFixture: true });
       });
     return () => controller.abort();

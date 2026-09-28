@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchPoolStats, type PoolStats } from "@/lib/api/pool";
 import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { isTransientError } from "@/lib/api/client";
+import { reportFallback } from "@/lib/telemetry/reportFallback";
 
 interface PoolStatsState {
   data: PoolStats | null;
@@ -22,7 +23,8 @@ export function usePoolStats(): PoolStatsState {
       .then((data) => setState({ data, loading: false, error: null, isFixture: false }))
       .catch((err) => {
         if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
+        if (isTransientError(err)) {
+          reportFallback("usePoolStats", err);
           setState({ data: FIXTURE_POOL_STATS, loading: false, error: null, isFixture: true });
           return;
         }

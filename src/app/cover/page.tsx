@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
@@ -8,7 +8,9 @@ import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
 import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { ApiUnreachableError, ValidationError, describeApiError } from "@/lib/api/client";
+import { track } from "@/lib/analytics/track";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
@@ -38,7 +40,7 @@ export default function CoverPage() {
     | { status: "submitting" }
     | { status: "signing" }
     | { status: "success"; result: BuyPolicyResponse; demo: boolean; txHash?: string }
-    | { status: "error"; message: string }
+    | { status: "error"; message: string; field?: string }
   >({ status: "idle" });
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -50,6 +52,19 @@ export default function CoverPage() {
     const annualRate = ct.baseRatePct / 100;
     return amount * annualRate * (durationDays / 365);
   }, [coverageAmount, durationDays, ct]);
+
+  // Debounced so anything reacting to the quote over the network (analytics
+  // today; a server-side quote / fee estimate later) fires once the user
+  // stops typing rather than on every keystroke. The client-side premium
+  // above stays undebounced — it's pure and cheap.
+  const debouncedAmount = useDebouncedValue(coverageAmount, 500);
+  const debouncedDuration = useDebouncedValue(durationDays, 500);
+  useEffect(() => {
+    if (!ct) return;
+    const amount = parseFloat(debouncedAmount);
+    if (!(amount > 0)) return;
+    track("quote_viewed", { coverageType: ct.id, coverageAmount: amount, durationDays: debouncedDuration });
+  }, [ct, debouncedAmount, debouncedDuration]);
 
   const expiryDate = new Date(Date.now() + durationDays * 86400000).toLocaleDateString("en-US", {
     month: "short",
@@ -73,11 +88,14 @@ export default function CoverPage() {
   async function handleBuy() {
     if (!ct) return;
     if (wallet.status !== "connected" || !wallet.address) {
+      track("wallet_connect_clicked", { source: "cover" });
       await wallet.connect();
       return;
     }
     if (amountInvalid || flightNumberInvalid) return;
 
+    const eventProps = { coverageType: ct.id, coverageAmount: parseFloat(coverageAmount), durationDays };
+    track("buy_initiated", eventProps);
     setSubmission({ status: "submitting" });
     try {
       const result = await buyPolicy({
@@ -93,6 +111,7 @@ export default function CoverPage() {
         throw new Error("Wallet network isn't available — reconnect and try again");
       }
       const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+      track("buy_confirmed", { ...eventProps, holder: wallet.address, txHash });
       setSubmission({ status: "success", result, demo: false, txHash });
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
@@ -115,12 +134,15 @@ export default function CoverPage() {
           txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
           message: "Simulated locally: the Refract API is not running in this environment.",
         };
+        track("buy_confirmed", { ...eventProps, demo: true });
         setSubmission({ status: "success", result: demoResult, demo: true });
         return;
       }
+      track("buy_failed", { ...eventProps, errorName: err instanceof Error ? err.name : "unknown" });
       setSubmission({
         status: "error",
-        message: err instanceof Error ? err.message : "Something went wrong buying coverage",
+        message: describeApiError(err, "Something went wrong buying coverage"),
+        field: err instanceof ValidationError ? err.field : undefined,
       });
     }
   }
@@ -182,6 +204,7 @@ export default function CoverPage() {
                       if (e.key === "End") nextIndex = ids.length - 1;
                       const nextId = ids[nextIndex];
                       setSelectedType(nextId);
+                      track("coverage_type_selected", { coverageType: nextId });
                       setSubmission({ status: "idle" });
                       radioRefs.current[nextId]?.focus();
                     }}
@@ -200,6 +223,7 @@ export default function CoverPage() {
                           tabIndex={active ? 0 : -1}
                           onClick={() => {
                             setSelectedType(type.id);
+                            track("coverage_type_selected", { coverageType: type.id });
                             setSubmission({ status: "idle" });
                           }}
                           className="w-full rounded-[10px] border px-5 py-[18px] text-left transition-all"
@@ -259,7 +283,9 @@ export default function CoverPage() {
                       error={
                         amountInvalid
                           ? `Enter an amount between $${effectiveMin.toLocaleString()} and $${effectiveMax.toLocaleString()}`
-                          : undefined
+                          : submission.status === "error" && submission.field === "coverageAmount"
+                            ? submission.message
+                            : undefined
                       }
                     />
                     <div className="mt-2 flex gap-1.5">
