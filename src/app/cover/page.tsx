@@ -1,17 +1,27 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
-import { WalletButton } from "@/components/wallet";
+import { Container, Card, Badge, Input, Button, Skeleton, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep } from "@/components/ui";
+import { WalletButton, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
 import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
-import { formatUsd, toStroops } from "@/lib/format";
+import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import {
+  restoreCart,
+  retryItem,
+  runBatchCheckout,
+  skipItem,
+  type CartItem,
+  type CartItemPatch,
+  type CartItemStatus,
+  type PurchaseResult,
+} from "@/lib/cover/batchCheckout";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -22,7 +32,25 @@ const RISK_TAG_COLORS: Record<string, string> = {
 
 const RISK_HEAT: Record<string, number> = { low: 20, medium: 45, high: 72, critical: 95 };
 
-const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000];
+const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000].map((v) => ({ label: `$${v.toLocaleString()}`, value: String(v) }));
+
+const COVER_TOUR: TourStep[] = [
+  { target: "cover-type", title: "Pick a coverage type", content: "Each type pays out automatically when its on-chain trigger fires — no claims form. Use the arrow keys to move between types." },
+  { target: "cover-amount", title: "Set your coverage amount", content: "This is the USDC payout you'd receive if the trigger fires. Quick chips fill in common amounts." },
+  { target: "cover-duration", title: "Choose a duration", content: "Your premium scales with how long the policy stays active, from 1 day up to a year." },
+  { target: "cover-buy", title: "Review and buy", content: "Check the premium, then buy and confirm in your wallet — or add several policies to the cart and check out together." },
+];
+
+const CART_STORAGE_KEY = "refract:cover-cart";
+
+const CART_STATUS_LABEL: Record<CartItemStatus, { label: string; className: string }> = {
+  queued: { label: "Queued", className: "text-pm-text/45" },
+  processing: { label: "Confirm in wallet…", className: "text-pm-violet" },
+  confirmed: { label: "Confirmed", className: "text-pm-green" },
+  failed: { label: "Failed", className: "text-pm-red" },
+  unconfirmed: { label: "Unconfirmed", className: "text-pm-amber" },
+  skipped: { label: "Skipped", className: "text-pm-text/30" },
+};
 
 export default function CoverPage() {
   const wallet = useWallet();
@@ -41,6 +69,30 @@ export default function CoverPage() {
     | { status: "error"; message: string }
   >({ status: "idle" });
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartLoaded, setCartLoaded] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const tour = useTour("cover");
+
+  // Persist the cart so confirmed purchases (and anything mid-flight) survive
+  // a reload or navigating away mid-batch.
+  useEffect(() => {
+    try {
+      setCart(restoreCart(localStorage.getItem(CART_STORAGE_KEY)));
+    } catch {
+      // Storage unavailable — the cart just won't persist.
+    }
+    setCartLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cartLoaded) return;
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch {
+      // Storage unavailable — the cart just won't persist.
+    }
+  }, [cart, cartLoaded]);
 
   const ct = coverageTypes?.[selectedType];
 
@@ -69,6 +121,57 @@ export default function CoverPage() {
     : false;
   const isFlightDelay = ct?.id === 4;
   const flightNumberInvalid = isFlightDelay && flightNumber.trim().length === 0;
+
+  function addToCart() {
+    if (!ct || amountInvalid || flightNumberInvalid) return;
+    setCart((items) => [
+      ...items,
+      {
+        id: crypto.randomUUID(),
+        params: {
+          coverageType: ct.id,
+          coverageAmount: toStroops(parseFloat(coverageAmount)),
+          durationDays,
+          ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
+        },
+        typeName: ct.name,
+        icon: ct.icon,
+        premium,
+        status: "queued",
+      },
+    ]);
+  }
+
+  function updateCartItem(id: string, patch: CartItemPatch) {
+    setCart((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  async function purchaseCartItem(item: CartItem, holder: string, networkPassphrase: string): Promise<PurchaseResult> {
+    try {
+      const result = await buyPolicy({ ...item.params, holder });
+      const txHash = await signAndSubmit(result.txXdr, holder, networkPassphrase);
+      return { policyId: result.policy.id, txHash, demo: false };
+    } catch (err) {
+      // Same clearly-labeled demo fallback as the single-purchase flow.
+      if (err instanceof ApiUnreachableError) return { policyId: `demo-${crypto.randomUUID()}`, demo: true };
+      throw err;
+    }
+  }
+
+  async function handleCheckout() {
+    if (wallet.status !== "connected" || !wallet.address) {
+      await wallet.connect();
+      return;
+    }
+    const { address, networkPassphrase } = wallet;
+    if (!networkPassphrase) return;
+    setCheckingOut(true);
+    try {
+      await runBatchCheckout(cart, (item) => purchaseCartItem(item, address, networkPassphrase), updateCartItem);
+    } finally {
+      setCheckingOut(false);
+    }
+  }
 
   async function handleBuy() {
     if (!ct) return;
@@ -132,9 +235,12 @@ export default function CoverPage() {
       <main id="main-content">
         <Container className="py-9 sm:py-10">
           <div className="mb-8">
-            <h1 className="mb-2 font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
-              Get Coverage
-            </h1>
+            <div className="mb-2 flex items-center gap-2.5">
+              <h1 className="font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
+                Get Coverage
+              </h1>
+              <TourReplayButton onClick={tour.start} />
+            </div>
             <p className="text-sm text-pm-text/45">
               Choose your coverage type, set amount and duration. Premium paid once. Payout automatic.
             </p>
@@ -148,7 +254,7 @@ export default function CoverPage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
             {/* Left: Coverage type selector + config */}
             <div className="flex flex-col gap-5">
-              <div>
+              <div data-tour-id="cover-type">
                 <div className="mb-3 text-[11px] uppercase tracking-wide text-pm-text/40">1. Select Coverage Type</div>
 
                 {typesError && (
@@ -246,7 +352,7 @@ export default function CoverPage() {
                 <Card padding="md">
                   <div className="mb-5 text-[11px] uppercase tracking-wide text-pm-text/40">2. Configure Policy</div>
 
-                  <div className="mb-5">
+                  <div className="mb-5" data-tour-id="cover-amount">
                     <Input
                       label="Coverage Amount (USDC)"
                       type="number"
@@ -262,18 +368,7 @@ export default function CoverPage() {
                           : undefined
                       }
                     />
-                    <div className="mt-2 flex gap-1.5">
-                      {QUICK_AMOUNTS.map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setCoverageAmount(String(v))}
-                          className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.08] py-1.5 text-[11px] text-pm-violet"
-                        >
-                          ${v.toLocaleString()}
-                        </button>
-                      ))}
-                    </div>
+                    <QuickAmountChips chips={QUICK_AMOUNTS} onSelect={setCoverageAmount} />
                   </div>
 
                   {isFlightDelay && (
@@ -289,7 +384,7 @@ export default function CoverPage() {
                     </div>
                   )}
 
-                  <div>
+                  <div data-tour-id="cover-duration">
                     <div className="mb-2 flex justify-between">
                       <label htmlFor="duration" className="text-xs text-pm-text/60">
                         Coverage Duration
@@ -319,7 +414,7 @@ export default function CoverPage() {
             </div>
 
             {/* Right: Quote panel */}
-            <div className="lg:sticky lg:top-20">
+            <div className="flex flex-col gap-5 lg:sticky lg:top-20">
               {!ct ? (
                 <Card padding="md">
                   <Skeleton height={220} rounded="md" />
@@ -421,6 +516,7 @@ export default function CoverPage() {
                     variant="primary"
                     size="lg"
                     block
+                    data-tour-id="cover-buy"
                     disabled={amountInvalid || flightNumberInvalid}
                     loading={
                       submission.status === "submitting" ||
@@ -436,11 +532,18 @@ export default function CoverPage() {
                         : "Connect to Continue"}
                   </Button>
 
-                  {submission.status === "error" && (
-                    <p role="alert" className="mt-3 text-[12px] text-pm-red">
-                      {submission.message}
-                    </p>
-                  )}
+                  {submission.status === "error" && <TxErrorMessage rawError={submission.message} />}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    block
+                    className="mt-2.5"
+                    disabled={amountInvalid || flightNumberInvalid || checkingOut}
+                    onClick={addToCart}
+                  >
+                    Add to cart
+                  </Button>
 
                   <div className="mt-4 flex flex-col gap-1.5">
                     {["🔒 No claims form required", "⚡ Instant payout via oracle", "🌐 Fully on-chain, non-custodial"].map(
@@ -453,12 +556,96 @@ export default function CoverPage() {
                   </div>
                 </Card>
               )}
+
+              {cart.length > 0 && (
+                <Card padding="md">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="font-display text-[15px] font-bold tracking-tight text-pm-text">Cart</h2>
+                    <span className="text-[11px] text-pm-text/45" aria-live="polite">
+                      {cart.filter((i) => i.status === "confirmed").length} of{" "}
+                      {cart.filter((i) => i.status !== "skipped").length} confirmed
+                    </span>
+                  </div>
+                  <ol className="flex flex-col gap-2.5">
+                    {cart.map((item, index) => (
+                      <li key={item.id} className="rounded-md border border-pm-border px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] text-pm-text">
+                            <span className="mr-1.5 text-pm-text/35">{index + 1}.</span>
+                            <span aria-hidden="true">{item.icon}</span> {item.typeName}
+                          </span>
+                          <span className={`text-[11px] font-semibold ${CART_STATUS_LABEL[item.status].className}`}>
+                            {CART_STATUS_LABEL[item.status].label}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-pm-text/40">
+                          {formatUsd(fromStroops(item.params.coverageAmount))} · {item.params.durationDays} days ·{" "}
+                          {formatUsd(item.premium)} premium
+                          {item.demo && " · demo"}
+                          {item.txHash && ` · tx ${truncateAddress(item.txHash)}`}
+                        </div>
+                        {item.error && item.status === "failed" && <TxErrorMessage rawError={item.error} />}
+                        {item.error && item.status === "unconfirmed" && (
+                          <p className="mt-1.5 text-[11px] text-pm-amber">
+                            This may still have gone through — check your Dashboard before buying it again. ({item.error})
+                          </p>
+                        )}
+                        {!checkingOut && item.status !== "processing" && (
+                          <div className="mt-2 flex gap-3 text-[11px]">
+                            {item.status === "failed" && (
+                              <button
+                                type="button"
+                                className="text-pm-violet"
+                                onClick={() => setCart((items) => items.map((i) => (i.id === item.id ? retryItem(i) : i)))}
+                              >
+                                Retry
+                              </button>
+                            )}
+                            {item.status === "failed" && (
+                              <button
+                                type="button"
+                                className="text-pm-text/45"
+                                onClick={() => setCart((items) => items.map((i) => (i.id === item.id ? skipItem(i) : i)))}
+                              >
+                                Skip
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="text-pm-text/45"
+                              onClick={() => setCart((items) => items.filter((i) => i.id !== item.id))}
+                            >
+                              {item.status === "queued" ? "Remove" : "Dismiss"}
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    block
+                    className="mt-4"
+                    disabled={!checkingOut && !cart.some((i) => i.status === "queued")}
+                    loading={checkingOut || wallet.status === "connecting"}
+                    onClick={() => void handleCheckout()}
+                  >
+                    {wallet.status !== "connected"
+                      ? "Connect to Checkout"
+                      : `Checkout ${cart.filter((i) => i.status === "queued").length} ${
+                          cart.filter((i) => i.status === "queued").length === 1 ? "policy" : "policies"
+                        }`}
+                  </Button>
+                </Card>
+              )}
             </div>
           </div>
         </Container>
       </main>
 
       <Footer />
+      <Tour steps={COVER_TOUR} open={tour.open} onClose={tour.close} />
     </div>
   );
 }

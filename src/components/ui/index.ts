@@ -6,3 +6,7 @@ export type { BadgeTone } from "./Badge";
 export { Input } from "./Input";
 export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
+export { QuickAmountChips } from "./QuickAmountChips";
+export type { QuickAmountChip } from "./QuickAmountChips";
+export { Tour, TourReplayButton, useTour } from "./Tour";
+export type { TourStep } from "./Tour";
