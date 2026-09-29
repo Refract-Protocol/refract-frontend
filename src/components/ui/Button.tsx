@@ -40,7 +40,14 @@ const sizeClass: Record<Size, string> = {
  */
 export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   function Button({ variant = "primary", size = "md", block, loading, className, children, ...rest }, ref) {
-    const classes = cn("pm-btn", variantClass[variant], sizeClass[size], block && "pm-btn-block", className);
+    // Tactile press state, suppressed under prefers-reduced-motion.
+    const classes = cn(
+      "pm-btn motion-safe:active:translate-y-0 motion-safe:active:scale-[0.97]",
+      variantClass[variant],
+      sizeClass[size],
+      block && "pm-btn-block",
+      className
+    );
 
     if ("href" in rest && rest.href !== undefined) {
       const { href, ...anchorRest } = rest as ButtonAsLink;

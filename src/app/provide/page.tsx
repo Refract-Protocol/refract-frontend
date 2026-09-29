@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
@@ -12,6 +12,7 @@ import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type With
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { useTxReview } from "@/components/wallet/TxReview";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
 // Illustrative allocation breakdown by coverage category — the backend
@@ -35,6 +36,7 @@ type SubmissionState =
 
 export default function ProvidePage() {
   const wallet = useWallet();
+  const { requestReview, reviewDialog } = useTxReview();
   const { data: pool, loading: poolLoading, isFixture: poolIsFixture } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
@@ -115,6 +117,17 @@ export default function ProvidePage() {
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
+        const approved = await requestReview({
+          txXdr: result.txXdr,
+          networkPassphrase: wallet.networkPassphrase,
+          action: "Provide capital",
+          entered: [{ label: "Deposit amount", value: formatUsd(parsed) }],
+          expectedStroops: toStroops(parsed),
+        });
+        if (!approved) {
+          setSubmission({ status: "idle" });
+          return;
+        }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
       } else {
@@ -122,6 +135,20 @@ export default function ProvidePage() {
         setSubmission({ status: "signing" });
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
+        }
+        const approved = await requestReview({
+          txXdr: result.txXdr,
+          networkPassphrase: wallet.networkPassphrase,
+          action: "Withdraw capital",
+          entered: [
+            { label: "Withdraw amount", value: formatUsd(parsed) },
+            { label: "Shares burned", value: (parsed / sharePrice).toLocaleString("en-US", { maximumFractionDigits: 4 }) },
+          ],
+          expectedStroops: toStroops(parsed / sharePrice),
+        });
+        if (!approved) {
+          setSubmission({ status: "idle" });
+          return;
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
@@ -159,6 +186,7 @@ export default function ProvidePage() {
   return (
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
+      {reviewDialog}
 
       <main id="main-content">
         <Container className="py-9 sm:py-10">
@@ -271,7 +299,7 @@ export default function ProvidePage() {
               {submission.status === "success" ? (
                 <Card padding="md" role="status" aria-live="polite">
                   <div className="mb-4 flex items-center gap-2.5 text-pm-green">
-                    <span className="text-xl" aria-hidden="true">✓</span>
+                    <SuccessBurst />
                     <span className="font-display text-base font-bold">
                       {submission.kind === "deposit" ? "Capital provided" : "Withdrawal submitted"}
                     </span>

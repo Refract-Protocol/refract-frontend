@@ -6,6 +6,8 @@ import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useClaims } from "@/hooks/useClaims";
+import { useDashboardLayout } from "@/hooks/useDashboardLayout";
+import { DashboardSections } from "@/components/dashboard/DashboardSections";
 import { formatUsd, fromStroops } from "@/lib/format";
 import { stellarExpertTxUrl } from "@/lib/stellar";
 import type { Policy } from "@/lib/api/policies";
@@ -33,6 +35,7 @@ export default function DashboardPage() {
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
+  const { layout, move, toggleHidden } = useDashboardLayout(address);
 
   const summary = policies
     ? {
@@ -85,8 +88,12 @@ export default function DashboardPage() {
               </Button>
             </Card>
           ) : (
-            <>
-              {/* Summary */}
+            <DashboardSections
+              layout={layout}
+              onMove={move}
+              onToggleHidden={toggleHidden}
+              sections={{
+              summary: (
               <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
                 {loading || !summary
                   ? Array.from({ length: 4 }).map((_, i) => (
@@ -109,8 +116,8 @@ export default function DashboardPage() {
                       </Card>
                     ))}
               </div>
-
-              {/* Policies */}
+              ),
+              policies: (
               <section aria-labelledby="policies-heading" className="mb-8">
                 <h2 id="policies-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
                   Your Policies
@@ -184,9 +191,9 @@ export default function DashboardPage() {
                   </div>
                 )}
               </section>
-
-              {/* Claims / payout history */}
-              <section aria-labelledby="claims-heading">
+              ),
+              claims: (
+              <section aria-labelledby="claims-heading" className="mb-8">
                 <h2 id="claims-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
                   Claim &amp; Payout History
                 </h2>
@@ -234,7 +241,9 @@ export default function DashboardPage() {
                   </div>
                 )}
               </section>
-            </>
+              ),
+              }}
+            />
           )}
         </Container>
       </main>

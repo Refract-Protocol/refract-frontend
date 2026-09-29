@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 const NAV_LINKS = [
   { label: "Coverage", href: "/cover" },
@@ -72,9 +73,11 @@ export function Navbar({ right }: NavbarProps) {
           </div>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">{right}</div>
+        <div className="flex items-center gap-3">
+          <GlobalSearch />
+          <div className="hidden items-center gap-3 md:flex">{right}</div>
 
-        <button
+          <button
           ref={menuButtonRef}
           type="button"
           className="flex h-9 w-9 items-center justify-center rounded-md border border-pm-border text-pm-text md:hidden"
@@ -103,7 +106,8 @@ export function Navbar({ right }: NavbarProps) {
               )}
             />
           </span>
-        </button>
+          </button>
+        </div>
       </div>
 
       {menuOpen && (
