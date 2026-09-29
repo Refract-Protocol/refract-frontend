@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
+import { PendingTxResolver } from "@/lib/wallet/PendingTxResolver";
 
 export const metadata: Metadata = {
   title: {
@@ -35,7 +36,10 @@ export default function RootLayout({
         <a href="#main-content" className="pm-skip-link">
           Skip to main content
         </a>
-        <WalletProvider>{children}</WalletProvider>
+        <WalletProvider>
+          <PendingTxResolver />
+          {children}
+        </WalletProvider>
       </body>
     </html>
   );
