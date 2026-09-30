@@ -19,6 +19,12 @@ interface HolderPoliciesState {
  * the API is unreachable AND when it legitimately returns zero policies,
  * so the dashboard has something to demo. `isFixture` tells the caller
  * which happened.
+ *
+ * Race-condition guard: the effect is keyed on `address`, so switching
+ * wallets aborts the previous in-flight request via `AbortController`.
+ * The success path additionally checks `controller.signal.aborted` before
+ * committing state, so a stale response that resolves after a fresher one
+ * (out-of-order resolution) can never clobber the newer wallet's data.
  */
 export function useHolderPolicies(address: string | null): HolderPoliciesState {
   const [state, setState] = useState<HolderPoliciesState>({ data: null, loading: false, error: null, isFixture: false });
@@ -33,6 +39,7 @@ export function useHolderPolicies(address: string | null): HolderPoliciesState {
 
     fetchHolderPolicies(address, controller.signal)
       .then(({ policies }) => {
+        if (controller.signal.aborted) return;
         if (policies.length > 0) {
           setState({ data: policies, loading: false, error: null, isFixture: false });
         } else {

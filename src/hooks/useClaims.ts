@@ -24,6 +24,9 @@ export function useClaims(address: string | null, policies: Policy[] | null): Cl
 
     fetchHolderClaims(address, controller.signal)
       .then(({ claims: fetched }) => {
+        // Guard against a stale, superseded request resolving after a fresher
+        // one (e.g. rapid wallet switching): ignore its response entirely.
+        if (controller.signal.aborted) return;
         setClaims(fetched.length > 0 ? fetched : fixtureClaimsForHolder(address, policies));
       })
       .catch(() => {
