@@ -6,3 +6,4 @@ export type { BadgeTone } from "./Badge";
 export { Input } from "./Input";
 export { Skeleton } from "./Skeleton";
 export { Container } from "./Container";
+export { AddressInput } from "./AddressInput";

@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
-import { WalletButton } from "@/components/wallet";
+import { WalletButton, WrongNetworkBanner } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
@@ -12,6 +12,8 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useTransactionStore } from "@/lib/store/useTransactionStore";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -27,6 +29,9 @@ const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000];
 export default function CoverPage() {
   const wallet = useWallet();
   const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
+  const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
+  const addTransaction = useTransactionStore((s) => s.addTransaction);
+  const updateTransaction = useTransactionStore((s) => s.updateTransaction);
   const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
 
   const [selectedType, setSelectedType] = useState(0);
@@ -76,9 +81,10 @@ export default function CoverPage() {
       await wallet.connect();
       return;
     }
-    if (amountInvalid || flightNumberInvalid) return;
+    if (amountInvalid || flightNumberInvalid || !isCorrectNetwork) return;
 
     setSubmission({ status: "submitting" });
+    const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
     try {
       const result = await buyPolicy({
         holder: wallet.address,
@@ -89,11 +95,13 @@ export default function CoverPage() {
       });
 
       setSubmission({ status: "signing" });
+      updateTransaction(txId, { status: "signing" });
       if (!wallet.networkPassphrase) {
         throw new Error("Wallet network isn't available — reconnect and try again");
       }
       const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
       setSubmission({ status: "success", result, demo: false, txHash });
+      updateTransaction(txId, { status: "confirmed", txHash });
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
         // Backend isn't reachable in this environment — fall back to a
@@ -116,12 +124,12 @@ export default function CoverPage() {
           message: "Simulated locally: the Refract API is not running in this environment.",
         };
         setSubmission({ status: "success", result: demoResult, demo: true });
+        updateTransaction(txId, { status: "confirmed", demo: true });
         return;
       }
-      setSubmission({
-        status: "error",
-        message: err instanceof Error ? err.message : "Something went wrong buying coverage",
-      });
+      const message = err instanceof Error ? err.message : "Something went wrong buying coverage";
+      setSubmission({ status: "error", message });
+      updateTransaction(txId, { status: "failed", error: message });
     }
   }
 
@@ -144,6 +152,8 @@ export default function CoverPage() {
               </p>
             )}
           </div>
+
+          <WrongNetworkBanner />
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
             {/* Left: Coverage type selector + config */}
@@ -421,7 +431,8 @@ export default function CoverPage() {
                     variant="primary"
                     size="lg"
                     block
-                    disabled={amountInvalid || flightNumberInvalid}
+                    disabled={amountInvalid || flightNumberInvalid || !isCorrectNetwork}
+                    title={!isCorrectNetwork ? `Switch your wallet to ${expectedNetwork} to continue` : undefined}
                     loading={
                       submission.status === "submitting" ||
                       submission.status === "signing" ||
@@ -431,7 +442,9 @@ export default function CoverPage() {
                   >
                     {submission.status === "signing"
                       ? "Confirm in wallet…"
-                      : wallet.status === "connected"
+                      : !isCorrectNetwork
+                        ? `Switch to ${expectedNetwork}`
+                        : wallet.status === "connected"
                         ? "Buy Coverage"
                         : "Connect to Continue"}
                   </Button>

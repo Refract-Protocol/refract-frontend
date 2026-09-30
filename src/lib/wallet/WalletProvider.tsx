@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   getAddress,
   getNetwork,
@@ -33,6 +33,14 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 
 const STORAGE_KEY = "refract:wallet-connected";
 
+/**
+ * Freighter exposes no push event for account/network switches, so while
+ * connected we poll `getAddress()`/`getNetwork()` on this interval (and
+ * immediately on window focus), pausing while the tab is hidden.
+ */
+const WALLET_POLL_MS = 4000;
+const NOTICE_MS = 5000;
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
     status: "idle",
@@ -43,6 +51,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     installed: false,
     error: null,
   });
+  const [notice, setNotice] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // On mount: silently rehydrate a previously-granted connection (no popup) —
   // only if the browser has the extension and this dApp was already allowed.
@@ -140,12 +151,85 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
   }, []);
 
+  // Live account/network change detection while connected (see WALLET_POLL_MS).
+  useEffect(() => {
+    if (state.status !== "connected") return;
+    let cancelled = false;
+    let inFlight = false;
+
+    async function check() {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        const { isAllowed } = await freighterIsAllowed();
+        const [{ address, error: addrErr }, { network, networkPassphrase, error: netErr }] = await Promise.all([
+          getAddress(),
+          getNetwork(),
+        ]);
+        if (cancelled) return;
+        if (!isAllowed || addrErr || !address) {
+          // Access revoked (or wallet locked) in the extension — fall back to
+          // the same local-only disconnected state as `disconnect()`.
+          localStorage.removeItem(STORAGE_KEY);
+          setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
+          setNotice("Wallet disconnected in Freighter");
+          return;
+        }
+        if (netErr) return;
+        const current = stateRef.current;
+        const addressChanged = address !== current.address;
+        const networkChanged = network !== current.network || networkPassphrase !== current.networkPassphrase;
+        if (!addressChanged && !networkChanged) return;
+        setState((s) => ({ ...s, address, network, networkPassphrase }));
+        setNotice(
+          addressChanged && networkChanged
+            ? `Wallet switched to ${truncateAddress(address)} on ${network}`
+            : addressChanged
+              ? `Wallet account switched to ${truncateAddress(address)}`
+              : `Wallet network switched to ${network}`
+        );
+      } catch {
+        // Transient extension error — try again on the next tick.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    const id = window.setInterval(() => void check(), WALLET_POLL_MS);
+    const onFocus = () => void check();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [state.status]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => window.clearTimeout(id);
+  }, [notice]);
+
   const value = useMemo<WalletContextValue>(
     () => ({ ...state, connect, disconnect }),
     [state, connect, disconnect]
   );
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+      <div aria-live="polite" role="status" className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+        {notice && (
+          <div className="pointer-events-auto rounded-lg border border-pm-violet/30 bg-pm-bg/95 px-4 py-2.5 text-xs text-pm-text shadow-lg">
+            {notice}
+          </div>
+        )}
+      </div>
+    </WalletContext.Provider>
+  );
 }
 
 export function useWallet(): WalletContextValue {
