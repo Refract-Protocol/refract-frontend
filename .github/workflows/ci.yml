@@ -30,3 +30,8 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Bundle size budget
+        run: npm run size
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
