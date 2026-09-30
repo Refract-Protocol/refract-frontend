@@ -9,10 +9,23 @@ import {
   requestAccess,
 } from "@stellar/freighter-api";
 
-export type WalletStatus = "idle" | "connecting" | "connected" | "error";
+import { deriveAvailability, type WalletAvailability } from "./availability";
+
+/**
+ * Pre-connection states come from Freighter detection (see availability.ts);
+ * "checking" only lasts until the initial hydrate() probe finishes.
+ */
+export type WalletStatus = "checking" | WalletAvailability | "connecting" | "connected" | "error";
+
+export interface ConnectedWallet {
+  address: string;
+  networkPassphrase: string;
+}
 
 interface WalletState {
   status: WalletStatus;
+  /** Last detected Freighter availability — survives connect errors and disconnects. */
+  availability: WalletAvailability | null;
   address: string | null;
   network: string | null;
   /** Needed to sign transactions via Freighter and to submit them to the matching Soroban RPC. */
@@ -25,7 +38,8 @@ interface WalletState {
 }
 
 interface WalletContextValue extends WalletState {
-  connect: () => Promise<void>;
+  /** Resolves to the connected account, or null if the user declined or connecting failed. */
+  connect: () => Promise<ConnectedWallet | null>;
   disconnect: () => void;
 }
 
@@ -35,7 +49,8 @@ const STORAGE_KEY = "refract:wallet-connected";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
-    status: "idle",
+    status: "checking",
+    availability: null,
     address: null,
     network: null,
     networkPassphrase: null,
@@ -50,37 +65,51 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function hydrate() {
-      const installed = typeof window !== "undefined" && Boolean(window.freighterApi);
-      if (!installed) {
-        if (!cancelled) setState((s) => ({ ...s, ready: true, installed: false }));
+      const settle = (availability: WalletAvailability) => {
+        if (!cancelled) {
+          setState((s) => ({
+            ...s,
+            status: availability,
+            availability,
+            ready: true,
+            installed: availability !== "not-installed",
+          }));
+        }
+      };
+
+      if (typeof window === "undefined" || !window.freighterApi) {
+        settle("not-installed");
         return;
       }
 
       try {
-        const wasConnectedHere = localStorage.getItem(STORAGE_KEY) === "1";
         const { isConnected } = await freighterIsConnected();
-        if (!isConnected || !wasConnectedHere) {
-          if (!cancelled) setState((s) => ({ ...s, ready: true, installed: true }));
+        if (!isConnected) {
+          settle("not-installed");
           return;
         }
 
         const { isAllowed } = await freighterIsAllowed();
         if (!isAllowed) {
-          if (!cancelled) setState((s) => ({ ...s, ready: true, installed: true }));
+          settle("installed-not-allowed");
           return;
         }
 
+        // Allowed dApps get the address back without a popup — unless locked.
         const [{ address, error: addrErr }, { network, networkPassphrase }] = await Promise.all([
           getAddress(),
           getNetwork(),
         ]);
         if (cancelled) return;
-        if (addrErr || !address) {
-          setState((s) => ({ ...s, ready: true, installed: true }));
+        const availability = deriveAvailability({ installed: true, allowed: true, address: addrErr ? null : address });
+        const wasConnectedHere = localStorage.getItem(STORAGE_KEY) === "1";
+        if (availability !== "ready" || !wasConnectedHere) {
+          settle(availability);
           return;
         }
         setState({
           status: "connected",
+          availability,
           address,
           network,
           networkPassphrase,
@@ -89,7 +118,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           error: null,
         });
       } catch {
-        if (!cancelled) setState((s) => ({ ...s, ready: true, installed: true }));
+        // Extension present but the probe failed — treat like a fresh, unauthorized install.
+        settle("installed-not-allowed");
       }
     }
 
@@ -99,11 +129,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (): Promise<ConnectedWallet | null> => {
     const installed = typeof window !== "undefined" && Boolean(window.freighterApi);
     if (!installed) {
-      setState((s) => ({ ...s, status: "error", installed: false, error: "Freighter extension not detected" }));
-      return;
+      setState((s) => ({
+        ...s,
+        status: "error",
+        availability: "not-installed",
+        installed: false,
+        error: "Freighter extension not detected",
+      }));
+      return null;
     }
 
     setState((s) => ({ ...s, status: "connecting", error: null }));
@@ -111,12 +147,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const { address, error } = await requestAccess();
       if (error || !address) {
         setState((s) => ({ ...s, status: "error", error: error?.message ?? "Connection was declined" }));
-        return;
+        return null;
       }
       const { network, networkPassphrase } = await getNetwork();
       localStorage.setItem(STORAGE_KEY, "1");
       setState({
         status: "connected",
+        availability: "ready",
         address,
         network,
         networkPassphrase,
@@ -124,12 +161,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         installed: true,
         error: null,
       });
+      return { address, networkPassphrase };
     } catch (err) {
       setState((s) => ({
         ...s,
         status: "error",
         error: err instanceof Error ? err.message : "Failed to connect wallet",
       }));
+      return null;
     }
   }, []);
 
@@ -137,7 +176,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // Freighter has no dApp-initiated "revoke" call — disconnecting here just
     // forgets the local session. Re-connecting will re-prompt the extension.
     localStorage.removeItem(STORAGE_KEY);
-    setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
+    setState((s) => ({ ...s, status: "ready", availability: "ready", address: null, network: null, networkPassphrase: null, error: null }));
   }, []);
 
   const value = useMemo<WalletContextValue>(

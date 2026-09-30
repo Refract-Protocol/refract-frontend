@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchOracleStatus, type OracleReading } from "@/lib/api/oracle";
 import { FIXTURE_ORACLE_READINGS } from "@/lib/fixtures/oracle";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
 interface OracleStatusState {
   data: OracleReading[] | null;
@@ -16,18 +17,15 @@ interface OracleStatusState {
  * etc.) falls back to the labeled fixture rather than showing an error state.
  */
 export function useOracleStatus(): OracleStatusState {
-  const [state, setState] = useState<OracleStatusState>({ data: null, loading: true, isFixture: false });
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["oracleStatus"],
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(
+        async () => (await fetchOracleStatus(signal)).readings,
+        () => FIXTURE_ORACLE_READINGS,
+        { signal, fallbackOnAnyError: true }
+      ),
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchOracleStatus(controller.signal)
-      .then(({ readings }) => setState({ data: readings, loading: false, isFixture: false }))
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setState({ data: FIXTURE_ORACLE_READINGS, loading: false, isFixture: true });
-      });
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { data: result?.data ?? null, loading: isLoading, isFixture: result?.isFixture ?? false };
 }

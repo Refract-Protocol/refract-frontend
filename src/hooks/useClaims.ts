@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Policy } from "@/lib/api/policies";
 import { fetchHolderClaims, type ClaimRecord } from "@/lib/api/claims";
 import { fixtureClaimsForHolder } from "@/lib/fixtures/claims";
+
+const NO_CLAIMS: ClaimRecord[] = [];
 
 /**
  * Loads a wallet's claim history from GET /api/v1/claims/holder/:address.
@@ -13,26 +16,24 @@ import { fixtureClaimsForHolder } from "@/lib/fixtures/claims";
  * so the dashboard has something to demo.
  */
 export function useClaims(address: string | null, policies: Policy[] | null): ClaimRecord[] {
-  const [claims, setClaims] = useState<ClaimRecord[]>([]);
+  const enabled = Boolean(address && policies);
+  // Resolves to null on any failure; the fixture is derived below because it
+  // depends on `policies`, which isn't part of the cache key.
+  const { data: fetched } = useQuery({
+    queryKey: ["holderClaims", address],
+    enabled,
+    queryFn: async ({ signal }) => {
+      try {
+        return (await fetchHolderClaims(address!, signal)).claims;
+      } catch (err) {
+        if (signal.aborted) throw err;
+        return null;
+      }
+    },
+  });
 
-  useEffect(() => {
-    if (!address || !policies) {
-      setClaims([]);
-      return;
-    }
-    const controller = new AbortController();
-
-    fetchHolderClaims(address, controller.signal)
-      .then(({ claims: fetched }) => {
-        setClaims(fetched.length > 0 ? fetched : fixtureClaimsForHolder(address, policies));
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setClaims(fixtureClaimsForHolder(address, policies));
-      });
-
-    return () => controller.abort();
-  }, [address, policies]);
-
-  return claims;
+  return useMemo(() => {
+    if (!enabled || fetched === undefined) return NO_CLAIMS;
+    return fetched && fetched.length > 0 ? fetched : fixtureClaimsForHolder(address!, policies!);
+  }, [enabled, fetched, address, policies]);
 }

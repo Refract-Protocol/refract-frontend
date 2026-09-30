@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchHolderPolicies, type Policy } from "@/lib/api/policies";
 import { fixtureHolderPolicies } from "@/lib/fixtures/policies";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
 interface HolderPoliciesState {
   data: Policy[] | null;
@@ -21,35 +21,17 @@ interface HolderPoliciesState {
  * which happened.
  */
 export function useHolderPolicies(address: string | null): HolderPoliciesState {
-  const [state, setState] = useState<HolderPoliciesState>({ data: null, loading: false, error: null, isFixture: false });
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["holderPolicies", address],
+    enabled: Boolean(address),
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(
+        async () => (await fetchHolderPolicies(address!, signal)).policies,
+        () => fixtureHolderPolicies(address!),
+        { signal, isEmpty: (policies) => policies.length === 0, errorMessage: "Failed to load policies" }
+      ),
+  });
 
-  useEffect(() => {
-    if (!address) {
-      setState({ data: null, loading: false, error: null, isFixture: false });
-      return;
-    }
-    const controller = new AbortController();
-    setState((s) => ({ ...s, loading: true }));
-
-    fetchHolderPolicies(address, controller.signal)
-      .then(({ policies }) => {
-        if (policies.length > 0) {
-          setState({ data: policies, loading: false, error: null, isFixture: false });
-        } else {
-          setState({ data: fixtureHolderPolicies(address), loading: false, error: null, isFixture: true });
-        }
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
-          setState({ data: fixtureHolderPolicies(address), loading: false, error: null, isFixture: true });
-          return;
-        }
-        setState({ data: null, loading: false, error: err instanceof Error ? err.message : "Failed to load policies", isFixture: false });
-      });
-
-    return () => controller.abort();
-  }, [address]);
-
-  return state;
+  if (!address) return { data: null, loading: false, error: null, isFixture: false };
+  return { data: result?.data ?? null, loading: isLoading, error: result?.error ?? null, isFixture: result?.isFixture ?? false };
 }

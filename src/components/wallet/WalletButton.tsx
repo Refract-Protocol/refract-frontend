@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWallet, truncateAddress } from "@/lib/wallet/WalletProvider";
+import type { WalletAvailability } from "@/lib/wallet/availability";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -11,7 +12,7 @@ import { cn } from "@/lib/cn";
  * (cover, provide) can attach it to the transactions they build.
  */
 export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
-  const { status, address, network, ready, installed, error, connect, disconnect } = useWallet();
+  const { status, availability, address, network, ready, installed, error, connect, disconnect } = useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -103,6 +104,10 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
     );
   }
 
+  // After a failed attempt, keep pointing at the underlying availability
+  // problem (e.g. still locked) rather than a generic retry.
+  const copy = CONNECT_COPY[status === "locked" || status === "installed-not-allowed" ? status : (availability ?? "ready")];
+
   return (
     <div className="flex flex-col items-end gap-1.5">
       <Button
@@ -111,14 +116,24 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
         variant="primary"
         onClick={() => void connect()}
         loading={status === "connecting"}
+        title={copy.hint}
       >
-        {status === "connecting" ? "Connecting…" : "Connect Wallet"}
+        {status === "connecting" ? "Connecting…" : status === "error" ? "Try again" : copy.label}
       </Button>
-      {status === "error" && error && (
+      {status === "error" && error ? (
         <span role="alert" className={cn("max-w-[180px] text-right text-[11px] text-pm-red")}>
           {error}
         </span>
+      ) : (
+        copy.hint && <span className="max-w-[180px] text-right text-[11px] text-pm-muted">{copy.hint}</span>
       )}
     </div>
   );
 }
+
+const CONNECT_COPY: Record<WalletAvailability, { label: string; hint?: string }> = {
+  "not-installed": { label: "Connect Wallet", hint: "Install Freighter to continue" },
+  locked: { label: "Unlock Freighter", hint: "Unlock Freighter to continue" },
+  "installed-not-allowed": { label: "Connect Wallet", hint: "Freighter will ask you to allow Refract" },
+  ready: { label: "Connect Wallet" },
+};

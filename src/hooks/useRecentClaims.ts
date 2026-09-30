@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchRecentClaims, type ClaimRecord } from "@/lib/api/claims";
 import { FIXTURE_RECENT_CLAIMS } from "@/lib/fixtures/recentClaims";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
 interface RecentClaimsState {
   data: ClaimRecord[] | null;
@@ -18,24 +19,15 @@ interface RecentClaimsState {
  * data hooks in this app.
  */
 export function useRecentClaims(): RecentClaimsState {
-  const [state, setState] = useState<RecentClaimsState>({ data: null, loading: true, isFixture: false });
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["recentClaims"],
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(
+        async () => (await fetchRecentClaims(signal)).claims,
+        () => FIXTURE_RECENT_CLAIMS,
+        { signal, fallbackOnAnyError: true, isEmpty: (claims) => claims.length === 0 }
+      ),
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchRecentClaims(controller.signal)
-      .then(({ claims }) => {
-        setState(
-          claims.length > 0
-            ? { data: claims, loading: false, isFixture: false }
-            : { data: FIXTURE_RECENT_CLAIMS, loading: false, isFixture: true }
-        );
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setState({ data: FIXTURE_RECENT_CLAIMS, loading: false, isFixture: true });
-      });
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { data: result?.data ?? null, loading: isLoading, isFixture: result?.isFixture ?? false };
 }

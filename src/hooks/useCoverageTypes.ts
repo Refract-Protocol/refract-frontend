@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchCoverageTypes, type CoverageTypeInfo } from "@/lib/api/policies";
 import { FIXTURE_COVERAGE_TYPES } from "@/lib/fixtures/coverageTypes";
-import { ApiUnreachableError } from "@/lib/api/client";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
 interface CoverageTypesState {
   data: CoverageTypeInfo[] | null;
@@ -19,36 +19,15 @@ interface CoverageTypesState {
  * backend isn't reachable so the page still works end-to-end offline.
  */
 export function useCoverageTypes(): CoverageTypesState {
-  const [state, setState] = useState<CoverageTypesState>({
-    data: null,
-    loading: true,
-    error: null,
-    isFixture: false,
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["coverageTypes"],
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(
+        async () => (await fetchCoverageTypes(signal)).coverageTypes,
+        () => FIXTURE_COVERAGE_TYPES,
+        { signal, errorMessage: "Failed to load coverage types" }
+      ),
   });
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    fetchCoverageTypes(controller.signal)
-      .then(({ coverageTypes }) => {
-        setState({ data: coverageTypes, loading: false, error: null, isFixture: false });
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
-          setState({ data: FIXTURE_COVERAGE_TYPES, loading: false, error: null, isFixture: true });
-          return;
-        }
-        setState({
-          data: null,
-          loading: false,
-          error: err instanceof Error ? err.message : "Failed to load coverage types",
-          isFixture: false,
-        });
-      });
-
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { data: result?.data ?? null, loading: isLoading, error: result?.error ?? null, isFixture: result?.isFixture ?? false };
 }

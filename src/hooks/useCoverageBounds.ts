@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchCoverageBounds } from "@/lib/api/policies";
 import { fromStroops } from "@/lib/format";
 
@@ -9,6 +9,8 @@ interface CoverageBoundsState {
   minCoverage: number | null;
   maxCoverage: number | null;
 }
+
+const UNKNOWN_BOUNDS: CoverageBoundsState = { minCoverage: null, maxCoverage: null };
 
 /**
  * Real on-chain read of the pool's actual min/max coverage (a single
@@ -19,23 +21,21 @@ interface CoverageBoundsState {
  * catalog alone, same as before this hook existed.
  */
 export function useCoverageBounds(): CoverageBoundsState {
-  const [state, setState] = useState<CoverageBoundsState>({ minCoverage: null, maxCoverage: null });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchCoverageBounds(controller.signal)
-      .then(({ minCoverage, maxCoverage }) => {
-        setState({
+  const { data } = useQuery({
+    queryKey: ["coverageBounds"],
+    queryFn: async ({ signal }): Promise<CoverageBoundsState> => {
+      try {
+        const { minCoverage, maxCoverage } = await fetchCoverageBounds(signal);
+        return {
           minCoverage: minCoverage ? fromStroops(minCoverage) : null,
           maxCoverage: maxCoverage ? fromStroops(maxCoverage) : null,
-        });
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setState({ minCoverage: null, maxCoverage: null });
-      });
-    return () => controller.abort();
-  }, []);
+        };
+      } catch (err) {
+        if (signal.aborted) throw err;
+        return UNKNOWN_BOUNDS;
+      }
+    },
+  });
 
-  return state;
+  return data ?? UNKNOWN_BOUNDS;
 }

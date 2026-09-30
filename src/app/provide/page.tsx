@@ -98,11 +98,17 @@ export default function ProvidePage() {
   );
 
   async function handleSubmit() {
-    if (wallet.status !== "connected" || !wallet.address) {
-      await wallet.connect();
-      return;
-    }
     const parsed = parseFloat(amount || "0");
+    let provider = wallet.status === "connected" ? wallet.address : null;
+    let networkPassphrase = wallet.networkPassphrase;
+    if (!provider) {
+      const connected = await wallet.connect();
+      // Declined/failed connect stops here. Withdrawals also stop: the
+      // position/lockup they're validated against only loads after connecting.
+      if (!connected || tab === "withdraw") return;
+      provider = connected.address;
+      networkPassphrase = connected.networkPassphrase;
+    }
     if (parsed <= 0) return;
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
     if (tab === "withdraw" && isLocked) return;
@@ -110,20 +116,20 @@ export default function ProvidePage() {
     setSubmission({ status: "submitting" });
     try {
       if (tab === "deposit") {
-        const result = await provideCapital(wallet.address, toStroops(parsed));
+        const result = await provideCapital(provider, toStroops(parsed));
         setSubmission({ status: "signing" });
-        if (!wallet.networkPassphrase) {
+        if (!networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, provider, networkPassphrase);
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
       } else {
-        const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
+        const result = await withdrawCapital(provider, toStroops(parsed / sharePrice));
         setSubmission({ status: "signing" });
-        if (!wallet.networkPassphrase) {
+        if (!networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, provider, networkPassphrase);
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
       }
     } catch (err) {
@@ -132,7 +138,7 @@ export default function ProvidePage() {
         // clearly labeled, so the flow can still be exercised end-to-end.
         if (tab === "deposit") {
           const demoResult: ProvideCapitalResponse = {
-            provider: wallet.address,
+            provider: provider,
             amountUsdc: toStroops(parsed),
             sharesOut: toStroops(parsed / sharePrice),
             sharePrice,
@@ -142,7 +148,7 @@ export default function ProvidePage() {
           setSubmission({ status: "success", kind: "deposit", result: demoResult, demo: true });
         } else {
           const demoResult: WithdrawCapitalResponse = {
-            provider: wallet.address,
+            provider: provider,
             sharesIn: toStroops(parsed / sharePrice),
             usdcOut: toStroops(parsed),
             sharePrice,
@@ -431,14 +437,23 @@ export default function ProvidePage() {
                   >
                     {submission.status === "signing"
                       ? "Confirm in wallet…"
-                      : wallet.status !== "connected"
-                        ? "Connect Wallet"
+                      : wallet.status === "connecting"
+                        ? "Connecting…"
+                        : wallet.status !== "connected"
+                          ? tab === "deposit"
+                            ? "Connect & Provide Capital"
+                            : "Connect Wallet"
                         : tab === "withdraw" && isLocked
                           ? "Locked"
                           : tab === "deposit"
                             ? "Provide Capital"
                             : "Withdraw USDC"}
                   </Button>
+                  {wallet.status !== "connected" && tab === "deposit" && (
+                    <p className="mt-2 text-[12px] text-pm-muted">
+                      After you connect, your deposit continues automatically — you&apos;ll still confirm it in Freighter.
+                    </p>
+                  )}
 
                   {submission.status === "error" && (
                     <p role="alert" className="mt-3 text-[12px] text-pm-red">
