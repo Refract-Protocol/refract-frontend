@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-/** Tracks the user's prefers-reduced-motion setting, including live changes. */
+import { usePreferencesStore } from "@/lib/store/preferencesStore";
+
+/**
+ * Tracks the user's prefers-reduced-motion setting, including live changes.
+ *
+ * Kept as the OS-only primitive: it reflects the reactive `matchMedia` query
+ * and updates when the operating-system setting changes.
+ */
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
 
@@ -15,4 +22,21 @@ export function usePrefersReducedMotion(): boolean {
   }, []);
 
   return reduced;
+}
+
+/**
+ * Resolves whether motion should be reduced by composing the OS query with the
+ * stored user override:
+ *
+ * - `system` (default): defer to the OS `prefers-reduced-motion` setting.
+ * - `reduced`: always reduce motion, regardless of the OS setting.
+ * - `full`: never reduce motion, regardless of the OS setting.
+ */
+export function useReducedMotion(): boolean {
+  const systemReduced = usePrefersReducedMotion();
+  const motion = usePreferencesStore((s) => s.motion);
+
+  if (motion === "reduced") return true;
+  if (motion === "full") return false;
+  return systemReduced;
 }
