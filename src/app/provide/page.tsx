@@ -123,7 +123,7 @@ export default function ProvidePage() {
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "provide");
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       } else {
@@ -133,7 +133,7 @@ export default function ProvidePage() {
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "withdraw");
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       }
