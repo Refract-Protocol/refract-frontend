@@ -1,0 +1,13 @@
+{
+  "common": {
+    "appName": "Handsoff",
+    "loading": "Loading…",
+    "error": "Something went wrong"
+  },
+  "nav": {
+    "home": "Home",
+    "cover": "Cover",
+    "provide": "Provide",
+    "dashboard": "Dashboard"
+  }
+}
