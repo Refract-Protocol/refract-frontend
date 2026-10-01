@@ -2,6 +2,17 @@ import { signTransaction } from "@stellar/freighter-api";
 import { submitSignedTx } from "@/lib/api/tx";
 
 /**
+ * Thrown when a signed transaction was submitted but never confirmed. It may
+ * still land on-chain, so callers must not blindly rebuild and resubmit it.
+ */
+export class TxNotConfirmedError extends Error {
+  constructor(message: string, readonly txHash: string) {
+    super(message);
+    this.name = "TxNotConfirmedError";
+  }
+}
+
+/**
  * Completes the flow the backend's unsigned txXdr responses (buy/provide/
  * withdraw) start: prompts Freighter to sign, then submits the signed
  * envelope to the backend's /tx/submit, which posts it to Soroban RPC and
@@ -17,7 +28,8 @@ export async function signAndSubmit(txXdr: string, address: string, networkPassp
 
   const result = await submitSignedTx(signedTxXdr);
   if (!result.confirmed) {
-    throw new Error(result.error ?? "Transaction did not confirm on-chain");
+    throw new TxNotConfirmedError(result.error ?? "Transaction did not confirm on-chain", result.txHash);
   }
   return result.txHash;
 }
+
