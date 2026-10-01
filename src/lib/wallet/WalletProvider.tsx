@@ -25,7 +25,13 @@ interface WalletState {
 }
 
 interface WalletContextValue extends WalletState {
-  connect: () => Promise<void>;
+  /**
+   * Requests access via Freighter. Resolves with the connected address on
+   * success, or `null` if the extension is missing, the request was declined,
+   * or it failed. Failures are still recorded into `state.error` so
+   * `WalletButton` keeps rendering them unchanged.
+   */
+  connect: () => Promise<string | null>;
   disconnect: () => void;
 }
 
@@ -99,11 +105,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (): Promise<string | null> => {
     const installed = typeof window !== "undefined" && Boolean(window.freighterApi);
     if (!installed) {
       setState((s) => ({ ...s, status: "error", installed: false, error: "Freighter extension not detected" }));
-      return;
+      return null;
     }
 
     setState((s) => ({ ...s, status: "connecting", error: null }));
@@ -111,7 +117,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const { address, error } = await requestAccess();
       if (error || !address) {
         setState((s) => ({ ...s, status: "error", error: error?.message ?? "Connection was declined" }));
-        return;
+        return null;
       }
       const { network, networkPassphrase } = await getNetwork();
       localStorage.setItem(STORAGE_KEY, "1");
@@ -124,12 +130,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         installed: true,
         error: null,
       });
+      return address;
     } catch (err) {
       setState((s) => ({
         ...s,
         status: "error",
         error: err instanceof Error ? err.message : "Failed to connect wallet",
       }));
+      return null;
     }
   }, []);
 
