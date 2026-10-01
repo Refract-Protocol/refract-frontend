@@ -14,6 +14,7 @@ import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { PreSignConfirmModal } from "@/components/PreSignConfirmModal";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { validatePoolAction } from "@/lib/validation/pool";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -54,8 +55,14 @@ export default function ProvidePage() {
   const usdcOut = amount ? (parseFloat(amount) * sharePrice).toFixed(2) : "—";
 
   const isLocked = lockupExpiresAt !== null && lockupExpiresAt * 1000 > Date.now();
+  const poolValidation = validatePoolAction(amount || "0", {
+    tab,
+    availableToWithdraw,
+    isLocked,
+    isConnected: wallet.status === "connected",
+  });
   const withdrawInvalid =
-    tab === "withdraw" && wallet.status === "connected" && parseFloat(amount || "0") > availableToWithdraw;
+    tab === "withdraw" && wallet.status === "connected" && !poolValidation.isValid;
 
   const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
   const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;

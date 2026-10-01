@@ -1,22 +1,33 @@
+import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  hover?: boolean;
-  padding?: "sm" | "md" | "lg" | "none";
+export type CardPadding = "none" | "sm" | "stat" | "md" | "lg";
+
+export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+  padding?: CardPadding;
 }
 
-const paddingClass: Record<NonNullable<CardProps["padding"]>, string> = {
-  none: "",
-  sm: "p-4",
-  md: "p-6",
-  lg: "p-7",
+const paddingClasses: Record<CardPadding, string> = {
+  none: "p-0",
+  sm: "p-3",
+  stat: "p-[18px]",
+  md: "p-5",
+  lg: "p-8",
 };
 
-/** Panel primitive built on `.pm-panel`. Optional hover-lift for clickable cards. */
-export function Card({ hover, padding = "md", className, children, ...rest }: CardProps) {
+export function Card({
+  padding = "md",
+  className,
+  ...props
+}: CardProps) {
   return (
-    <div className={cn("pm-panel", paddingClass[padding], hover && "pm-card-hover", className)} {...rest}>
-      {children}
-    </div>
+    <div
+      className={cn(
+        "rounded-xl border border-pm-border bg-pm-surface",
+        paddingClasses[padding],
+        className,
+      )}
+      {...props}
+    />
   );
 }
