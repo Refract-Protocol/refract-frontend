@@ -26,10 +26,42 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: i18n check
+        run: npx tsx scripts/i18n-check.ts
+
       - name: Build
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Bundle size budget
+        run: npm run size
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Start production server
+        run: npm run start &
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Wait for server
+        
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
   lighthouse:
     name: lighthouse · budgets
@@ -62,3 +94,29 @@ jobs:
         run: npx --yes @lhci/cli@0.14.x autorun
         env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Bundle size budget
+        run: npm run size
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails the build on any high/critical advisory that has no available
+      # fix. Advisories with no upstream fix yet are allowlisted in
+      # .audit-ci.json with a required justification comment (see
+      # docs/dependency-policy.md for the triage process).
+      - name: Audit (high/critical)
+        run: npx --yes audit-ci --config .audit-ci.json --high

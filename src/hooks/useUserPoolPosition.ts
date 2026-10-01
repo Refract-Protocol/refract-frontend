@@ -1,39 +1,75 @@
-"use client";
+import { useEffect, useState } from 'react';
+import { usePublicClient } from 'wagmi';
+import type { Address } from 'viem';
+import { poolAbi } from '../abis/poolAbi';
+import type { UserPoolPosition } from '../types';
 
-import { useEffect, useState } from "react";
-import { fetchUserPoolPosition, type UserPoolPosition } from "@/lib/api/pool";
-import { fixtureUserPoolPosition } from "@/lib/fixtures/poolStats";
-import { ApiUnreachableError } from "@/lib/api/client";
-
-interface UserPositionState {
-  data: UserPoolPosition | null;
-  loading: boolean;
-  isFixture: boolean;
+interface UseUserPoolPositionResult {
+  position: UserPoolPosition | null;
+  isLoading: boolean;
+  error: Error | null;
 }
 
-/** Loads a connected wallet's pool position from GET /api/v1/pool/user/:address. No-ops until an address is provided. */
-export function useUserPoolPosition(address: string | null): UserPositionState {
-  const [state, setState] = useState<UserPositionState>({ data: null, loading: false, isFixture: false });
+/**
+ * Fetches the connected user's position in a given pool.
+ *
+ * The effect is parameterized by `address` and `poolAddress`. When either
+ * changes, the previous in-flight request is aborted via `AbortController`
+ * and its late-arriving response is ignored, so a stale response can never
+ * clobber fresher state (e.g. rapid wallet switching).
+ */
+export function useUserPoolPosition(
+  address: Address | undefined,
+  poolAddress: Address | undefined,
+): UseUserPoolPositionResult {
+  const publicClient = usePublicClient();
+  const [position, setPosition] = useState<UserPoolPosition | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!address) {
-      setState({ data: null, loading: false, isFixture: false });
+    if (!address || !poolAddress || !publicClient) {
+      setPosition(null);
+      setIsLoading(false);
+      setError(null);
       return;
     }
-    const controller = new AbortController();
-    setState((s) => ({ ...s, loading: true }));
-    fetchUserPoolPosition(address, controller.signal)
-      .then((data) => setState({ data, loading: false, isFixture: false }))
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
-          setState({ data: fixtureUserPoolPosition(address), loading: false, isFixture: true });
-          return;
-        }
-        setState({ data: null, loading: false, isFixture: false });
-      });
-    return () => controller.abort();
-  }, [address]);
 
-  return state;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setIsLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const result = await publicClient.readContract({
+          address: poolAddress,
+          abi: poolAbi,
+          functionName: 'getUserPosition',
+          args: [address],
+        });
+
+        // Ignore stale responses: the effect was cleaned up (parameter
+        // changed or component unmounted) while this request was in flight.
+        if (cancelled || controller.signal.aborted) return;
+
+        setPosition(result as UserPoolPosition);
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) return;
+        setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [address, poolAddress, publicClient]);
+
+  return { position, isLoading, error };
 }

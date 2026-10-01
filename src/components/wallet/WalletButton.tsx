@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWallet, truncateAddress } from "@/lib/wallet/WalletProvider";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { notify } from "@/lib/store/notificationStore";
 
 /**
  * Freighter connect/disconnect control. Client-side only, no secrets —
@@ -11,9 +12,9 @@ import { cn } from "@/lib/cn";
  * (cover, provide) can attach it to the transactions they build.
  */
 export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
-  const { status, address, network, ready, installed, error, connect, disconnect } = useWallet();
+  const { status, address, network, ready, installed, error, connect, disconnect, hardwareWallet, setHardwareWallet } =
+    useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,12 +82,26 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
               type="button"
               onClick={async () => {
                 await navigator.clipboard.writeText(address);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
+                notify({
+                  tone: "success",
+                  title: "Address copied",
+                  dedupeKey: "wallet:copy-address",
+                });
               }}
               className="mt-2 flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-pm-text/80 hover:bg-white/5"
             >
-              {copied ? "Copied ✓" : "Copy address"}
+              Copy address
+            </button>
+            <button
+              role="menuitemcheckbox"
+              type="button"
+              aria-checked={hardwareWallet}
+              onClick={() => setHardwareWallet(!hardwareWallet)}
+              className="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] text-pm-text/80 hover:bg-white/5"
+              title="Enable if Freighter signs with a Ledger hardware wallet"
+            >
+              <span>Using a Ledger</span>
+              <span aria-hidden="true">{hardwareWallet ? "✓" : ""}</span>
             </button>
             <button
               role="menuitem"

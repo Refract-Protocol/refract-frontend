@@ -27,6 +27,10 @@ export function useLockupStatus(address: string | null): LockupState {
     setState((s) => ({ ...s, loading: true }));
     fetchLockupStatus(address, controller.signal)
       .then(({ lockupExpiresAt }) => {
+        // Guard against a stale, superseded request resolving after a
+        // fresher one (e.g. rapid wallet switching): if this effect's
+        // controller was aborted, its response must not clobber state.
+        if (controller.signal.aborted) return;
         setState({ lockupExpiresAt: lockupExpiresAt ? Number(lockupExpiresAt) : null, loading: false });
       })
       .catch(() => {
