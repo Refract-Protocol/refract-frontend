@@ -60,6 +60,49 @@ export interface BuyPolicyResponse {
   message: string;
 }
 
+/**
+ * Cursor/offset pagination request shape, applied uniformly across the
+ * list-returning endpoints (see also src/lib/api/claims.ts).
+ *
+ * Assumed backend contract (refract-backend, not yet implemented):
+ *   GET ...?cursor=<opaque>&limit=<n>
+ *   -> { items: T[], nextCursor: string | null, hasMore: boolean }
+ *
+ * If the backend does not yet return pagination metadata, the response is
+ * treated as a single, complete page (nextCursor: null, hasMore: false),
+ * which is functionally equivalent to today's fetch-everything behavior.
+ */
+export interface PaginationParams {
+  cursor?: string;
+  limit?: number;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * Normalizes a raw list response into the uniform paginated shape,
+ * degrading gracefully when the backend omits pagination metadata.
+ */
+export function toPaginated<T>(raw: unknown, key: string): Paginated<T> {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const items = (Array.isArray(record[key]) ? record[key] : []) as T[];
+  const nextCursor = typeof record.nextCursor === "string" ? record.nextCursor : null;
+  const hasMore = typeof record.hasMore === "boolean" ? record.hasMore : false;
+  return { items, nextCursor, hasMore };
+}
+
+function paginationQuery(params?: PaginationParams): string {
+  const search = new URLSearchParams();
+  if (params?.cursor) search.set("cursor", params.cursor);
+  if (typeof params?.limit === "number") search.set("limit", String(params.limit));
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export function fetchCoverageTypes(signal?: AbortSignal): Promise<{ coverageTypes: CoverageTypeInfo[] }> {
   return apiRequest("/policies/types", { signal });
 }
@@ -79,8 +122,16 @@ export function fetchCoverageBounds(signal?: AbortSignal): Promise<CoverageBound
   return apiRequest("/policies/coverage-bounds", { signal });
 }
 
-export function fetchHolderPolicies(address: string, signal?: AbortSignal): Promise<{ policies: Policy[] }> {
-  return apiRequest(`/policies/holder/${address}`, { signal });
+export async function fetchHolderPolicies(
+  address: string,
+  params?: PaginationParams,
+  signal?: AbortSignal,
+): Promise<Paginated<Policy>> {
+  const raw = await apiRequest<{ policies?: Policy[] } & Partial<Paginated<Policy>>>(
+    `/policies/holder/${address}${paginationQuery(params)}`,
+    { signal },
+  );
+  return toPaginated<Policy>(raw, "policies");
 }
 
 export function buyPolicy(params: BuyPolicyParams): Promise<BuyPolicyResponse> {
