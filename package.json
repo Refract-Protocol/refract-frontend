@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^14.2.5",
-    "@size-limit/file": "^11.1.4",
+    "@size-limit/file": "^14.1.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
