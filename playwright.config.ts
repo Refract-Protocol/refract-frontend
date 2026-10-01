@@ -1,12 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Cross-browser E2E matrix for wallet-dependent flows.
- *
- * The mocked-Freighter specs run across chromium, firefox, and webkit so we
- * verify the app's own detection/degradation logic per engine. WebKit is the
- * most realistic "extension can never exist" case (Freighter is a Chrome/
- * Firefox extension), so the not-installed spec is exercised there too.
+  reporter: process.env.CI ? ["github", "list"] : "list",
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  use: {
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -14,10 +15,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI ? ["github", "list"] : "list",
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
     trace: "on-first-retry",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
@@ -33,10 +37,12 @@ export default defineConfig({
       use: { ...devices["Desktop Safari"] },
     },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: "http://127.0.0.1:3000",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });

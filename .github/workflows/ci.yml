@@ -6,33 +6,31 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: lint · typecheck · build
+  e2e:
+    name: Playwright E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
       - name: Typecheck
         run: npm run typecheck
 
       - name: i18n check
         run: npx tsx scripts/i18n-check.ts
-
-      - name: Build
-        run: npm run build
-        env:
-          NEXT_TELEMETRY_DISABLED: "1"
 
       - name: Build
         run: npm run build
@@ -50,18 +48,74 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
 
       - name: Wait for server
-        
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+        run: npx wait-on http://localhost:3000
 
-      - uses: actions/setup-node@v4
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Screenshot comparison is Chromium-only (see issue #133 scope).
+      # Baselines live in the repo under tests/visual/*-snapshots/.
+      # To intentionally update baselines, run locally:
+      #   npx playwright test --grep @visual --update-snapshots
+      # then commit the updated snapshot files.
+
+      - name: Run E2E tests
+        run: npx playwright test --grep-invert @visual
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 22
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  visual-regression:
+    name: Playwright Visual Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Screenshot comparison is Chromium-only (see issue #133 scope).
+      # Baselines live in the repo under tests/visual/*-snapshots/.
+      # To intentionally update baselines, run locally:
+      #   npx playwright test --grep @visual --update-snapshots
+      # then commit the updated snapshot files.
+      - name: Run visual regression tests
+        run: npx playwright test --grep @visual
+        env:
+          CI: 'true'
+
+      - name: Upload visual diff artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
 
   lighthouse:
     name: lighthouse · budgets
@@ -120,3 +174,4 @@ jobs:
       # docs/dependency-policy.md for the triage process).
       - name: Audit (high/critical)
         run: npx --yes audit-ci --config .audit-ci.json --high
+

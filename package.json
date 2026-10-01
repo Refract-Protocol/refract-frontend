@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:visual": "playwright test --project=visual",
+    "test:visual:update": "playwright test --project=visual --update-snapshots",
     "audit": "audit-ci --config audit-ci.json",
     "prepare": "husky",
     "analyze": "ANALYZE=true next build",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^14.2.5",
+    "@playwright/test": "^1.45.0",
     "@size-limit/file": "^11.1.4",
     "@types/node": "^20",
     "@types/react": "^18",
