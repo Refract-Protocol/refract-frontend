@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState } from "@/components/ui";
 import { WalletButton, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
@@ -13,6 +13,7 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { useTxReview } from "@/components/wallet/TxReview";
 import {
   restoreCart,
   retryItem,
@@ -68,6 +69,7 @@ const WIZARD_STEPS = [
 
 export default function CoverPage() {
   const wallet = useWallet();
+  const { requestReview, reviewDialog } = useTxReview();
   const searchParams = useSearchParams();
   const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
   const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
@@ -251,6 +253,21 @@ export default function CoverPage() {
       if (!wallet.networkPassphrase) {
         throw new Error("Wallet network isn't available — reconnect and try again");
       }
+      const approved = await requestReview({
+        txXdr: result.txXdr,
+        networkPassphrase: wallet.networkPassphrase,
+        action: "Buy coverage",
+        entered: [
+          { label: "Coverage type", value: ct.name },
+          { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount)) },
+          { label: "Duration", value: `${durationDays} days` },
+        ],
+        expectedStroops: toStroops(parseFloat(coverageAmount)),
+      });
+      if (!approved) {
+        setSubmission({ status: "idle" });
+        return;
+      }
       const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
       setSubmission({ status: "success", result, demo: false, txHash });
     } catch (err) {
@@ -284,6 +301,7 @@ export default function CoverPage() {
   return (
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
+      {reviewDialog}
 
       <main id="main-content">
         <Container className="py-9 sm:py-10">
@@ -667,7 +685,7 @@ export default function CoverPage() {
               ) : submission.status === "success" ? (
                 <Card padding="md" role="status" aria-live="polite">
                   <div className="mb-4 flex items-center gap-2.5 text-pm-green">
-                    <span className="text-xl" aria-hidden="true">✓</span>
+                    <SuccessBurst />
                     <span className="font-display text-base font-bold">Coverage purchased</span>
                   </div>
                   {submission.demo && (
