@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
+import { TransactionTray } from "@/components/TransactionTray";
 import { PendingTxResolver } from "@/lib/wallet/PendingTxResolver";
 
 export const metadata: Metadata = {
@@ -39,6 +40,7 @@ export default function RootLayout({
         <WalletProvider>
           <PendingTxResolver />
           {children}
+          <TransactionTray />
         </WalletProvider>
       </body>
     </html>
