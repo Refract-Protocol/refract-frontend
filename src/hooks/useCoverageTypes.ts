@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchCoverageTypes, type CoverageTypeInfo } from "@/lib/api/policies";
 import { FIXTURE_COVERAGE_TYPES } from "@/lib/fixtures/coverageTypes";
 import { ApiUnreachableError } from "@/lib/api/client";
+import { useCatalogStore } from "@/lib/store/catalogStore";
 
 interface CoverageTypesState {
   data: CoverageTypeInfo[] | null;
@@ -17,38 +18,24 @@ interface CoverageTypesState {
  * Loads the coverage catalogue from GET /api/v1/policies/types, falling back
  * to the bundled fixture (src/lib/fixtures/coverageTypes.ts) when the
  * backend isn't reachable so the page still works end-to-end offline.
+ *
+ * Backed by the shared catalog store so the landing page and /cover render
+ * the same catalogue from a single fetch within the TTL.
+ *
+ * Exposes a stable `refetch()` so callers can retry after a failure or a
+ * fixture fallback without reloading the page.
  */
-export function useCoverageTypes(): CoverageTypesState {
-  const [state, setState] = useState<CoverageTypesState>({
-    data: null,
-    loading: true,
-    error: null,
-    isFixture: false,
-  });
+export function useCoverageTypes(): CoverageTypesState & { refetch: () => Promise<void> } {
+  const data = useCatalogStore((s) => s.coverageTypes);
+  const loading = useCatalogStore((s) => s.loading);
+  const error = useCatalogStore((s) => s.error);
+  const isFixture = useCatalogStore((s) => s.isFixture);
+  const load = useCatalogStore((s) => s.load);
 
   useEffect(() => {
-    const controller = new AbortController();
+    void load();
+  }, [load]);
 
-    fetchCoverageTypes(controller.signal)
-      .then(({ coverageTypes }) => {
-        setState({ data: coverageTypes, loading: false, error: null, isFixture: false });
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        if (err instanceof ApiUnreachableError) {
-          setState({ data: FIXTURE_COVERAGE_TYPES, loading: false, error: null, isFixture: true });
-          return;
-        }
-        setState({
-          data: null,
-          loading: false,
-          error: err instanceof Error ? err.message : "Failed to load coverage types",
-          isFixture: false,
-        });
-      });
-
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { data, loading, error, isFixture, refetch: load };
+}
 }

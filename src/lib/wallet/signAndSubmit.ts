@@ -32,3 +32,4 @@ export async function signAndSubmit(txXdr: string, address: string, networkPassp
   }
   return result.txHash;
 }
+

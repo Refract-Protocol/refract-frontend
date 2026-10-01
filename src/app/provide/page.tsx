@@ -12,7 +12,9 @@ import { provideCapital, withdrawCapital, type ProvideCapitalResponse, type With
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { PreSignConfirmModal } from "@/components/PreSignConfirmModal";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { validatePoolAction } from "@/lib/validation/pool";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -53,6 +55,7 @@ export default function ProvidePage() {
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
   const [submission, setSubmission] = useState<SubmissionState>({ status: "idle" });
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tour = useTour("provide");
 
@@ -64,8 +67,14 @@ export default function ProvidePage() {
   const usdcOut = amount ? (parseFloat(amount) * sharePrice).toFixed(2) : "—";
 
   const isLocked = lockupExpiresAt !== null && lockupExpiresAt * 1000 > Date.now();
+  const poolValidation = validatePoolAction(amount || "0", {
+    tab,
+    availableToWithdraw,
+    isLocked,
+    isConnected: wallet.status === "connected",
+  });
   const withdrawInvalid =
-    tab === "withdraw" && wallet.status === "connected" && parseFloat(amount || "0") > availableToWithdraw;
+    tab === "withdraw" && wallet.status === "connected" && !poolValidation.isValid;
 
   const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
   const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;
@@ -119,6 +128,13 @@ export default function ProvidePage() {
     if (parsed <= 0) return;
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
     if (tab === "withdraw" && isLocked) return;
+    setConfirmOpen(true);
+  }
+
+  async function submitTx() {
+    setConfirmOpen(false);
+    if (!wallet.address) return;
+    const parsed = parseFloat(amount || "0");
 
     setSubmission({ status: "submitting" });
     try {
@@ -128,7 +144,7 @@ export default function ProvidePage() {
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
       } else {
         const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
@@ -136,7 +152,7 @@ export default function ProvidePage() {
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
       }
     } catch (err) {
@@ -428,7 +444,9 @@ export default function ProvidePage() {
                     onClick={() => void handleSubmit()}
                   >
                     {submission.status === "signing"
-                      ? "Confirm in wallet…"
+                      ? wallet.hardwareWallet
+                        ? "Confirm on your Ledger device…"
+                        : "Confirm in wallet…"
                       : wallet.status !== "connected"
                         ? "Connect Wallet"
                         : tab === "withdraw" && isLocked
@@ -453,6 +471,30 @@ export default function ProvidePage() {
           </div>
         </Container>
       </main>
+
+      <PreSignConfirmModal
+        open={confirmOpen}
+        title={tab === "deposit" ? "Confirm deposit" : "Confirm withdrawal"}
+        lines={
+          tab === "deposit"
+            ? [
+                { label: "Action", value: "Provide capital" },
+                { label: "Deposit", value: formatUsd(parseFloat(amount || "0")) },
+                { label: "PPS shares received", value: sharesOut },
+              ]
+            : [
+                { label: "Action", value: "Withdraw capital" },
+                { label: "Shares burned", value: (parseFloat(amount || "0") / sharePrice).toFixed(4) },
+              ]
+        }
+        total={{
+          label: tab === "deposit" ? "Total deposit" : "Estimated USDC received",
+          value: formatUsd(parseFloat(amount || "0")),
+        }}
+        hardwareWallet={wallet.hardwareWallet}
+        onConfirm={() => void submitTx()}
+        onCancel={() => setConfirmOpen(false)}
+      />
 
       <Footer />
       <Tour steps={PROVIDE_TOUR} open={tour.open} onClose={tour.close} />

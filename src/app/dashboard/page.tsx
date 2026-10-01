@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Button, Skeleton } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
@@ -8,8 +9,10 @@ import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useClaims } from "@/hooks/useClaims";
 import { formatUsd, fromStroops } from "@/lib/format";
 import { stellarExpertTxUrl } from "@/lib/stellar";
+import { useTransactionHistory } from "@/hooks/useTransactionHistory";
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/api/claims";
+import { PolicyCertificateModal, type PolicyCertificateData } from "@/components/PolicyCertificate";
 
 const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
 const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
@@ -33,6 +36,8 @@ export default function DashboardPage() {
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
+  const history = useTransactionHistory(address);
+  const [selectedCert, setSelectedCert] = useState<PolicyCertificateData | null>(null);
 
   const summary = policies
     ? {
@@ -163,7 +168,7 @@ export default function DashboardPage() {
                                 <div className="font-mono text-[11px] text-pm-text/35">{policy.id}</div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-6 sm:justify-end">
+                            <div className="flex flex-wrap items-center gap-4 sm:justify-end">
                               <div className="text-right">
                                 <div className="text-[11px] uppercase tracking-wide text-pm-text/35">Coverage</div>
                                 <div className="text-sm font-semibold text-pm-text">{formatUsd(fromStroops(policy.coverageAmount))}</div>
@@ -176,6 +181,27 @@ export default function DashboardPage() {
                                   {new Date(policy.expiresAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedCert({
+                                    id: policy.id,
+                                    holder: policy.holder,
+                                    coverageType: policy.coverageType,
+                                    coverageTypeName: policy.coverageTypeName,
+                                    coverageAmount: policy.coverageAmount,
+                                    premium: policy.premium,
+                                    durationDays: policy.durationDays,
+                                    expiresAt: policy.expiresAt,
+                                    createdAt: policy.createdAt,
+                                    demo: isFixture,
+                                  })
+                                }
+                                className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-pm-text transition-colors hover:border-pm-violet/40 hover:bg-pm-violet/10"
+                                title="View certificate"
+                              >
+                                📄 Certificate
+                              </button>
                             </div>
                           </div>
                         </Card>
@@ -184,6 +210,12 @@ export default function DashboardPage() {
                   </div>
                 )}
               </section>
+
+              <PolicyCertificateModal
+                isOpen={!!selectedCert}
+                onClose={() => setSelectedCert(null)}
+                policy={selectedCert}
+              />
 
               {/* Claims / payout history */}
               <section aria-labelledby="claims-heading">
@@ -232,6 +264,77 @@ export default function DashboardPage() {
                       </Card>
                     ))}
                   </div>
+                )}
+              </section>
+
+              {/* On-chain transaction history (Horizon) */}
+              <section aria-labelledby="history-heading" className="mt-8">
+                <h2 id="history-heading" className="mb-1 font-display text-lg font-bold tracking-tight text-pm-text">
+                  Transaction History
+                </h2>
+                <p className="mb-4 text-xs text-pm-text/40">Read directly from Stellar Horizon — newest first.</p>
+
+                {history.error && (
+                  <Card className="mb-3 border-pm-red/30 !bg-pm-red/[0.04]">
+                    <p className="text-sm text-pm-red">Couldn&apos;t load transaction history: {history.error}</p>
+                  </Card>
+                )}
+
+                {history.entries.length > 0 && (
+                  <Card padding="sm" className="overflow-x-auto !p-0">
+                    <table className="w-full min-w-[560px] text-left text-[13px]">
+                      <thead>
+                        <tr className="border-b border-pm-border text-[11px] uppercase tracking-wide text-pm-text/40">
+                          <th className="px-4 py-3 font-medium">Operation</th>
+                          <th className="px-4 py-3 font-medium">Amount</th>
+                          <th className="px-4 py-3 font-medium">Time</th>
+                          <th className="px-4 py-3 font-medium">Transaction</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.entries.map((e) => (
+                          <tr key={e.id} className="border-b border-pm-border/50 last:border-0">
+                            <td className="px-4 py-3 font-mono text-pm-text">
+                              {e.operation}
+                              {!e.successful && <span className="ml-2 text-[11px] text-pm-red">failed</span>}
+                            </td>
+                            <td className="px-4 py-3 text-pm-text">
+                              {e.amount !== null ? `${e.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${e.asset ?? ""}` : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-pm-text/60">{new Date(e.timestamp).toLocaleString()}</td>
+                            <td className="px-4 py-3">
+                              <a
+                                href={stellarExpertTxUrl(e.txHash)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-mono text-pm-violet hover:underline"
+                              >
+                                {e.txHash.slice(0, 8)}…
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Card>
+                )}
+
+                {history.loading && (
+                  <div className="mt-3" role="status" aria-label="Loading transaction history">
+                    <Skeleton height={48} rounded="md" />
+                  </div>
+                )}
+
+                {!history.loading && !history.error && history.entries.length === 0 && !history.hasMore && (
+                  <Card className="py-10 text-center">
+                    <p className="text-sm text-pm-text/45">No on-chain Refract activity found for this address.</p>
+                  </Card>
+                )}
+
+                {history.hasMore && !history.loading && (
+                  <Button type="button" variant="outline" className="mt-4" onClick={history.loadMore}>
+                    {history.error ? "Retry" : "Load older transactions"}
+                  </Button>
                 )}
               </section>
             </>
