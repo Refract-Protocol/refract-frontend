@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { ChartDonut } from "@/components/ui/ChartDonut";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
@@ -42,7 +43,6 @@ export default function ProvidePage() {
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
   const [submission, setSubmission] = useState<SubmissionState>({ status: "idle" });
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const sharePrice = pool?.sharePrice ?? 1;
   const userShares = position ? fromStroops(position.shares) : 0;
@@ -58,34 +58,11 @@ export default function ProvidePage() {
   const utilizationPct = pool ? pool.utilizationBps / 100 : 0;
   const maxUtilizationPct = pool ? pool.maxUtilizationBps / 100 : 80;
 
-  // Donut chart for the illustrative risk breakdown
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const size = 160;
-    canvas.width = canvas.height = size * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
-    const cx = size / 2, cy = size / 2, r = 62, innerR = 42;
-    let startAngle = -Math.PI / 2;
-
-    RISK_BREAKDOWN.forEach((seg) => {
-      const angle = (seg.pct / 100) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, startAngle, startAngle + angle);
-      ctx.arc(cx, cy, innerR, startAngle + angle, startAngle, true);
-      ctx.fillStyle = seg.color;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, cy, r + 1, startAngle, startAngle + angle);
-      ctx.arc(cx, cy, innerR - 1, startAngle + angle, startAngle, true);
-      ctx.fillStyle = "rgba(7,5,15,0.5)";
-      ctx.lineWidth = 2;
-      ctx.fill();
-      startAngle += angle;
-    });
-  }, []);
+  // Illustrative risk breakdown passed to the accessible donut chart.
+  const riskSegments = useMemo(
+    () => RISK_BREAKDOWN.map((seg) => ({ label: seg.type, value: seg.pct, color: seg.color })),
+    []
+  );
 
   const withdrawQuickPct = useMemo(
     () => [
@@ -358,7 +335,24 @@ export default function ProvidePage() {
             {/* Sidebar */}
             <div className="space-y-6">
               <Card className="p-5">
-                <h2 className="mb-4 font-display text-sm font-bold text-pm-text">Pool Stats</h2>
+                <h2 className="mb-4 font-display text-sm font-bold text-pm-text">Capital Allocation</h2>
+                <div className="flex items-center gap-5">
+                  <ChartDonut
+                    segments={riskSegments}
+                    ariaLabel="Capital allocation by coverage category"
+                  />
+                  <ul className="flex-1 space-y-2">
+                    {RISK_BREAKDOWN.map((seg) => (
+                      <li key={seg.type} className="flex items-center gap-2 text-xs text-pm-text/60">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: seg.color }} />
+                        <span className="flex-1">{seg.type}</span>
+                        <span className="font-medium text-pm-text/80">{seg.pct}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <h2 className="mb-4 mt-6 font-display text-sm font-bold text-pm-text">Pool Stats</h2>
                 <div className="space-y-3 text-xs">
                   <div className="flex justify-between">
                     <span className="text-pm-text/40">Total capital</span>
@@ -383,16 +377,33 @@ export default function ProvidePage() {
                     </span>
                   </div>
                 </div>
+                </div>
               </Card>
 
               <Card className="p-5">
-                <h2 className="mb-3 font-display text-sm font-bold text-pm-text">How it works</h2>
-                <ul className="space-y-2 text-xs text-pm-text/50">
-                  <li>• Deposit USDC to receive pool shares.</li>
-                  <li>• Shares appreciate as premiums accrue.</li>
-                  <li>• Capital is locked while backing active policies.</li>
-                  <li>• Withdraw anytime once the lockup expires.</li>
-                </ul>
+                <h2 className="mb-3 font-display text-sm font-bold text-pm-text">Pool Health</h2>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <div className="mb-1 flex justify-between text-pm-text/50">
+                      <span>Utilization</span>
+                      <span className="text-pm-text/80">
+                        {utilizationPct.toFixed(1)}% / {maxUtilizationPct.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-pm-bg/60">
+                      <div
+                        className="h-full rounded-full bg-pm-violet"
+                        style={{ width: `${Math.min(100, (utilizationPct / maxUtilizationPct) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-pm-text/50">Status</span>
+                    <Badge tone={utilizationPct >= maxUtilizationPct ? "amber" : "green"}>
+                      {utilizationPct >= maxUtilizationPct ? "At capacity" : "Accepting capital"}
+                    </Badge>
+                  </div>
+                </div>
               </Card>
             </div>
           </div>

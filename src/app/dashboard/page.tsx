@@ -6,6 +6,7 @@ import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useClaims } from "@/hooks/useClaims";
+import { usePagination } from "@/hooks/usePagination";
 import { formatUsd, fromStroops } from "@/lib/format";
 import { stellarExpertTxUrl } from "@/lib/stellar";
 import type { Policy } from "@/lib/api/policies";
@@ -13,6 +14,7 @@ import type { ClaimRecord } from "@/lib/api/claims";
 
 const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
 const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
+const PAGE_SIZE = 10;
 
 type PolicyStatus = "active" | "paid" | "expired";
 
@@ -31,8 +33,13 @@ const STATUS_BADGE: Record<PolicyStatus, { tone: "safe" | "violet" | "neutral"; 
 export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
-  const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
+  const { data: policies, loading, error, source } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
+
+  const policyList = policies ?? [];
+  const claimList = claims ?? [];
+  const policiesPagination = usePagination(policyList, PAGE_SIZE);
+  const claimsPagination = usePagination(claimList, PAGE_SIZE);
 
   const summary = policies
     ? {
@@ -56,10 +63,14 @@ export default function DashboardPage() {
             <p className="text-sm text-pm-text/45">
               Your active policies, claim status, and payout history in one place.
             </p>
-            {isFixture && (
+            {source === "fixture-unreachable" && (
               <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
-                ⚠ Showing fixture data — either the Refract API isn&apos;t reachable, or it has no
-                recorded policies for this address yet.
+                ⚠ Showing fixture data — the Refract API isn&apos;t reachable right now.
+              </p>
+            )}
+            {source === "fixture-demo" && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
+                ⚠ Showing demo fixture data — demo mode is enabled for this address.
               </p>
             )}
           </div>
@@ -141,7 +152,7 @@ export default function DashboardPage() {
 
                 {!loading && policies && policies.length > 0 && (
                   <div className="flex flex-col gap-3">
-                    {policies.map((policy) => {
+                    {policiesPagination.visible.map((policy) => {
                       const status = policyStatus(policy, claims);
                       const badge = STATUS_BADGE[status];
                       return (
@@ -160,77 +171,109 @@ export default function DashboardPage() {
                                   <span className="text-sm font-semibold text-pm-text">{policy.coverageTypeName}</span>
                                   <Badge tone={badge.tone}>{badge.label}</Badge>
                                 </div>
-                                <div className="font-mono text-[11px] text-pm-text/35">{policy.id}</div>
+                                <div className="text-xs text-pm-text/40">
+                                  Policy #{policy.id} · {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} coverage · expires {policy.expiresAt}
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-6 sm:justify-end">
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">Coverage</div>
-                                <div className="text-sm font-semibold text-pm-text">{formatUsd(fromStroops(policy.coverageAmount))}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-wide text-pm-text/35">
-                                  {status === "expired" || status === "paid" ? "Expired" : "Expires"}
-                                </div>
-                                <div className="text-sm font-semibold text-pm-text">
-                                  {new Date(policy.expiresAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                </div>
-                              </div>
+                            <div className="flex items-center gap-4 text-xs text-pm-text/45">
+                              <span>Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })}</span>
+                              {policy.txHash && (
+                                <a
+                                  href={stellarExpertTxUrl(policy.txHash)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-pm-violet hover:underline"
+                                >
+                                  View tx
+                                </a>
+                              )}
+                              <Button href={`/dashboard/policies/${policy.id}`} variant="outline" className="inline-flex">
+                                View details
+                              </Button>
                             </div>
                           </div>
                         </Card>
                       );
                     })}
+
+                    <div className="mt-1 flex flex-col items-center gap-2">
+                      <p className="text-xs text-pm-text/40" aria-live="polite">
+                        Showing {policiesPagination.visible.length} of {policiesPagination.total} policies
+                      </p>
+                      {policiesPagination.hasMore && (
+                        <Button type="button" variant="outline" onClick={policiesPagination.loadMore}>
+                          Load more policies
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </section>
 
-              {/* Claims / payout history */}
+              {/* Claims */}
               <section aria-labelledby="claims-heading">
                 <h2 id="claims-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
-                  Claim &amp; Payout History
+                  Claim History
                 </h2>
 
-                {!loading && claims.length === 0 && (
+                {!loading && claimList.length === 0 && (
                   <Card className="py-12 text-center">
-                    <p className="text-sm text-pm-text/45">No claims triggered yet — no news is good news.</p>
+                    <p className="text-sm text-pm-text/45">No claims filed yet.</p>
                   </Card>
                 )}
 
-                {claims.length > 0 && (
+                {!loading && claimList.length > 0 && (
                   <div className="flex flex-col gap-3">
-                    {claims.map((claim) => (
-                      <Card key={claim.policyId} padding="md" className="!py-4">
+                    {claimsPagination.visible.map((claim) => (
+                      <Card key={claim.id} padding="md" className="!py-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3.5">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pm-green/10 text-lg" aria-hidden="true">
-                              💰
-                            </span>
-                            <div>
-                              <div className="mb-0.5 text-sm font-semibold text-pm-text">
-                                {new Date(claim.processedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </div>
-                              <div className="text-xs text-pm-text/45">{claim.reason}</div>
+                          <div>
+                            <div className="mb-0.5 flex items-center gap-2">
+                              <span className="text-sm font-semibold text-pm-text">
+                                Claim #{claim.id}
+                              </span>
+                              <Badge tone={claim.triggered ? "violet" : "neutral"}>
+                                {claim.triggered ? "Paid Out" : "Pending"}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-pm-text/40">
+                              Policy #{claim.policyId}
+                              {claim.txHash && (
+                                <>
+                                  {" · "}
+                                  <a
+                                    href={stellarExpertTxUrl(claim.txHash)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-pm-violet hover:underline"
+                                  >
+                                    View transaction
+                                  </a>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="font-display text-lg font-extrabold text-pm-green">{formatUsd(fromStroops(claim.payout))}</div>
-                            <div className="font-mono text-[11px] text-pm-text/35">{claim.policyId}</div>
-                            {claim.settlementTxHash && (
-                              <a
-                                href={stellarExpertTxUrl(claim.settlementTxHash)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[11px] text-pm-text/45 underline decoration-pm-text/20 underline-offset-2 transition-colors hover:text-pm-text/70"
-                              >
-                                View transaction
-                                <span className="sr-only"> (opens in a new tab)</span>
-                              </a>
-                            )}
+                            <div className="text-[11px] uppercase tracking-wide text-pm-text/40">Payout</div>
+                            <div className="text-sm font-semibold text-pm-text">
+                              {formatUsd(fromStroops(claim.payout), { maximumFractionDigits: 2 })}
+                            </div>
                           </div>
                         </div>
                       </Card>
                     ))}
+
+                    <div className="mt-1 flex flex-col items-center gap-2">
+                      <p className="text-xs text-pm-text/40" aria-live="polite">
+                        Showing {claimsPagination.visible.length} of {claimsPagination.total} claims
+                      </p>
+                      {claimsPagination.hasMore && (
+                        <Button type="button" variant="outline" onClick={claimsPagination.loadMore}>
+                          Load more claims
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </section>

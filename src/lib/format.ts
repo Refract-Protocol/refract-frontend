@@ -90,3 +90,15 @@ export function formatCompactUsd(value: number): string {
 export function formatSharePrice(value: number): string {
   return `$${value.toFixed(4)}`;
 }
+
+/**
+ * Format a whole-USDC amount as a plain USD string with thousands separators
+ * (no leading `$`). Kept for callers that render the currency symbol
+ * separately.
+ */
+export function formatUsdc(amount: number): string {
+  return amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

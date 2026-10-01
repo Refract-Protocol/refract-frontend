@@ -14,15 +14,7 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
-
-const RISK_TAG_COLORS: Record<string, string> = {
-  low: "#10b981",
-  medium: "#8b5cf6",
-  high: "#f59e0b",
-  critical: "#ef4444",
-};
-
-const RISK_HEAT: Record<string, number> = { low: 20, medium: 45, high: 72, critical: 95 };
+import { coverageMeta, RISK_LEVEL_COLORS } from "@/lib/coverage/metadata";
 
 const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000];
 
@@ -46,6 +38,7 @@ export default function CoverPage() {
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   const ct = coverageTypes?.[selectedType];
+  const meta = coverageMeta(ct?.id ?? selectedType);
 
   const premium = useMemo(() => {
     if (!ct) return 0;
@@ -229,54 +222,39 @@ export default function CoverPage() {
                       radioRefs.current[nextId]?.focus();
                     }}
                   >
-                    {coverageTypes.map((type) => {
-                      const selected = type.id === selectedType;
+                    {coverageTypes.map((t) => {
+                      const tMeta = coverageMeta(t.id);
+                      const selected = t.id === selectedType;
                       return (
                         <button
-                          key={type.id}
+                          key={t.id}
                           ref={(el) => {
-                            radioRefs.current[type.id] = el;
+                            radioRefs.current[t.id] = el;
                           }}
                           type="button"
                           role="radio"
                           aria-checked={selected}
                           tabIndex={selected ? 0 : -1}
-                          onClick={() => setSelectedType(type.id)}
-                          className={`flex items-center gap-3.5 rounded-xl border p-3.5 text-left transition-colors ${
+                          onClick={() => setSelectedType(t.id)}
+                          className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
                             selected
-                              ? "border-pm-violet/50 bg-pm-violet/[0.08]"
-                              : "border-pm-border bg-pm-surface hover:border-pm-border/80"
+                              ? "border-pm-violet/60 bg-pm-violet/[0.08]"
+                              : "border-pm-border bg-pm-surface hover:border-pm-violet/30"
                           }`}
                         >
-                          <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
-                            style={{
-                              background: `${RISK_TAG_COLORS[type.riskLevel] ?? "#8b5cf6"}22`,
-                              color: RISK_TAG_COLORS[type.riskLevel] ?? "#8b5cf6",
-                            }}
+                          <span aria-hidden="true" className="text-xl">
+                            {tMeta.icon}
+                          </span>
+                          <span className="flex-1">
+                            <span className="block text-sm font-semibold text-pm-text">{t.name}</span>
+                            <span className="block text-[11px] text-pm-text/45">{tMeta.triggerSummary}</span>
+                          </span>
+                          <Badge
+                            style={{ color: RISK_LEVEL_COLORS[tMeta.riskLevel] }}
+                            className="!border-current/30"
                           >
-                            {type.name.slice(0, 1)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-semibold text-pm-text">{type.name}</span>
-                              <Badge color={RISK_TAG_COLORS[type.riskLevel] ?? "#8b5cf6"}>
-                                {type.riskLevel}
-                              </Badge>
-                            </div>
-                            <div className="mt-0.5 text-[11px] text-pm-text/40">
-                              {type.baseRatePct}% annual · up to {formatUsd(type.maxCoverage)}
-                            </div>
-                          </div>
-                          <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-pm-border sm:block">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${RISK_HEAT[type.riskLevel] ?? 50}%`,
-                                background: RISK_TAG_COLORS[type.riskLevel] ?? "#8b5cf6",
-                              }}
-                            />
-                          </div>
+                            {tMeta.riskLevel}
+                          </Badge>
                         </button>
                       );
                     })}
