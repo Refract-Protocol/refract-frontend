@@ -13,6 +13,7 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { PreSignConfirmModal } from "@/components/PreSignConfirmModal";
 import { useCoverQueryParams } from "@/hooks/useCoverQueryParams";
 import { parseCoverQueryParams } from "@/lib/coverQueryParams";
 import { PolicyCertificateModal } from "@/components/PolicyCertificate";
@@ -57,6 +58,7 @@ export default function CoverPage() {
     | { status: "success"; result: BuyPolicyResponse; demo: boolean; txHash?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [showCert, setShowCert] = useState(false);
 
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -124,6 +126,12 @@ export default function CoverPage() {
       return;
     }
     if (amountInvalid || flightNumberInvalid) return;
+    setConfirmOpen(true);
+  }
+
+  async function submitBuy() {
+    setConfirmOpen(false);
+    if (!ct || !wallet.address) return;
 
     setSubmission({ status: "submitting" });
     try {
@@ -139,7 +147,7 @@ export default function CoverPage() {
       if (!wallet.networkPassphrase) {
         throw new Error("Wallet network isn't available — reconnect and try again");
       }
-      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
       setSubmission({ status: "success", result, demo: false, txHash });
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
@@ -661,7 +669,9 @@ export default function CoverPage() {
                     onClick={() => void handleBuy()}
                   >
                     {submission.status === "signing"
-                      ? "Confirm in wallet…"
+                      ? wallet.hardwareWallet
+                        ? "Confirm on your Ledger device…"
+                        : "Confirm in wallet…"
                       : wallet.status === "connected"
                         ? "Buy Coverage"
                         : "Connect to Continue"}
@@ -688,6 +698,24 @@ export default function CoverPage() {
           </div>
         </Container>
       </main>
+
+      {ct && (
+        <PreSignConfirmModal
+          open={confirmOpen}
+          title="Confirm coverage purchase"
+          lines={[
+            { label: "Action", value: "Buy coverage" },
+            { label: "Coverage type", value: ct.name },
+            { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount || "0")) },
+            { label: "Duration", value: `${durationDays} days · Expires ${expiryDate}` },
+            ...(isFlightDelay ? [{ label: "Flight", value: flightNumber.trim() }] : []),
+          ]}
+          total={{ label: "Estimated total cost", value: formatUsd(premium) }}
+          hardwareWallet={wallet.hardwareWallet}
+          onConfirm={() => void submitBuy()}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
 
       <Footer />
     </div>
