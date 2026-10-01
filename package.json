@@ -1,25 +1,46 @@
 {
-  "name": "refract-protocol-frontend",
+  "name": "prompt-market",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:msw": "NEXT_PUBLIC_API_MOCKING=enabled next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:visual": "playwright test --project=visual",
+    "test:visual:update": "playwright test --project=visual --update-snapshots",
+    "audit": "audit-ci --config audit-ci.json",
+    "prepare": "husky",
+    "analyze": "ANALYZE=true next build",
+    "size": "size-limit",
+    "size:why": "size-limit --why",
+    "tokens:check": "node scripts/check-tokens.mjs"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
+    "@stellar/stellar-sdk": "^17.2.0",
     "framer-motion": "^11.0.0",
     "next": "14.2.5",
     "react": "^18",
     "react-dom": "^18",
+    "zod": "^4.6.5",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^14.2.5",
+    "@playwright/test": "^1.45.0",
+    "@size-limit/file": "^11.1.4",
     "@testing-library/jest-dom": "^6.4.6",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
@@ -28,12 +49,35 @@
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^2.0.5",
+    "audit-ci": "^7.1.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.5",
+    "husky": "^9.1.4",
+    "jest": "29.7.0",
+    "jest-environment-jsdom": "29.7.0",
     "jsdom": "^24.1.1",
+    "lint-staged": "^15.2.7",
+    "msw": "2.3.1",
     "postcss": "^8",
+    "prettier": "^3.3.2",
+    "size-limit": "^11.1.4",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
-    "vitest": "^2.0.5"
-  }
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "size-limit": [
+    {
+      "name": "Shared JS (all routes)",
+      "path": ".next/static/chunks/*.js",
+      "limit": "250 kB",
+      "gzip": true
+    },
+    {
+      "name": "App Router per-page chunks",
+      "path": ".next/static/chunks/app/**/*.js",
+      "limit": "150 kB",
+      "gzip": true
+    }
+  ]
 }
