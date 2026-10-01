@@ -9,15 +9,23 @@ import { submitSignedTx } from "@/lib/api/tx";
  * submission that never confirms — callers should only report success once
  * this resolves.
  */
-export async function signAndSubmit(txXdr: string, address: string, networkPassphrase: string): Promise<string> {
+export async function signAndSubmit(
+  txXdr: string,
+  address: string,
+  networkPassphrase: string,
+  onSigned?: (signedTxXdr: string) => void
+): Promise<string> {
   const { signedTxXdr, error: signError } = await signTransaction(txXdr, { networkPassphrase, address });
   if (signError || !signedTxXdr) {
     throw new Error(signError?.message ?? "Transaction signing was declined");
   }
 
+  onSigned?.(signedTxXdr);
+
   const result = await submitSignedTx(signedTxXdr);
   if (!result.confirmed) {
-    throw new Error(result.error ?? "Transaction did not confirm on-chain");
+    throw new Error(result.error ?? "Transaction did not confirm on-chain. Nothing was charged or deposited.");
   }
   return result.txHash;
 }
+
