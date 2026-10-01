@@ -1,0 +1,34 @@
+# Dependabot configuration for automated dependency updates.
+# See docs/dependency-policy.md for the triage and review policy.
+version: 2
+updates:
+  # npm ecosystem: weekly update schedule.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # Group low-risk devDependency patch/minor bumps to reduce PR noise.
+    # Major or security-relevant production dependencies (e.g. next,
+    # @stellar/freighter-api) are intentionally left ungrouped so they get
+    # individual review.
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    # Security-relevant production packages warrant expedited, individual review.
+    ignore:
+      - dependency-name: "next"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "@stellar/freighter-api"
+        update-types:
+          - "version-update:semver-major"
+
+  # Keep GitHub Actions workflows up to date as well.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
