@@ -60,6 +60,7 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
           onClick={() => setMenuOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
+          aria-label={`Wallet menu for ${truncateAddress(address)}`}
           className="pm-btn pm-btn-outline pm-btn-sm font-mono"
         >
           <span className="h-[6px] w-[6px] rounded-full bg-pm-green" aria-hidden="true" />
@@ -69,6 +70,7 @@ export function WalletButton({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
         {menuOpen && (
           <div
             role="menu"
+            aria-label="Wallet actions"
             className="pm-panel absolute right-0 top-[calc(100%+8px)] z-50 w-60 p-2 animate-fade-up"
           >
             <div className="border-b border-pm-border px-2.5 pb-2.5 pt-1">
