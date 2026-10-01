@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
-import { WalletButton } from "@/components/wallet";
+import { Container, Card, Badge, Input, Button, Skeleton, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep } from "@/components/ui";
+import { WalletButton, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
 import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
@@ -27,6 +27,17 @@ const RISK_BREAKDOWN = [
   { type: "Flight Delay", color: "#06b6d4", pct: 10 },
 ];
 
+const PROVIDE_TOUR: TourStep[] = [
+  { target: "provide-tabs", title: "Deposit or withdraw", content: "Switch between adding USDC to the pool and withdrawing your position. Use the left and right arrow keys to switch tabs." },
+  { target: "provide-amount", title: "Enter an amount", content: "Deposits mint pool shares at the current share price. On the withdraw tab, the chips pick a percentage of your position." },
+  { target: "provide-capacity", title: "Watch pool capacity", content: "Utilization shows how much pool capital is backing active policies. Your capital shares in any payouts proportionally." },
+];
+
+const DEPOSIT_QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000].map((v) => ({
+  label: `$${v.toLocaleString("en-US")}`,
+  value: String(v),
+}));
+
 type SubmissionState =
   | { status: "idle" }
   | { status: "submitting" }
@@ -46,6 +57,7 @@ export default function ProvidePage() {
   const [submission, setSubmission] = useState<SubmissionState>({ status: "idle" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tour = useTour("provide");
 
   const sharePrice = pool?.sharePrice ?? 1;
   const userShares = position ? fromStroops(position.shares) : 0;
@@ -97,13 +109,14 @@ export default function ProvidePage() {
   }, []);
 
   const withdrawQuickPct = useMemo(
-    () => [
-      { label: "25%", value: userShares * 0.25 * sharePrice },
-      { label: "50%", value: userShares * 0.5 * sharePrice },
-      { label: "75%", value: userShares * 0.75 * sharePrice },
-      { label: "MAX", value: userShares * sharePrice },
-    ],
-    [userShares, sharePrice]
+    () =>
+      [
+        { label: "25%", pct: 0.25 },
+        { label: "50%", pct: 0.5 },
+        { label: "75%", pct: 0.75 },
+        { label: "MAX", pct: 1 },
+      ].map(({ label, pct }) => ({ label, value: (userShares * pct * sharePrice).toFixed(2), disabled: !position })),
+    [userShares, sharePrice, position]
   );
 
   async function handleSubmit() {
@@ -179,9 +192,12 @@ export default function ProvidePage() {
       <main id="main-content">
         <Container className="py-9 sm:py-10">
           <div className="mb-8">
-            <h1 className="mb-2 font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
-              Provide Capital
-            </h1>
+            <div className="mb-2 flex items-center gap-2.5">
+              <h1 className="font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
+                Provide Capital
+              </h1>
+              <TourReplayButton onClick={tour.start} />
+            </div>
             <p className="text-sm text-pm-text/45">
               Underwrite Refract policies. Earn premiums when no triggers fire. Pool capital backs all coverage
               categories.
@@ -262,7 +278,7 @@ export default function ProvidePage() {
                 </ol>
               </Card>
 
-              <Card padding="md">
+              <Card padding="md" data-tour-id="provide-capacity">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="font-display text-[15px] font-bold tracking-tight text-pm-text">Pool Capacity</h3>
                   <span className={`text-[13px] font-bold ${utilizationPct > 70 ? "text-pm-amber" : "text-pm-green"}`}>
@@ -327,6 +343,7 @@ export default function ProvidePage() {
                   <div
                     className="mb-6 flex gap-1 rounded-lg bg-white/[0.03] p-1"
                     role="tablist"
+                    data-tour-id="provide-tabs"
                     aria-label="Deposit or withdraw"
                     onKeyDown={(e) => {
                       if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
@@ -381,7 +398,7 @@ export default function ProvidePage() {
                     </div>
                   )}
 
-                  <div className="mb-4">
+                  <div className="mb-4" data-tour-id="provide-amount">
                     <Input
                       label={tab === "deposit" ? "USDC Amount" : "USDC to withdraw"}
                       type="number"
@@ -391,30 +408,11 @@ export default function ProvidePage() {
                       onChange={(e) => setAmount(e.target.value)}
                       error={withdrawInvalid ? `You only have ${formatUsd(availableToWithdraw)} available to withdraw` : undefined}
                     />
-                    <div className="mt-2 flex gap-1.5">
-                      {tab === "deposit"
-                        ? ["1,000", "5,000", "10,000", "25,000"].map((v) => (
-                            <button
-                              key={v}
-                              type="button"
-                              onClick={() => setAmount(v.replace(",", ""))}
-                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet"
-                            >
-                              ${v}
-                            </button>
-                          ))
-                        : withdrawQuickPct.map((p) => (
-                            <button
-                              key={p.label}
-                              type="button"
-                              disabled={!position}
-                              onClick={() => setAmount(p.value.toFixed(2))}
-                              className="flex-1 rounded border border-pm-violet/15 bg-pm-violet/[0.06] py-1 text-[10px] text-pm-violet disabled:opacity-30"
-                            >
-                              {p.label}
-                            </button>
-                          ))}
-                    </div>
+                    <QuickAmountChips
+                      size="sm"
+                      chips={tab === "deposit" ? DEPOSIT_QUICK_AMOUNTS : withdrawQuickPct}
+                      onSelect={setAmount}
+                    />
                   </div>
 
                   {amount && (
@@ -458,11 +456,7 @@ export default function ProvidePage() {
                             : "Withdraw USDC"}
                   </Button>
 
-                  {submission.status === "error" && (
-                    <p role="alert" className="mt-3 text-[12px] text-pm-red">
-                      {submission.message}
-                    </p>
-                  )}
+                  {submission.status === "error" && <TxErrorMessage rawError={submission.message} />}
 
                   <div className="mt-4 rounded-md border border-pm-amber/15 bg-pm-amber/[0.06] px-3.5 py-3">
                     <p className="m-0 text-[11px] leading-relaxed text-pm-amber/90">
@@ -503,6 +497,7 @@ export default function ProvidePage() {
       />
 
       <Footer />
+      <Tour steps={PROVIDE_TOUR} open={tour.open} onClose={tour.close} />
     </div>
   );
 }
