@@ -15,12 +15,17 @@ const toneClass: Record<BadgeTone, string> = {
   neutral: "bg-white/5 text-pm-muted",
 };
 
-const dotColor: Record<BadgeTone, string> = {
-  safe: "#10b981",
-  risk: "#f59e0b",
-  danger: "#ef4444",
-  violet: "#8b5cf6",
-  neutral: "#7b6fa8",
+/**
+ * Tone tokens shared with `toneClass`. Each tone maps to a CSS custom property
+ * (`--pm-tone-*`) defined in `globals.css`, so the dot colour stays in sync with
+ * the pill styling and can be theme-swapped instead of duplicating hex literals.
+ */
+const dotVar: Record<BadgeTone, string> = {
+  safe: "var(--pm-tone-safe)",
+  risk: "var(--pm-tone-risk)",
+  danger: "var(--pm-tone-danger)",
+  violet: "var(--pm-tone-violet)",
+  neutral: "var(--pm-tone-neutral)",
 };
 
 /** Status pill built on `.pm-tag`. Use `dot` for a live-status indicator. */
@@ -30,7 +35,7 @@ export function Badge({ tone = "neutral", dot, className, children, ...rest }: B
       {dot && (
         <span
           aria-hidden="true"
-          style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor[tone] }}
+          style={{ width: 6, height: 6, borderRadius: "50%", background: dotVar[tone] }}
         />
       )}
       {children}

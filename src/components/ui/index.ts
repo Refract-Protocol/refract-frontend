@@ -1,6 +1,7 @@
 export { Button } from "./Button";
 export type { ButtonProps } from "./Button";
 export { Card } from "./Card";
+export type { CardPadding, CardProps } from "./Card";
 export { Badge } from "./Badge";
 export type { BadgeTone } from "./Badge";
 export { Input } from "./Input";
@@ -25,3 +26,24 @@ export type {
   RadioCardGroupProps,
   RadioCardOption,
 } from "./RadioCardGroup";
+export { StatCard } from "./StatCard";
+export type {
+  StatCardProps,
+  StatCardAccent,
+  StatCardTrend,
+} from "./StatCard";
+export { Meter } from "./Meter";
+export type { MeterProps, MeterTone } from "./Meter";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
+export { DataTable } from "./DataTable";
+export type { Column, DataTableProps } from "./DataTable";
+export { Combobox, useCombobox } from "./Combobox";
+export type { ComboboxProps, ComboboxOption, UseComboboxOptions, UseComboboxResult } from "./Combobox";
+export { Slider } from "./Slider";
+export type { SliderProps } from "./Slider";
+export { Dialog } from "./Dialog";
+export type { DialogProps, DialogSize } from "./Dialog";
+export { Alert } from "./Alert";
+export type { AlertTone } from "./Alert";
+export { FixtureNotice } from "./FixtureNotice";
