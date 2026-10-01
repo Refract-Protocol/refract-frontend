@@ -10,3 +10,5 @@ export { Combobox, useCombobox } from "./Combobox";
 export type { ComboboxProps, ComboboxOption, UseComboboxOptions, UseComboboxResult } from "./Combobox";
 export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
+export { Dialog } from "./Dialog";
+export type { DialogProps, DialogSize } from "./Dialog";
