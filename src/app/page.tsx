@@ -12,6 +12,7 @@ import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { HowItWorks } from "@/components/HowItWorks";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -338,6 +339,9 @@ export default function Home() {
             </Card>
           </Container>
         </section>
+
+        {/* Scroll-driven How it works section */}
+        <HowItWorks />
 
         {/* Recent payouts */}
         <section aria-labelledby="payouts-heading" className="py-16">

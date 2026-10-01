@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, AsyncState } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
@@ -12,6 +13,9 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
+import { useCoverQueryParams } from "@/hooks/useCoverQueryParams";
+import { parseCoverQueryParams } from "@/lib/coverQueryParams";
+import { PolicyCertificateModal } from "@/components/PolicyCertificate";
 import { validateBuyCoverage } from "@/lib/validation/coverage";
 import { searchFlights, POPULAR_FLIGHTS, type FlightInfo } from "@/lib/flights";
 
@@ -35,6 +39,7 @@ const WIZARD_STEPS = [
 
 export default function CoverPage() {
   const wallet = useWallet();
+  const searchParams = useSearchParams();
   const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
   const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
 
@@ -52,8 +57,29 @@ export default function CoverPage() {
     | { status: "success"; result: BuyPolicyResponse; demo: boolean; txHash?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [showCert, setShowCert] = useState(false);
 
   const radioRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const initializedRef = useRef(false);
+
+  // Initialize from URL search params on mount
+  useEffect(() => {
+    if (initializedRef.current) return;
+    const parsed = parseCoverQueryParams(searchParams);
+    if (parsed.type !== undefined) setSelectedType(parsed.type);
+    if (parsed.amount !== undefined) setCoverageAmount(parsed.amount);
+    if (parsed.duration !== undefined) setDurationDays(parsed.duration);
+    if (parsed.flight !== undefined) setFlightNumber(parsed.flight);
+    initializedRef.current = true;
+  }, [searchParams]);
+
+  // Sync state to URL params (debounced router.replace)
+  useCoverQueryParams({
+    type: selectedType,
+    amount: coverageAmount,
+    duration: durationDays,
+    flight: flightNumber,
+  });
 
   const ct = coverageTypes?.[selectedType];
 
@@ -237,8 +263,13 @@ export default function CoverPage() {
                         <Skeleton key={i} height={72} rounded="md" />
                       ))}
                     </div>
+                  }
+                  errorRender={(err) => (
+                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
+                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {err}</p>
+                    </Card>
                   )}
-
+                >
                   {coverageTypes && (
                     <div
                       className="flex flex-col gap-2.5"
@@ -317,6 +348,8 @@ export default function CoverPage() {
                       })}
                     </div>
                   )}
+                </AsyncState>
+              </div>
 
                   <div className="mt-6 flex justify-end">
                     <Button
@@ -497,3 +530,166 @@ export default function CoverPage() {
                     </div>
                     <input
 
+            {/* Right: Quote panel */}
+            <div className="lg:sticky lg:top-20">
+              {!ct ? (
+                <Card padding="md">
+                  <Skeleton height={220} rounded="md" />
+                </Card>
+              ) : submission.status === "success" ? (
+                <Card padding="md" role="status" aria-live="polite">
+                  <div className="mb-4 flex items-center gap-2.5 text-pm-green">
+                    <span className="text-xl" aria-hidden="true">✓</span>
+                    <span className="font-display text-base font-bold">Coverage purchased</span>
+                  </div>
+                  {submission.demo && (
+                    <p className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
+                      Demo mode: the Refract API wasn&apos;t reachable, so this was simulated client-side —
+                      no real transaction was built or submitted.
+                    </p>
+                  )}
+                  <dl className="flex flex-col gap-2 text-[13px]">
+                    <div className="flex justify-between">
+                      <dt className="text-pm-text/45">Policy ID</dt>
+                      <dd className="font-mono text-pm-text">{submission.result.policy.id.slice(0, 13)}…</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-pm-text/45">Coverage</dt>
+                      <dd className="text-pm-text">{submission.result.policy.coverageTypeName}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-pm-text/45">Holder</dt>
+                      <dd className="font-mono text-pm-text">{truncateAddress(submission.result.policy.holder)}</dd>
+                    </div>
+                    {submission.txHash && (
+                      <div className="flex justify-between">
+                        <dt className="text-pm-text/45">Transaction</dt>
+                        <dd className="font-mono text-pm-text">{truncateAddress(submission.txHash)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  <div className="mt-5 flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      block
+                      onClick={() => setShowCert(true)}
+                    >
+                      📄 View / Print Certificate
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      block
+                      onClick={() => setSubmission({ status: "idle" })}
+                    >
+                      Buy another policy
+                    </Button>
+                  </div>
+
+                  <PolicyCertificateModal
+                    isOpen={showCert}
+                    onClose={() => setShowCert(false)}
+                    policy={{
+                      ...submission.result.policy,
+                      txHash: submission.txHash,
+                      demo: submission.demo,
+                    }}
+                  />
+                </Card>
+              ) : (
+                <Card padding="md">
+                  <div className="mb-6 flex items-center gap-2.5">
+                    <span className="text-[22px]" aria-hidden="true">{ct.icon}</span>
+                    <div>
+                      <div className="text-[15px] font-bold text-pm-text">{ct.name}</div>
+                      <div className="text-xs text-pm-text/40">{durationDays}-day policy</div>
+                    </div>
+                  </div>
+
+                  <div className="mb-5">
+                    <div className="mb-1.5 flex justify-between">
+                      <span className="text-[11px] text-pm-text/40">Risk level</span>
+                      <span className="text-[11px] font-semibold uppercase" style={{ color: RISK_TAG_COLORS[ct.riskLevel] }}>
+                        {ct.riskLevel}
+                      </span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${RISK_HEAT[ct.riskLevel]}%`,
+                          background: `linear-gradient(90deg,#10b981,${RISK_TAG_COLORS[ct.riskLevel]})`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <dl className="mb-5 flex flex-col gap-2.5">
+                    {[
+                      { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount || "0")) },
+                      { label: "Annual rate", value: `${ct.baseRatePct}%` },
+                      { label: "Duration", value: `${durationDays} days` },
+                      { label: "Expires", value: expiryDate },
+                    ].map((item) => (
+                      <div key={item.label} className="flex justify-between">
+                        <dt className="text-[13px] text-pm-text/45">{item.label}</dt>
+                        <dd className="text-[13px] font-medium text-pm-text">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className="mb-5 border-t border-pm-border pt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] text-pm-text/60">Total premium</span>
+                      <span className="font-display text-2xl font-extrabold text-pm-violet">{formatUsd(premium)}</span>
+                    </div>
+                    <div className="mt-0.5 text-right text-[11px] text-pm-text/30">One-time payment · USDC</div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    block
+                    disabled={amountInvalid || flightNumberInvalid}
+                    loading={
+                      submission.status === "submitting" ||
+                      submission.status === "signing" ||
+                      wallet.status === "connecting"
+                    }
+                    onClick={() => void handleBuy()}
+                  >
+                    {submission.status === "signing"
+                      ? "Confirm in wallet…"
+                      : wallet.status === "connected"
+                        ? "Buy Coverage"
+                        : "Connect to Continue"}
+                  </Button>
+
+                  {submission.status === "error" && (
+                    <p role="alert" className="mt-3 text-[12px] text-pm-red">
+                      {submission.message}
+                    </p>
+                  )}
+
+                  <div className="mt-4 flex flex-col gap-1.5">
+                    {["🔒 No claims form required", "⚡ Instant payout via oracle", "🌐 Fully on-chain, non-custodial"].map(
+                      (item) => (
+                        <div key={item} className="text-[11px] text-pm-text/35">
+                          {item}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </Container>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
