@@ -16,17 +16,10 @@ import {
 } from "@/lib/export/exportPolicyHistory";
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/api/claims";
+import { normalizePolicies, normalizeClaims, selectPolicyStatus, type PolicyStatus } from "@/lib/entities/policies";
 
 const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
 const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
-
-type PolicyStatus = "active" | "paid" | "expired";
-
-function policyStatus(policy: Policy, claims: ClaimRecord[]): PolicyStatus {
-  const claim = claims.find((c) => c.policyId === policy.id);
-  if (claim?.triggered) return "paid";
-  return policy.isActive ? "active" : "expired";
-}
 
 const STATUS_BADGE: Record<PolicyStatus, { tone: "safe" | "violet" | "neutral"; label: string }> = {
   active: { tone: "safe", label: "Active" },
@@ -39,11 +32,13 @@ export default function DashboardPage() {
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
+  const policiesById = normalizePolicies(policies ?? []);
+  const claimsByPolicyId = normalizeClaims(claims);
   const [exporting, setExporting] = useState(false);
 
   const summary = policies
     ? {
-        active: policies.filter((p) => policyStatus(p, claims) === "active").length,
+        active: policies.filter((p) => selectPolicyStatus(policiesById, claimsByPolicyId, p.id) === "active").length,
         totalCoverage: policies.reduce((sum, p) => sum + fromStroops(p.coverageAmount), 0),
         totalPremiums: policies.reduce((sum, p) => sum + fromStroops(p.premium), 0),
         totalPayouts: claims.filter((c) => c.triggered).reduce((sum, c) => sum + fromStroops(c.payout), 0),
@@ -196,7 +191,7 @@ export default function DashboardPage() {
                 {!loading && policies && policies.length > 0 && (
                   <div className="flex flex-col gap-3">
                     {policies.map((policy) => {
-                      const status = policyStatus(policy, claims);
+                      const status = selectPolicyStatus(policiesById, claimsByPolicyId, policy.id);
                       const badge = STATUS_BADGE[status];
                       return (
                         <Card key={policy.id} padding="md" className="!py-4">
