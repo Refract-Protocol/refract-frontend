@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchCoverageBounds } from "@/lib/api/policies";
+import { ApiUnreachableError } from "@/lib/api/client";
+import { readCoverageBounds } from "@/lib/stellar/rpc";
 import { fromStroops } from "@/lib/format";
+import type { DataSource } from "@/lib/api/dataSource";
 
 interface CoverageBoundsState {
   /** Human USDC amounts, or null if unknown/unavailable — never fabricated. */
   minCoverage: number | null;
   maxCoverage: number | null;
+  /** "api" or "chain" when known; null while loading or when both tiers failed (no fixture exists for this). */
+  dataSource: DataSource | null;
 }
 
 interface UseCoverageBoundsResult extends CoverageBoundsState {
@@ -20,15 +25,15 @@ interface UseCoverageBoundsResult extends CoverageBoundsState {
 }
 
 /**
- * Real on-chain read of the pool's actual min/max coverage (a single
- * global bound across every type — see fetchCoverageBounds). Deliberately
- * no fixture fallback: there's no meaningful synthetic answer for "what
- * can the pool currently accept", so a failed/unreachable read just
- * leaves both bounds null and callers fall back to the static per-type
- * catalog alone, same as before this hook existed.
+ * The pool's actual min/max coverage (a single global bound across every
+ * type — see fetchCoverageBounds): backend API first, then a direct Soroban
+ * RPC read when the backend is unreachable. Deliberately no fixture tier:
+ * there's no meaningful synthetic answer for "what can the pool currently
+ * accept", so if both fail both bounds stay null and callers fall back to
+ * the static per-type catalog alone.
  */
 export function useCoverageBounds(): UseCoverageBoundsResult {
-  const [state, setState] = useState<CoverageBoundsState>({ minCoverage: null, maxCoverage: null });
+  const [state, setState] = useState<CoverageBoundsState>({ minCoverage: null, maxCoverage: null, dataSource: null });
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
 
@@ -46,16 +51,26 @@ export function useCoverageBounds(): UseCoverageBoundsResult {
     }
 
     try {
-      const { minCoverage, maxCoverage } = await fetchCoverageBounds(controller.signal);
+      let dataSource: DataSource = "api";
+      let bounds;
+      try {
+        bounds = await fetchCoverageBounds(controller.signal);
+      } catch (err) {
+        if (!(err instanceof ApiUnreachableError)) throw err;
+        bounds = await readCoverageBounds(controller.signal);
+        dataSource = "chain";
+      }
       if (controller.signal.aborted || !mountedRef.current) return;
+      const { minCoverage, maxCoverage } = bounds;
       setState({
         minCoverage: minCoverage ? fromStroops(minCoverage) : null,
         maxCoverage: maxCoverage ? fromStroops(maxCoverage) : null,
+        dataSource,
       });
       setIsError(false);
     } catch {
       if (controller.signal.aborted || !mountedRef.current) return;
-      setState({ minCoverage: null, maxCoverage: null });
+      setState({ minCoverage: null, maxCoverage: null, dataSource: null });
       setIsError(true);
     } finally {
       if (!controller.signal.aborted && mountedRef.current) {

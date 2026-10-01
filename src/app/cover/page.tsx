@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState, RelativeDate } from "@/components/ui";
 import { WalletButton, WrongNetworkBanner, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
@@ -152,11 +152,8 @@ export default function CoverPage() {
     return amount * annualRate * (durationDays / 365);
   }, [coverageAmount, durationDays, ct]);
 
-  const expiryDate = new Date(Date.now() + durationDays * 86400000).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const expiryMs = Date.now() + durationDays * 86400000;
+  const expiryDate = <RelativeDate target={expiryMs} />;
 
   const effectiveMin = Math.max(100, chainMinCoverage ?? 0);
   const effectiveMax = ct ? Math.min(ct.maxCoverage, chainMaxCoverage ?? ct.maxCoverage) : 0;
@@ -237,6 +234,7 @@ export default function CoverPage() {
       return;
     }
     if (amountInvalid || flightNumberInvalid || !isCorrectNetwork) return;
+    if (!(await wallet.ensureActive())) return;
     setConfirmOpen(true);
   }
 
@@ -949,7 +947,7 @@ export default function CoverPage() {
             { label: "Action", value: "Buy coverage" },
             { label: "Coverage type", value: ct.name },
             { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount || "0")) },
-            { label: "Duration", value: `${durationDays} days · Expires ${expiryDate}` },
+            { label: "Duration", value: <>{durationDays} days · Expires {expiryDate}</> },
             ...(isFlightDelay ? [{ label: "Flight", value: flightNumber.trim() }] : []),
           ]}
           total={{ label: "Estimated total cost", value: formatUsd(premium) }}

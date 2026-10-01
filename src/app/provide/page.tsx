@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Input, Button, Skeleton, LiveCountdown, RelativeDate } from "@/components/ui";
 import { WalletButton, WrongNetworkBanner } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
@@ -40,7 +40,7 @@ export default function ProvidePage() {
   const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
-  const { data: pool, loading: poolLoading, isFixture: poolIsFixture } = usePoolStats();
+  const { data: pool, loading: poolLoading, isFixture: poolIsFixture, dataSource: poolSource } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
 
@@ -112,6 +112,7 @@ export default function ProvidePage() {
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
     if (tab === "withdraw" && isLocked) return;
     if (!isCorrectNetwork) return;
+    if (!(await wallet.ensureActive())) return;
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: tab === "deposit" ? "provide" : "withdraw", amount: parsed });
@@ -184,6 +185,11 @@ export default function ProvidePage() {
               Underwrite Refract policies. Earn premiums when no triggers fire. Pool capital backs all coverage
               categories.
             </p>
+            {poolSource === "chain" && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
+                ⛓ Reading directly from chain — the Refract API isn&apos;t reachable, so APY isn&apos;t available.
+              </p>
+            )}
             {poolIsFixture && (
               <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
                 ⚠ Showing fixture data — the Refract API isn&apos;t reachable from this environment.
@@ -204,7 +210,7 @@ export default function ProvidePage() {
                 ))
               : [
                   { label: "Pool TVL", value: `$${(Number(pool.totalUsdc) / 1e7 / 1e6).toFixed(1)}M` },
-                  { label: "30d APY", value: `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
+                  { label: "30d APY", value: poolSource === "chain" ? "—" : `${(pool.apyBps / 100).toFixed(1)}%`, accent: true },
                   { label: "Share Price", value: `$${pool.sharePrice}` },
                   { label: "Utilization", value: `${utilizationPct.toFixed(2)}%` },
                 ].map((s) => (
@@ -371,13 +377,8 @@ export default function ProvidePage() {
 
                   {tab === "withdraw" && isLocked && lockupExpiresAt && (
                     <div className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
-                      🔒 Withdrawals unlock on{" "}
-                      {new Date(lockupExpiresAt * 1000).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                      .
+                      🔒 Withdrawals unlock on <RelativeDate target={lockupExpiresAt * 1000} hideRelative /> ·{" "}
+                      <LiveCountdown target={lockupExpiresAt * 1000} expiredLabel="Unlocked" />
                     </div>
                   )}
 
