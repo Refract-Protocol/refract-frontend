@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton } from "@/components/ui";
-import { WalletButton } from "@/components/wallet";
+import { WalletButton, WrongNetworkBanner } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { usePoolStats } from "@/hooks/usePoolStats";
 import { useUserPoolPosition } from "@/hooks/useUserPoolPosition";
@@ -13,6 +13,8 @@ import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useTransactionStore } from "@/lib/store/useTransactionStore";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -35,6 +37,9 @@ type SubmissionState =
 
 export default function ProvidePage() {
   const wallet = useWallet();
+  const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
+  const addTransaction = useTransactionStore((s) => s.addTransaction);
+  const updateTransaction = useTransactionStore((s) => s.updateTransaction);
   const { data: pool, loading: poolLoading, isFixture: poolIsFixture } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
@@ -106,25 +111,31 @@ export default function ProvidePage() {
     if (parsed <= 0) return;
     if (tab === "withdraw" && parsed > availableToWithdraw) return;
     if (tab === "withdraw" && isLocked) return;
+    if (!isCorrectNetwork) return;
 
     setSubmission({ status: "submitting" });
+    const txId = addTransaction({ type: tab === "deposit" ? "provide" : "withdraw", amount: parsed });
     try {
       if (tab === "deposit") {
         const result = await provideCapital(wallet.address, toStroops(parsed));
         setSubmission({ status: "signing" });
+        updateTransaction(txId, { status: "signing" });
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "provide");
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
+        updateTransaction(txId, { status: "confirmed", txHash });
       } else {
         const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
         setSubmission({ status: "signing" });
+        updateTransaction(txId, { status: "signing" });
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
-        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase);
+        const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "withdraw");
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
+        updateTransaction(txId, { status: "confirmed", txHash });
       }
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
@@ -150,9 +161,12 @@ export default function ProvidePage() {
           };
           setSubmission({ status: "success", kind: "withdraw", result: demoResult, demo: true });
         }
+        updateTransaction(txId, { status: "confirmed", demo: true });
         return;
       }
-      setSubmission({ status: "error", message: err instanceof Error ? err.message : "Something went wrong" });
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setSubmission({ status: "error", message });
+      updateTransaction(txId, { status: "failed", error: message });
     }
   }
 
@@ -176,6 +190,8 @@ export default function ProvidePage() {
               </p>
             )}
           </div>
+
+          <WrongNetworkBanner />
 
           {/* Stats */}
           <div className="mb-7 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
@@ -421,7 +437,8 @@ export default function ProvidePage() {
                     variant="primary"
                     size="lg"
                     block
-                    disabled={withdrawInvalid || (tab === "withdraw" && isLocked)}
+                    disabled={withdrawInvalid || (tab === "withdraw" && isLocked) || !isCorrectNetwork}
+                    title={!isCorrectNetwork ? `Switch your wallet to ${expectedNetwork} to continue` : undefined}
                     loading={
                       submission.status === "submitting" ||
                       submission.status === "signing" ||
@@ -433,6 +450,8 @@ export default function ProvidePage() {
                       ? "Confirm in wallet…"
                       : wallet.status !== "connected"
                         ? "Connect Wallet"
+                        : !isCorrectNetwork
+                          ? `Switch to ${expectedNetwork}`
                         : tab === "withdraw" && isLocked
                           ? "Locked"
                           : tab === "deposit"
