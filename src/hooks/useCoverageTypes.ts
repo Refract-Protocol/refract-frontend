@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import type { CoverageTypeInfo } from "@/lib/api/policies";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchCoverageTypes, type CoverageTypeInfo } from "@/lib/api/policies";
+import { FIXTURE_COVERAGE_TYPES } from "@/lib/fixtures/coverageTypes";
+import { ApiUnreachableError } from "@/lib/api/client";
 import { useCatalogStore } from "@/lib/store/catalogStore";
 
 interface CoverageTypesState {
@@ -19,8 +21,11 @@ interface CoverageTypesState {
  *
  * Backed by the shared catalog store so the landing page and /cover render
  * the same catalogue from a single fetch within the TTL.
+ *
+ * Exposes a stable `refetch()` so callers can retry after a failure or a
+ * fixture fallback without reloading the page.
  */
-export function useCoverageTypes(): CoverageTypesState {
+export function useCoverageTypes(): CoverageTypesState & { refetch: () => Promise<void> } {
   const data = useCatalogStore((s) => s.coverageTypes);
   const loading = useCatalogStore((s) => s.loading);
   const error = useCatalogStore((s) => s.error);
@@ -31,5 +36,6 @@ export function useCoverageTypes(): CoverageTypesState {
     void load();
   }, [load]);
 
-  return { data, loading, error, isFixture };
+  return { data, loading, error, isFixture, refetch: load };
+}
 }
