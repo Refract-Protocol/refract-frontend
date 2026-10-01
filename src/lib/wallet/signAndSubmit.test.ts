@@ -70,4 +70,41 @@ describe("signAndSubmit", () => {
 
     await expect(signAndSubmit(XDR, ADDRESS, PASSPHRASE)).rejects.toThrow("network down");
   });
+
+  it("calls onSigned callback immediately after successful signing before awaiting submitSignedTx", async () => {
+    const onSigned = vi.fn();
+
+    mockSign.mockResolvedValue({ signedTxXdr: "AAAA_SIGNED_XDR" } as never);
+    mockSubmit.mockResolvedValue({ confirmed: true, txHash: "TX_HASH_123" } as never);
+
+    const hash = await signAndSubmit(XDR, ADDRESS, PASSPHRASE, onSigned);
+
+    expect(onSigned).toHaveBeenCalledWith("AAAA_SIGNED_XDR");
+    expect(hash).toBe("TX_HASH_123");
+  });
+
+  it("throws error when signing is declined without triggering onSigned", async () => {
+    const onSigned = vi.fn();
+
+    mockSign.mockResolvedValue({ error: { message: "User declined signature" } } as never);
+
+    await expect(signAndSubmit(XDR, ADDRESS, PASSPHRASE, onSigned)).rejects.toThrow(
+      "User declined signature",
+    );
+
+    expect(onSigned).not.toHaveBeenCalled();
+  });
+
+  it("triggers onSigned but throws when tx submission fails confirmation", async () => {
+    const onSigned = vi.fn();
+
+    mockSign.mockResolvedValue({ signedTxXdr: "AAAA_SIGNED_XDR" } as never);
+    mockSubmit.mockResolvedValue({ confirmed: false, txHash: "", error: "Tx rejected on-chain" } as never);
+
+    await expect(signAndSubmit(XDR, ADDRESS, PASSPHRASE, onSigned)).rejects.toThrow(
+      "Tx rejected on-chain",
+    );
+
+    expect(onSigned).toHaveBeenCalledWith("AAAA_SIGNED_XDR");
+  });
 });

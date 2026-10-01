@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: i18n check
+        run: npx tsx scripts/i18n-check.ts
+
       - name: Build
         run: npm run build
         env:

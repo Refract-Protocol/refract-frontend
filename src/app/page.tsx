@@ -12,6 +12,8 @@ import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { ACTIVE_NETWORK } from "@/lib/network";
+import { HowItWorks } from "@/components/HowItWorks";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -81,6 +83,16 @@ export default function Home() {
   const claimStats = useClaimStats();
   const statsLoading = poolStats.loading || claimStats.loading;
   const anyTriggered = oracleStatus.data?.some((r) => r.severity === "triggered") ?? false;
+  const [secondsAgo, setSecondsAgo] = useState(0);
+
+  useEffect(() => {
+    if (!oracleStatus.lastUpdated) return;
+    const interval = setInterval(() => {
+      const diff = Math.floor((Date.now() - (oracleStatus.lastUpdated?.getTime() ?? Date.now())) / 1000);
+      setSecondsAgo(Math.max(0, diff));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [oracleStatus.lastUpdated]);
 
   return (
     <div className="min-h-screen bg-pm-bg">
@@ -99,7 +111,7 @@ export default function Home() {
           <div>
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-pm-violet/25 bg-pm-violet/10 px-3.5 py-1.5">
               <span className="h-[7px] w-[7px] rounded-full bg-pm-green shadow-[0_0_8px_#10b981]" aria-hidden="true" />
-              <span className="text-xs font-medium text-pm-text/70">Live on Stellar Testnet</span>
+              <span className="text-xs font-medium text-pm-text/70">Live on {ACTIVE_NETWORK.label}</span>
             </div>
 
             <h1 className="mb-5 font-display text-[clamp(34px,7vw,60px)] font-extrabold leading-[1.05] tracking-tight text-pm-text">
@@ -166,7 +178,21 @@ export default function Home() {
           <div className="relative">
             <Card className="relative z-10" aria-label="Live oracle status">
               <div className="mb-6 flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wide text-pm-text/60">Live Oracle Status</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-wide text-pm-text/60">Live Oracle Status</span>
+                  <button
+                    type="button"
+                    onClick={() => void oracleStatus.refresh()}
+                    disabled={oracleStatus.isRefreshing}
+                    className="flex h-5 w-5 items-center justify-center rounded text-xs text-pm-text/40 hover:bg-white/[0.06] hover:text-pm-text transition-colors disabled:opacity-50"
+                    title="Refresh oracle readings"
+                    aria-label="Refresh oracle status"
+                  >
+                    <span className={`inline-block ${oracleStatus.isRefreshing ? "animate-spin" : ""}`}>
+                      ↻
+                    </span>
+                  </button>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`pm-glow h-[7px] w-[7px] rounded-full ${anyTriggered ? "bg-pm-red" : "bg-pm-green"}`}
@@ -185,14 +211,16 @@ export default function Home() {
                   return (
                     <li
                       key={reading.coverageType}
-                      className="flex items-center justify-between border-b border-pm-violet/[0.08] py-3 last:border-none"
+                      className="flex items-center justify-between border-b border-pm-violet/[0.08] py-3 last:border-none transition-colors duration-300"
                     >
                       <div className="flex items-center gap-2.5">
                         <span className="text-base" aria-hidden="true">{display.icon}</span>
                         <span className="text-[13px] text-pm-text/70">{display.feed}</span>
                       </div>
                       <div className="flex items-center gap-2.5">
-                        <span className="font-mono text-[13px] font-semibold text-pm-text">{display.formatValue(reading)}</span>
+                        <span className="font-mono text-[13px] font-semibold text-pm-text transition-all">
+                          {display.formatValue(reading)}
+                        </span>
                         <Badge tone={SEVERITY_BADGE_TONE[reading.severity]}>
                           {reading.severity === "low" ? "Safe" : reading.severity === "triggered" ? "Triggered" : "Elevated"}
                         </Badge>
@@ -207,11 +235,18 @@ export default function Home() {
                   anyTriggered ? "border-pm-red/15 bg-pm-red/[0.06]" : "border-pm-green/15 bg-pm-green/[0.06]"
                 }`}
               >
-                <div className={`mb-0.5 text-xs font-semibold ${anyTriggered ? "text-pm-red" : "text-pm-green"}`}>
-                  {anyTriggered ? "One or more triggers active" : "No triggers active"}
+                <div className="flex items-center justify-between">
+                  <div className={`text-xs font-semibold ${anyTriggered ? "text-pm-red" : "text-pm-green"}`}>
+                    {anyTriggered ? "One or more triggers active" : "No triggers active"}
+                  </div>
+                  {oracleStatus.lastUpdated && (
+                    <span className="text-[10px] text-pm-text/40">
+                      {secondsAgo === 0 ? "Just updated" : `${secondsAgo}s ago`}
+                    </span>
+                  )}
                 </div>
-                <div className="text-[11px] text-pm-text/40">
-                  {oracleStatus.isFixture ? "Example data — Refract API unreachable" : "Oracles refreshed every 60 seconds"}
+                <div className="mt-0.5 text-[11px] text-pm-text/40">
+                  {oracleStatus.isFixture ? "Example data — Refract API unreachable" : "Oracles auto-refreshed every 60 seconds"}
                 </div>
               </div>
             </Card>
@@ -305,6 +340,9 @@ export default function Home() {
             </Card>
           </Container>
         </section>
+
+        {/* Scroll-driven How it works section */}
+        <HowItWorks />
 
         {/* Recent payouts */}
         <section aria-labelledby="payouts-heading" className="py-16">
