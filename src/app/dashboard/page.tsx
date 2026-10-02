@@ -30,7 +30,7 @@ const STATUS_BADGE: Record<PolicyStatus, { tone: "safe" | "violet" | "neutral"; 
 export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
-  const { data: policies, loading, error, isFixture } = useHolderPolicies(address);
+  const { data: policies, loading, error, isFixture, isStale } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
   const policiesById = normalizePolicies(policies ?? []);
   const claimsByPolicyId = normalizeClaims(claims);
@@ -110,6 +110,11 @@ export default function DashboardPage() {
                   Download JSON
                 </Button>
               </div>
+            )}
+            {isStale && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-pm-text/40">
+                Showing saved data from your last visit — refreshing…
+              </p>
             )}
           </div>
 
