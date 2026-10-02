@@ -232,11 +232,17 @@ export default function CoverPage() {
 
   async function handleBuy() {
     if (!ct) return;
-    if (wallet.status !== "connected" || !wallet.address) {
-      await wallet.connect();
-      return;
-    }
     if (amountInvalid || flightNumberInvalid || !isCorrectNetwork) return;
+    let holder = wallet.status === "connected" ? wallet.address : null;
+    let networkPassphrase = wallet.networkPassphrase;
+    if (!holder) {
+      // Connect, then carry on with the same purchase — no second click.
+      // A declined/failed connect resolves null and stops here.
+      const connected = await wallet.connect();
+      if (!connected) return;
+      holder = connected.address;
+      networkPassphrase = connected.networkPassphrase;
+    }
     setConfirmOpen(true);
   }
 
@@ -248,7 +254,7 @@ export default function CoverPage() {
     const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
     try {
       const result = await buyPolicy({
-        holder: wallet.address,
+        holder,
         coverageType: ct.id,
         coverageAmount: toStroops(parseFloat(coverageAmount)),
         durationDays,
@@ -283,7 +289,7 @@ export default function CoverPage() {
         const demoResult: BuyPolicyResponse = {
           policy: {
             id: `demo-${crypto.randomUUID()}`,
-            holder: wallet.address,
+            holder,
             coverageType: ct.id,
             coverageTypeName: ct.name,
             coverageAmount: toStroops(parseFloat(coverageAmount)),
@@ -826,8 +832,15 @@ export default function CoverPage() {
                         ? `Switch to ${expectedNetwork}`
                         : wallet.status === "connected"
                         ? "Buy Coverage"
-                        : "Connect to Continue"}
+                        : wallet.status === "connecting"
+                          ? "Connecting…"
+                          : "Connect & Buy Coverage"}
                   </Button>
+                  {wallet.status !== "connected" && (
+                    <p className="mt-2 text-[12px] text-pm-muted">
+                      After you connect, your purchase continues automatically — you&apos;ll still confirm it in Freighter.
+                    </p>
+                  )}
 
                   {submission.status === "error" && <TxErrorMessage rawError={submission.message} />}
 
