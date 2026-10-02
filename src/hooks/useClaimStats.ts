@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchClaimStats, type ClaimStats } from "@/lib/api/claims";
 import { FIXTURE_CLAIM_STATS } from "@/lib/fixtures/claimStats";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
 interface ClaimStatsState {
   data: ClaimStats | null;
@@ -12,18 +13,14 @@ interface ClaimStatsState {
 
 /** Loads protocol-wide claim stats from GET /api/v1/claims/stats, falling back to the bundled fixture offline. */
 export function useClaimStats(): ClaimStatsState {
-  const [state, setState] = useState<ClaimStatsState>({ data: null, loading: true, isFixture: false });
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["claimStats"],
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(() => fetchClaimStats(signal), () => FIXTURE_CLAIM_STATS, {
+        signal,
+        fallbackOnAnyError: true,
+      }),
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchClaimStats(controller.signal)
-      .then((data) => setState({ data, loading: false, isFixture: false }))
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setState({ data: FIXTURE_CLAIM_STATS, loading: false, isFixture: true });
-      });
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { data: result?.data ?? null, loading: isLoading, isFixture: result?.isFixture ?? false };
 }

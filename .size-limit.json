@@ -1,0 +1,26 @@
+[
+  {
+    "name": "shared JS (all routes)",
+    "path": ".next/static/chunks/*.js",
+    "limit": "250 kB",
+    "gzip": true
+  },
+  {
+    "name": "app router runtime",
+    "path": ".next/static/chunks/app/layout-*.js",
+    "limit": "120 kB",
+    "gzip": true
+  },
+  {
+    "name": "home route",
+    "path": ".next/static/chunks/app/page-*.js",
+    "limit": "80 kB",
+    "gzip": true
+  },
+  {
+    "name": "all route chunks",
+    "path": ".next/static/chunks/app/**/*.js",
+    "limit": "400 kB",
+    "gzip": true
+  }
+]
