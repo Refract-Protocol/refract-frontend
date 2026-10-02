@@ -1,0 +1,97 @@
+name: Preview
+
+# Preview deployments for every pull request.
+#
+# Approach: hand-rolled GitHub Actions deploy to Vercel using the Vercel CLI.
+# We deliberately avoid the native Vercel GitHub App integration because it
+# requires repo-admin installation and a linked Vercel project, whereas this
+# workflow only needs two repository secrets (VERCEL_TOKEN, VERCEL_ORG_ID,
+# VERCEL_PROJECT_ID) and keeps all preview configuration reviewable in-tree.
+# Tradeoff: we own the deploy step and must keep the CLI version current, but
+# we get full control over the non-production env vars injected into previews.
+#
+# Preview builds are intentionally pointed at a non-production API URL so they
+# never reach a real backend. With NEXT_PUBLIC_API_URL unset/empty the app
+# falls back to its fixture/demo mode, which is exactly what an ephemeral
+# preview URL should exercise.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    name: deploy preview
+    runs-on: ubuntu-latest
+    # Skip cleanly (rather than fail) when the Vercel secrets are not yet
+    # configured, so forks and unconfigured repos still pass CI.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # Safe, non-production API URL. Empty value => app uses its
+      # fixture-fallback demo mode; previews never hit a real backend.
+      NEXT_PUBLIC_API_URL: ""
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel preview environment
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build preview
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy preview
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const marker = '<!-- preview-deployment -->';
+            const body = `${marker}\n### Preview deployment\n\n:rocket: ${url}\n\nBuilt from ${context.sha} in demo/fixture-fallback mode (no production backend).`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
