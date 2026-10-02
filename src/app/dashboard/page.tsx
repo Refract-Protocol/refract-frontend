@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Button, Skeleton } from "@/components/ui";
+import { Container, Card, Badge, Button, Skeleton, RelativeDate } from "@/components/ui";
 import { WalletButton } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
@@ -215,7 +215,8 @@ export default function DashboardPage() {
                                   <Badge tone={badge.tone}>{badge.label}</Badge>
                                 </div>
                                 <div className="text-xs text-pm-text/40">
-                                  Coverage {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} · Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })}
+                                  Coverage {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} · Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })} · {status === "expired" ? "Expired" : "Expires"}{" "}
+                                  <RelativeDate target={policy.expiresAt * 1000} />
                                 </div>
                               </div>
                             </div>
