@@ -7,12 +7,10 @@ const BASE_BACKOFF_MS = 1_000;
 
 /**
  * A small reconnecting WebSocket wrapper exposing a subscribe-by-topic API.
- * The backend contract this assumes (documented, not yet implemented
- * upstream): connect to `${wsUrl}`, receive JSON messages shaped
- * `{ topic: string, payload: unknown }`, one topic per push-based update
- * type (e.g. "oracle_update"). Callers must treat this connection as
- * best-effort — always keep an independent REST fetch as the source of
- * truth for initial state.
+ * Implements the Refract Realtime Protocol v1 specification documented in
+ * `docs/realtime-protocol.md` and validated by `src/lib/realtime/contract.ts`.
+ * Callers must treat this connection as best-effort — always keep an
+ * independent REST fetch as the source of truth for initial state.
  */
 class RealtimeClient {
   private socket: WebSocket | null = null;
