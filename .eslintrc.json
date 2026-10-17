@@ -19,6 +19,17 @@
         "selector": "BinaryExpression[operator='**'][right.value=7]",
         "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of 10 ** 7."
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/lib/realtime/*", "**/lib/realtime/*"],
+            "message": "Import from the public barrel '@/lib/realtime' instead of deep-importing internal modules under 'src/lib/realtime/*'."
+          }
+        ]
+      }
     ]
   },
   "overrides": [
@@ -26,6 +37,12 @@
       "files": ["src/lib/coverage/metadata.ts", "src/lib/coverage/colors.ts", "src/app/global-error.tsx", "src/lib/format.ts"],
       "rules": {
         "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": ["src/lib/realtime/**"],
+      "rules": {
+        "no-restricted-imports": "off"
       }
     }
   ]
