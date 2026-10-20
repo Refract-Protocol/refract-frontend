@@ -60,6 +60,11 @@ Other environment variables:
 | `npm run lint` | `next lint` |
 | `npm run typecheck` | `tsc --noEmit` |
 
+## Monitoring
+
+Runtime errors are reported to Sentry when `NEXT_PUBLIC_SENTRY_DSN` is set. See
+[docs/monitoring.md](docs/monitoring.md) for configuration and the data-scrubbing policy.
+
 ## License
 
 [MIT](./LICENSE)
