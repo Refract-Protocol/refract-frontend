@@ -5,6 +5,46 @@ type Handler = (payload: unknown) => void;
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
 const CURSOR_STORAGE_PREFIX = "realtime:cursor:";
+const MAX_REPORTED_RECONNECT_LOOPS = 5;
+
+/**
+ * Machine-readable connection status the UI can branch on.
+ * - `idle`: never connected / explicitly disconnected
+ * - `connecting`: initial connection in flight
+ * - `open`: connected and healthy
+ * - `reconnecting`: dropped, waiting to retry
+ * - `closed`: closed by the user
+ */
+export type RealtimeStatus = "idle" | "connecting" | "open" | "reconnecting" | "closed";
+
+export interface RealtimeHealth {
+  status: RealtimeStatus;
+  /** Transport currently in use, e.g. "websocket". */
+  transport: string;
+  /** Number of reconnect attempts since the last successful open. */
+  attempt: number;
+  /** Epoch ms of the last message received, or null if none yet. */
+  lastMessageAt: number | null;
+  /** Age in ms of the last message, or null if none yet. */
+  lastMessageAgeMs: number | null;
+  /** Last error surfaced by the transport, redacted for reporting. */
+  lastError: string | null;
+  /** Cumulative count of transport errors observed. */
+  errorCount: number;
+}
+
+type HealthListener = (health: RealtimeHealth) => void;
+
+/**
+ * Strips tokens/URLs from error strings before they leave the client so
+ * health signals can be safely forwarded to error monitoring.
+ */
+function redactError(message: string): string {
+  return message
+    .replace(/wss?:\/\/[^\s"']+/gi, "[redacted-url]")
+    .replace(/https?:\/\/[^\s"']+/gi, "[redacted-url]")
+    .replace(/(token|access_token|auth|key|secret)=[^&\s"']+/gi, "$1=[redacted]");
+}
 
 /**
  * A small reconnecting WebSocket wrapper exposing a subscribe-by-topic API.
@@ -21,6 +61,10 @@ const CURSOR_STORAGE_PREFIX = "realtime:cursor:";
  * topic, then replays any events newer than the stored cursor through the
  * idempotent merge layer. If replay is unavailable or the cursor is too old,
  * it falls back to a fresh snapshot with no streamed delta.
+ *
+ * Health: the client maintains an observable health snapshot emitted to
+ * subscribers on state transitions (not per-message) so React can subscribe
+ * rather than poll. High-frequency message timestamps are coalesced.
  */
 class RealtimeClient {
   private socket: WebSocket | null = null;
@@ -30,6 +74,19 @@ class RealtimeClient {
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  private health: RealtimeHealth = {
+    status: "idle",
+    transport: "websocket",
+    attempt: 0,
+    lastMessageAt: null,
+    lastMessageAgeMs: null,
+    lastError: null,
+    errorCount: 0,
+  };
+  private healthListeners = new Set<HealthListener>();
+  private messageCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
+  private reportedReconnectLoops = 0;
+
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
     this.closedByUser = false;
@@ -38,15 +95,19 @@ class RealtimeClient {
 
   private open(): void {
     const wsUrl = API_BASE_URL.replace(/^http/, "ws").replace(/\/api\/v1$/, "/ws");
+    this.updateHealth({ status: this.attempt > 0 ? "reconnecting" : "connecting" });
     try {
       this.socket = new WebSocket(wsUrl);
-    } catch {
+    } catch (err) {
+      this.recordError(err);
       this.scheduleReconnect();
       return;
     }
 
     this.socket.addEventListener("open", () => {
       this.attempt = 0;
+      this.reportedReconnectLoops = 0;
+      this.updateHealth({ status: "open", attempt: 0 });
       this.resubscribe();
     });
     this.socket.addEventListener("message", (event) => {
@@ -58,15 +119,20 @@ class RealtimeClient {
         };
         if (typeof seq === "number") this.setCursor(topic, seq);
         this.handlers.get(topic)?.forEach((handler) => handler(payload));
+        this.markMessageReceived();
       } catch {
         // Malformed message — ignore, don't crash the connection.
       }
     });
     this.socket.addEventListener("close", () => {
       this.socket = null;
-      if (!this.closedByUser) this.scheduleReconnect();
+      if (!this.closedByUser) {
+        this.updateHealth({ status: "reconnecting" });
+        this.scheduleReconnect();
+      }
     });
-    this.socket.addEventListener("error", () => {
+    this.socket.addEventListener("error", (event) => {
+      this.recordError(event);
       this.socket?.close();
     });
   }
@@ -75,6 +141,8 @@ class RealtimeClient {
     if (this.reconnectTimer) return;
     const delay = Math.min(BASE_BACKOFF_MS * 2 ** this.attempt, MAX_BACKOFF_MS);
     this.attempt += 1;
+    this.updateHealth({ status: "reconnecting", attempt: this.attempt });
+    this.reportReconnectLoop();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.closedByUser) this.open();
@@ -166,6 +234,72 @@ class RealtimeClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
+    this.updateHealth({ status: "closed" });
+  }
+
+  /**
+   * Subscribe to connection health. Emits the current snapshot immediately,
+   * then on each state transition. Returns an unsubscribe function.
+   */
+  subscribeHealth(listener: HealthListener): () => void {
+    this.healthListeners.add(listener);
+    listener(this.getHealth());
+    return () => {
+      this.healthListeners.delete(listener);
+    };
+  }
+
+  /** Returns a copy of the current health snapshot. */
+  getHealth(): RealtimeHealth {
+    return {
+      ...this.health,
+      lastMessageAgeMs:
+        this.health.lastMessageAt === null ? null : Date.now() - this.health.lastMessageAt,
+    };
+  }
+
+  private updateHealth(patch: Partial<RealtimeHealth>): void {
+    this.health = { ...this.health, ...patch };
+    const snapshot = this.getHealth();
+    this.healthListeners.forEach((listener) => listener(snapshot));
+  }
+
+  /**
+   * Coalesces high-frequency message timestamps so per-message traffic does
+   * not churn React state on every frame.
+   */
+  private markMessageReceived(): void {
+    if (this.messageCoalesceTimer) return;
+    this.messageCoalesceTimer = setTimeout(() => {
+      this.messageCoalesceTimer = null;
+      this.updateHealth({ lastMessageAt: Date.now() });
+    }, 1_000);
+  }
+
+  private recordError(err: unknown): void {
+    const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "transport error";
+    this.updateHealth({
+      lastError: redactError(raw),
+      errorCount: this.health.errorCount + 1,
+    });
+  }
+
+  /**
+   * Reports reconnect-loop events to error monitoring, capped to avoid alert
+   * flooding during a sustained outage.
+   */
+  private reportReconnectLoop(): void {
+    if (this.reportedReconnectLoops >= MAX_REPORTED_RECONNECT_LOOPS) return;
+    this.reportedReconnectLoops += 1;
+    const report = (globalThis as { __realtimeHealthReport?: (h: RealtimeHealth) => void })
+      .__realtimeHealthReport;
+    if (typeof report === "function") {
+      try {
+        report(this.getHealth());
+      } catch {
+        // Monitoring must never break the connection.
+      }
+    }
   }
 }
 
