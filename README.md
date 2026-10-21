@@ -63,3 +63,11 @@ Other environment variables:
 ## License
 
 [MIT](./LICENSE)
+
+## Realtime layer (dev)
+
+Realtime is off by default (`public/flags.json`; see `docs/realtime-protocol.md` and `docs/realtime-rollout.md`).
+Run the deterministic mock server with `npm run mock:realtime` (prints `MOCK_REALTIME_URL=…`; add `--port=4010`).
+Scenario flags: `--seed=N --count=N --dropAfter=N --latencyMs=N --duplicate --reorder --unknown --authFail`, or the same as query params on the WebSocket URL.
+Playwright starts it on port 4010 automatically; point the app at it with `NEXT_PUBLIC_API_URL=http://127.0.0.1:4010/api/v1`
+and `NEXT_PUBLIC_FLAGS_OVERRIDE='{"realtime-enabled":true,"realtime-oracle":true}'`.

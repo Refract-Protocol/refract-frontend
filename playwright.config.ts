@@ -37,12 +37,23 @@ export default defineConfig({
       use: { ...devices["Desktop Safari"] },
     },
   ],
-  webServer: process.env.PLAYWRIGHT_BASE_URL
-    ? undefined
-    : {
-        command: "npm run dev",
-        url: "http://127.0.0.1:3000",
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-      },
+  webServer: [
+    // Deterministic mock realtime server on a fixed port for browser tests.
+    {
+      command: "node scripts/mock-realtime-server.mjs --port=4010",
+      port: 4010,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    ...(process.env.PLAYWRIGHT_BASE_URL
+      ? []
+      : [
+          {
+            command: "npm run dev",
+            url: "http://127.0.0.1:3000",
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+          },
+        ]),
+  ],
 });

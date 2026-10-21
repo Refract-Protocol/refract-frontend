@@ -19,7 +19,8 @@
     "analyze": "ANALYZE=true next build",
     "size": "size-limit",
     "size:why": "size-limit --why",
-    "tokens:check": "node scripts/check-tokens.mjs"
+    "tokens:check": "node scripts/check-tokens.mjs",
+    "mock:realtime": "node scripts/mock-realtime-server.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

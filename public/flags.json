@@ -1,5 +1,9 @@
 {
   "flags": {
-    "realtime-oracle": false
+    "realtime-enabled": false,
+    "realtime-oracle": false,
+    "realtime-claims": false,
+    "realtime-pool": false,
+    "realtime-notifications": false
   }
 }

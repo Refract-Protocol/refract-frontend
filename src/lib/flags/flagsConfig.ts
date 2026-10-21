@@ -4,7 +4,11 @@ export interface FlagsDocument {
 
 /** Safe default if the remote flags source is unreachable — new/risky features default off. */
 export const DEFAULT_FLAGS: Record<string, boolean> = {
+  "realtime-enabled": false,
   "realtime-oracle": false,
+  "realtime-claims": false,
+  "realtime-pool": false,
+  "realtime-notifications": false,
 };
 
 export const FLAGS_ENDPOINT = "/flags.json";
