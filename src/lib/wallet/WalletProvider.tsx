@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { realtimeClient } from "@/lib/realtime/client";
 import { Modal } from "@/components/ui/Modal";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import { WALLET_ADAPTERS, getAdapter, setActiveAdapter, type WalletAdapter, type WalletAdapterId } from "./adapters";
@@ -152,6 +153,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const disconnect = useCallback(() => {
+    realtimeClient.disconnect();
     // Wallets have no dApp-initiated "revoke" call — disconnecting here just
     // forgets the local session. Re-connecting will re-prompt the extension.
     localStorage.removeItem(STORAGE_KEY);
