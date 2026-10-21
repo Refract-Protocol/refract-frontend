@@ -15,6 +15,7 @@ import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
+import { useOptimisticReconciliation } from "@/hooks/useOptimisticReconciliation";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -40,6 +41,7 @@ export default function ProvidePage() {
   const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
+  const reconciliation = useOptimisticReconciliation();
   const { data: pool, loading: poolLoading, isFixture: poolIsFixture, dataSource: poolSource } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
@@ -116,37 +118,57 @@ export default function ProvidePage() {
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: tab === "deposit" ? "provide" : "withdraw", amount: parsed });
+    let actionCorrection: Record<string, unknown> | undefined;
+    let rejected = false;
+    const releaseReconciliation = reconciliation.register({
+      correlationId: txId, kind: tab === "deposit" ? "provide" : "withdraw",
+      onConfirm: (authoritative) => {
+        actionCorrection = authoritative;
+        setSubmission((current) => {
+          if (current.status !== "success" || !authoritative) return current;
+          return current.kind === "deposit" ? { ...current, result: { ...current.result, ...authoritative } as ProvideCapitalResponse } : { ...current, result: { ...current.result, ...authoritative } as WithdrawCapitalResponse };
+        });
+        updateTransaction(txId, { status: "confirmed", authoritative,
+          ...(typeof authoritative?.amount === "number" ? { amount: authoritative.amount } : {}),
+          ...(typeof authoritative?.txHash === "string" ? { txHash: authoritative.txHash } : {}),
+        });
+      },
+      onRollback: (reason) => { rejected = true; updateTransaction(txId, { status: "failed", error: reason }); setSubmission({ status: "error", message: `${reason} The displayed balance update was reverted.` }); },
+    });
     try {
       if (tab === "deposit") {
-        const result = await provideCapital(wallet.address, toStroops(parsed));
+        const result = await provideCapital(wallet.address, toStroops(parsed).toString(), txId);
         setSubmission({ status: "signing" });
         updateTransaction(txId, { status: "signing" });
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "provide");
-        setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
+        if (rejected) throw new Error("The transaction was rejected by the server.");
+        setSubmission({ status: "success", kind: "deposit", result: actionCorrection ? { ...result, ...actionCorrection } as ProvideCapitalResponse : result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       } else {
-        const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice));
+        const result = await withdrawCapital(wallet.address, toStroops(parsed / sharePrice).toString(), txId);
         setSubmission({ status: "signing" });
         updateTransaction(txId, { status: "signing" });
         if (!wallet.networkPassphrase) {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "withdraw");
-        setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
+        if (rejected) throw new Error("The transaction was rejected by the server.");
+        setSubmission({ status: "success", kind: "withdraw", result: actionCorrection ? { ...result, ...actionCorrection } as WithdrawCapitalResponse : result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       }
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
+        releaseReconciliation();
         // Backend unreachable in this environment — simulate locally,
         // clearly labeled, so the flow can still be exercised end-to-end.
         if (tab === "deposit") {
           const demoResult: ProvideCapitalResponse = {
             provider: wallet.address,
-            amountUsdc: toStroops(parsed),
-            sharesOut: toStroops(parsed / sharePrice),
+            amountUsdc: toStroops(parsed).toString(),
+            sharesOut: toStroops(parsed / sharePrice).toString(),
             sharePrice,
             txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
             message: "Simulated locally: the Refract API is not running in this environment.",
@@ -155,8 +177,8 @@ export default function ProvidePage() {
         } else {
           const demoResult: WithdrawCapitalResponse = {
             provider: wallet.address,
-            sharesIn: toStroops(parsed / sharePrice),
-            usdcOut: toStroops(parsed),
+            sharesIn: toStroops(parsed / sharePrice).toString(),
+            usdcOut: toStroops(parsed).toString(),
             sharePrice,
             txXdr: "DEMO_MODE — backend unreachable, no transaction was built",
           };
@@ -165,6 +187,7 @@ export default function ProvidePage() {
         updateTransaction(txId, { status: "confirmed", demo: true });
         return;
       }
+      releaseReconciliation();
       const message = err instanceof Error ? err.message : "Something went wrong";
       setSubmission({ status: "error", message });
       updateTransaction(txId, { status: "failed", error: message });
@@ -174,6 +197,9 @@ export default function ProvidePage() {
   return (
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
+      {reconciliation.notices.map((notice) => (
+        <div key={notice.id} role="status" aria-live="polite" className="mx-auto mt-3 flex max-w-5xl items-start justify-between gap-3 rounded-lg border border-pm-red/30 bg-pm-red/10 px-4 py-3 text-sm text-pm-text"><span>{notice.message}</span><button type="button" onClick={() => reconciliation.dismiss(notice.id)} aria-label="Dismiss update">×</button></div>
+      ))}
 
       <main id="main-content">
         <Container className="py-9 sm:py-10">

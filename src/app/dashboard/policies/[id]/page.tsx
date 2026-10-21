@@ -33,7 +33,8 @@ export default function PolicyDetailPage() {
 
   const { data: policies, loading: policiesLoading } = useHolderPolicies();
   const { data: readings, loading: oracleLoading, isFixture } = useOracleStatus();
-  const { data: claims, loading: claimsLoading } = useClaims();
+  const claimsResult = useClaims();
+  const { data: claims, loading: claimsLoading } = claimsResult;
 
   const policy = policies?.find((p) => String(p.id) === String(id)) ?? null;
   const coverageType = policy?.coverageType ?? policy?.coverage_type;
@@ -79,6 +80,7 @@ export default function PolicyDetailPage() {
 
           <section className="rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg font-medium">Policy details</h2>
+            {claimsResult.isStale && <p role="status" className="mt-2 text-xs text-amber-700">Claim updates are temporarily disconnected. Showing the latest REST data.</p>}
             <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <dt className="text-sm text-gray-500">Policy ID</dt>

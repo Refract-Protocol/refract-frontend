@@ -47,7 +47,7 @@ export function fetchHolderClaims(
   params: PaginationParams = {},
   signal?: AbortSignal,
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/holder/${address}${buildPaginationQuery(params)}`, { signal }).then(
+  return apiRequest<{ claims?: ClaimRecord[]; items?: ClaimRecord[]; nextCursor?: string; hasMore?: boolean }>(`/claims/holder/${address}${buildPaginationQuery(params)}`, { signal }).then(
     normalizeClaimsResponse,
   );
 }
@@ -56,7 +56,7 @@ export function fetchRecentClaims(
   params: PaginationParams = {},
   signal?: AbortSignal,
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/recent${buildPaginationQuery(params)}`, { signal }).then(
+  return apiRequest<{ claims?: ClaimRecord[]; items?: ClaimRecord[]; nextCursor?: string; hasMore?: boolean }>(`/claims/recent${buildPaginationQuery(params)}`, { signal }).then(
     normalizeClaimsResponse,
   );
 }

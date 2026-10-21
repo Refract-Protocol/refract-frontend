@@ -1,5 +1,8 @@
 {
   "flags": {
-    "realtime-oracle": false
+    "realtime-oracle": false,
+    "realtime-claims-settlement": false,
+    "realtime-notifications": false,
+    "realtime-transactions": false
   }
 }

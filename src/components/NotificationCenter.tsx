@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { RefractNotification } from "@/lib/notifications";
+import { useReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   info: "ℹ",
@@ -12,7 +13,10 @@ const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   critical: "⚡",
 };
 
-const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; text: string; border: string }> = {
+const SEVERITY_COLORS: Record<
+  RefractNotification["severity"],
+  { bg: string; text: string; border: string }
+> = {
   info: { bg: "bg-pm-violet/10", text: "text-pm-violet", border: "border-pm-violet/20" },
   warning: { bg: "bg-pm-amber/10", text: "text-pm-amber", border: "border-pm-amber/20" },
   success: { bg: "bg-pm-green/10", text: "text-pm-green", border: "border-pm-green/20" },
@@ -21,7 +25,8 @@ const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; tex
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, isStale } = useNotifications();
+  const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -83,7 +88,8 @@ export function NotificationCenter() {
         <div
           role="dialog"
           aria-label="Notification Center"
-          className="absolute right-0 top-12 z-50 w-[340px] max-w-[calc(100vw-32px)] rounded-xl border border-pm-border bg-pm-bg/95 p-4 shadow-2xl backdrop-blur-xl animate-fade-up sm:w-[380px]"
+          className={`absolute right-0 top-12 z-50 w-[340px] max-w-[calc(100vw-32px)] rounded-xl border border-pm-border bg-pm-bg/95 p-4 shadow-2xl backdrop-blur-xl sm:w-[380px] ${reduceMotion ? "" : "animate-fade-up"}`}
+          aria-live="polite"
         >
           <div className="mb-3 flex items-center justify-between border-b border-pm-border pb-3">
             <div className="flex items-center gap-2">
@@ -94,6 +100,11 @@ export function NotificationCenter() {
                 </span>
               )}
             </div>
+            {isStale && (
+              <p role="status" className="mb-3 text-[11px] text-pm-amber">
+                Live notifications are disconnected. Showing account data from REST.
+              </p>
+            )}
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -108,7 +119,9 @@ export function NotificationCenter() {
           <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
             {notifications.length === 0 ? (
               <div className="py-8 text-center text-xs text-pm-text/40">
-                <span className="mb-2 block text-2xl" aria-hidden="true">🔔</span>
+                <span className="mb-2 block text-2xl" aria-hidden="true">
+                  🔔
+                </span>
                 No notifications right now. You&apos;re all caught up!
               </div>
             ) : (

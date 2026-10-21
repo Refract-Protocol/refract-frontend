@@ -71,10 +71,10 @@ export function fetchPoolAllocation(signal?: AbortSignal): Promise<PoolAllocatio
   return apiRequest("/pool/allocation", { signal });
 }
 
-export function provideCapital(provider: string, amount: string): Promise<ProvideCapitalResponse> {
-  return apiRequest("/pool/provide", { method: "POST", body: { provider, amount } });
+export function provideCapital(provider: string, amount: string, correlationId?: string): Promise<ProvideCapitalResponse> {
+  return apiRequest("/pool/provide", { method: "POST", body: { provider, amount }, idempotencyKey: correlationId });
 }
 
-export function withdrawCapital(provider: string, shares: string): Promise<WithdrawCapitalResponse> {
-  return apiRequest("/pool/withdraw", { method: "POST", body: { provider, shares } });
+export function withdrawCapital(provider: string, shares: string, correlationId?: string): Promise<WithdrawCapitalResponse> {
+  return apiRequest("/pool/withdraw", { method: "POST", body: { provider, shares }, idempotencyKey: correlationId });
 }

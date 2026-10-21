@@ -355,6 +355,7 @@ export default function Home() {
                 ⚠ Showing example data — the Refract API isn&apos;t reachable from this environment.
               </p>
             )}
+            {recentClaims.isStale && <p role="status" className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">Live payouts are temporarily disconnected. Showing the latest REST data.</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {(recentClaims.data ?? []).map((claim) => (
                 <Card key={claim.policyId} padding="sm" className="!p-5">
