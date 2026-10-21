@@ -68,6 +68,10 @@ jobs:
       - name: i18n check
         run: npx tsx scripts/i18n-check.ts
 
+      - name: Client boundary audit (informational)
+        run: npx tsx scripts/audit-client-boundaries.ts --out client-boundary-audit.md
+        continue-on-error: true
+
       - name: Build
         run: npm run build
         env:
@@ -99,6 +103,15 @@ jobs:
         run: npx playwright test --grep-invert @visual
         env:
           CI: 'true'
+
+      - name: Upload client boundary audit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-boundary-audit
+          path: client-boundary-audit.md
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

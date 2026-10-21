@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api/client";
+import { env } from "@/lib/env";
 
 type Handler = (payload: unknown) => void;
 
@@ -20,6 +21,7 @@ class RealtimeClient {
   private attempt = 0;
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private statusListeners = new Set<(connected: boolean) => void>();
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -28,7 +30,7 @@ class RealtimeClient {
   }
 
   private open(): void {
-    const wsUrl = API_BASE_URL.replace(/^http/, "ws").replace(/\/api\/v1$/, "/ws");
+    const wsUrl = env.NEXT_PUBLIC_REALTIME_URL ?? API_BASE_URL.replace(/^http/, "ws").replace(/\/api\/v1$/, "/ws");
     try {
       this.socket = new WebSocket(wsUrl);
     } catch {
@@ -38,6 +40,7 @@ class RealtimeClient {
 
     this.socket.addEventListener("open", () => {
       this.attempt = 0;
+      this.statusListeners.forEach((cb) => cb(true));
     });
     this.socket.addEventListener("message", (event) => {
       try {
@@ -49,6 +52,7 @@ class RealtimeClient {
     });
     this.socket.addEventListener("close", () => {
       this.socket = null;
+      this.statusListeners.forEach((cb) => cb(false));
       if (!this.closedByUser) this.scheduleReconnect();
     });
     this.socket.addEventListener("error", () => {
@@ -73,6 +77,14 @@ class RealtimeClient {
 
     return () => {
       this.handlers.get(topic)?.delete(handler);
+    };
+  }
+
+  /** Notifies on socket open/close so consumers can degrade to REST immediately instead of waiting for heartbeat staleness. */
+  onConnectionChange(cb: (connected: boolean) => void): () => void {
+    this.statusListeners.add(cb);
+    return () => {
+      this.statusListeners.delete(cb);
     };
   }
 

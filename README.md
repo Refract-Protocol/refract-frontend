@@ -42,6 +42,16 @@ your backend with `NEXT_PUBLIC_API_URL` if needed.
 
 Other environment variables:
 
+- `NEXT_PUBLIC_REALTIME_URL` — optional `ws://`/`wss://` URL. With the `realtime-oracle` flag on,
+  `useOracleStatus` streams the `oracle.readings` topic from it (REST remains the initial load and
+  the automatic fallback; the landing page shows a stale notice while the stream is down).
+- `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_FLAGS_OVERRIDE` (JSON object of booleans),
+  `NEXT_PUBLIC_ENABLE_UI_GALLERY` (`true`/`false`) — dev/mocking helpers.
+
+All `NEXT_PUBLIC_*` variables are validated once at startup by `src/lib/env.ts`; a malformed value
+fails fast with a message naming the variable and what was expected. Read env through `env`, not
+`process.env`. Copy `.env.example` to `.env.local` to get started.
+
 - `NEXT_PUBLIC_STELLAR_NETWORK` — `testnet` (default), `futurenet` or `mainnet`. Drives
   the Navbar network badge, explorer links and Horizon URL (`src/lib/network.ts`). An
   unrecognized value fails the build.
