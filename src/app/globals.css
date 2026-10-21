@@ -1,0 +1,9 @@
+/* Realtime freshness status stays static when reduced motion is enabled. */
+.data-freshness { display: inline-flex; align-items: center; gap: .4rem; min-width: 8rem; font-size: .75rem; line-height: 1.25rem; color: var(--pm-text-muted, #a1a1aa); }
+.data-freshness__dot { width: .4rem; height: .4rem; flex: 0 0 .4rem; border-radius: 50%; background: #a1a1aa; }
+.data-freshness--live { color: #34d399; }
+.data-freshness--live .data-freshness__dot { background: #34d399; }
+.data-freshness--muted .data-freshness__dot { background: #fbbf24; }
+.data-freshness__dot--pulse { animation: freshness-pulse 1.8s ease-in-out infinite; }
+@keyframes freshness-pulse { 50% { opacity: .4; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .data-freshness__dot--pulse { animation: none; } }

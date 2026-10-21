@@ -15,6 +15,7 @@ import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
+import { DataFreshness } from "@/components/DataFreshness";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -40,7 +41,7 @@ export default function ProvidePage() {
   const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
-  const { data: pool, loading: poolLoading, isFixture: poolIsFixture, dataSource: poolSource } = usePoolStats();
+  const { data: pool, loading: poolLoading, isFixture: poolIsFixture, dataSource: poolSource, lastUpdated: poolStatsLastUpdated } = usePoolStats();
   const { data: position } = useUserPoolPosition(wallet.status === "connected" ? wallet.address : null);
   const { lockupExpiresAt } = useLockupStatus(wallet.status === "connected" ? wallet.address : null);
 
@@ -195,6 +196,7 @@ export default function ProvidePage() {
                 ⚠ Showing fixture data — the Refract API isn&apos;t reachable from this environment.
               </p>
             )}
+            <div className="mb-4"><DataFreshness updatedAt={poolStatsLastUpdated?.getTime()} source={poolSource === "chain" ? "chain" : poolSource === "fixture" ? "fixture" : poolSource === "realtime" ? "realtime" : "api"} /></div>
           </div>
 
           <WrongNetworkBanner />

@@ -19,7 +19,9 @@
     "analyze": "ANALYZE=true next build",
     "size": "size-limit",
     "size:why": "size-limit --why",
-    "tokens:check": "node scripts/check-tokens.mjs"
+    "tokens:check": "node scripts/check-tokens.mjs",
+    "gen:realtime-types": "node scripts/gen-realtime-types.mjs",
+    "check:realtime-types": "node scripts/gen-realtime-types.mjs --check"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
