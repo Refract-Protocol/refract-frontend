@@ -167,6 +167,32 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+  realtime-benchmark:
+    name: Realtime render benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run dev &
+        env:
+          NEXT_PUBLIC_REALTIME_PROFILER: "1"
+      - run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:3000 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Next.js dev server did not become ready" >&2
+          exit 1
+      - run: npm run realtime:benchmark
+        env:
+          REALTIME_BENCHMARK_URL: http://127.0.0.1:3000
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest

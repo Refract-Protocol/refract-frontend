@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "scenario": "100 oracle pushes at 25Hz across landing, /cover, and /provide; median of five browser runs",
+  "budgets": {
+    "medianCommitDurationMs": 16,
+    "p95CommitDurationMs": 50,
+    "longTaskCount": 0,
+    "p98InteractionDurationMs": 200
+  }
+}

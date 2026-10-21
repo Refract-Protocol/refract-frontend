@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@/lib/api/client";
 
 type Handler = (payload: unknown) => void;
+export type RealtimeErrorHandler = (error: Error) => void;
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -20,6 +21,8 @@ class RealtimeClient {
   private attempt = 0;
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private errors = new Map<string, Set<RealtimeErrorHandler>>();
+  private degraded = new Set<string>();
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -42,7 +45,12 @@ class RealtimeClient {
     this.socket.addEventListener("message", (event) => {
       try {
         const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
-        this.handlers.get(topic)?.forEach((handler) => handler(payload));
+        if (typeof topic !== "string") return;
+        this.handlers.get(topic)?.forEach((handler) => {
+          try { handler(payload); } catch (error) {
+            this.report(topic, error instanceof Error ? error : new Error("Realtime handler failed"));
+          }
+        });
       } catch {
         // Malformed message — ignore, don't crash the connection.
       }
@@ -74,6 +82,32 @@ class RealtimeClient {
     return () => {
       this.handlers.get(topic)?.delete(handler);
     };
+  }
+
+  onError(topic: string, handler: RealtimeErrorHandler): () => void {
+    if (!this.errors.has(topic)) this.errors.set(topic, new Set());
+    this.errors.get(topic)!.add(handler);
+    return () => this.errors.get(topic)?.delete(handler);
+  }
+
+  markDegraded(topic: string, error?: Error, route = "unknown"): void {
+    if (this.degraded.has(topic)) return;
+    this.degraded.add(topic);
+    if (error) console.error("Realtime topic degraded", { topic, route, transport: "websocket", error: error.name });
+    this.errors.get(topic)?.forEach((handler) => handler(error ?? new Error("Realtime topic degraded")));
+  }
+
+  retry(topic: string): void { this.degraded.delete(topic); }
+  isDegraded(topic: string): boolean { return this.degraded.has(topic); }
+
+  private report(topic: string, error: Error, route = "unknown"): void {
+    // Context only: never include a payload or address in diagnostic output.
+    this.markDegraded(topic, error, route);
+  }
+
+  /** Deterministic entry point used by local benchmark and unit harnesses. */
+  dispatch(topic: string, payload: unknown): void {
+    this.handlers.get(topic)?.forEach((handler) => handler(payload));
   }
 
   disconnect(): void {

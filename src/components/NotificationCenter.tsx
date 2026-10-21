@@ -21,7 +21,7 @@ const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; tex
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, isStale } = useNotifications();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -88,6 +88,7 @@ export function NotificationCenter() {
           <div className="mb-3 flex items-center justify-between border-b border-pm-border pb-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-pm-text">Notifications</span>
+              {isStale && <span className="text-[10px] text-pm-text/40">Saved</span>}
               {unreadCount > 0 && (
                 <span className="rounded-full bg-pm-violet/20 px-2 py-0.5 text-[10px] font-bold text-pm-violet">
                   {unreadCount} new

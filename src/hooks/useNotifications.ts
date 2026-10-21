@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ACTIVE_NETWORK } from "@/lib/network";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "./useHolderPolicies";
 import { useClaims } from "./useClaims";
 import { useLockupStatus } from "./useLockupStatus";
 import { useOracleStatus } from "./useOracleStatus";
+import { useRealtimeTopic } from "./useRealtimeTopic";
 import {
   deriveNotifications,
   type RefractNotification,
@@ -44,7 +46,7 @@ export function useNotifications() {
     }
   };
 
-  const notifications = useMemo(() => {
+  const derivedNotifications = useMemo(() => {
     return deriveNotifications({
       policies,
       claims,
@@ -53,6 +55,11 @@ export function useNotifications() {
       readIds,
     });
   }, [policies, claims, lockupExpiresAt, oracleReadings, readIds]);
+
+  const loadNotifications = useCallback(async (_signal: AbortSignal) => derivedNotifications, [derivedNotifications]);
+  const notificationTopic = `notifications:${ACTIVE_NETWORK.id}:${address ?? "public"}`;
+  const { data: cachedOrPushed, isStale } = useRealtimeTopic<RefractNotification[]>(notificationTopic, loadNotifications, address ?? undefined);
+  const notifications = cachedOrPushed ?? derivedNotifications;
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.read).length;
@@ -77,5 +84,6 @@ export function useNotifications() {
     unreadCount,
     markAsRead,
     markAllAsRead,
+    isStale,
   };
 }
