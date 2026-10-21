@@ -18,7 +18,7 @@ export function useNotifications() {
   const address = wallet.status === "connected" ? wallet.address : null;
 
   const { data: policies } = useHolderPolicies(address);
-  const claims = useClaims(address, policies);
+  const { data: claims } = useClaims(address, policies);
   const { lockupExpiresAt } = useLockupStatus(address);
   const { data: oracleReadings } = useOracleStatus();
 

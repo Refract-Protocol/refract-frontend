@@ -63,3 +63,7 @@ Other environment variables:
 ## License
 
 [MIT](./LICENSE)
+
+## Data freshness
+
+Landing protocol statistics, oracle status, and payout lists seed client state from REST before showing headline values, then accept feature-flagged realtime updates with a single REST fallback and explicit refresh where provided. Realtime topic flags default off and remain kill switches during the production observation window. There is no interval polling in these data hooks; the landing page's seconds-ago display timer only updates text. See [docs/realtime-freshness.md](docs/realtime-freshness.md) for the polling inventory, topic rollout gates, ordering rule, and safe debug logging switch.
