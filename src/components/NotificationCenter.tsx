@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { RefractNotification } from "@/lib/notifications";
+import { groupNotifications } from "@/lib/notificationGroups";
 
 const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   info: "ℹ",
@@ -12,7 +13,10 @@ const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   critical: "⚡",
 };
 
-const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; text: string; border: string }> = {
+const SEVERITY_COLORS: Record<
+  RefractNotification["severity"],
+  { bg: string; text: string; border: string }
+> = {
   info: { bg: "bg-pm-violet/10", text: "text-pm-violet", border: "border-pm-violet/20" },
   warning: { bg: "bg-pm-amber/10", text: "text-pm-amber", border: "border-pm-amber/20" },
   success: { bg: "bg-pm-green/10", text: "text-pm-green", border: "border-pm-green/20" },
@@ -21,7 +25,9 @@ const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; tex
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const groups = useMemo(() => groupNotifications(notifications), [notifications]);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -79,6 +85,10 @@ export function NotificationCenter() {
         )}
       </button>
 
+      <span className="sr-only" role="status" aria-live="polite">
+        {unreadCount > 0 ? `${unreadCount} unread notifications` : ""}
+      </span>
+
       {isOpen && (
         <div
           role="dialog"
@@ -108,60 +118,96 @@ export function NotificationCenter() {
           <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
             {notifications.length === 0 ? (
               <div className="py-8 text-center text-xs text-pm-text/40">
-                <span className="mb-2 block text-2xl" aria-hidden="true">🔔</span>
+                <span className="mb-2 block text-2xl" aria-hidden="true">
+                  🔔
+                </span>
                 No notifications right now. You&apos;re all caught up!
               </div>
             ) : (
-              notifications.map((item) => {
-                const colors = SEVERITY_COLORS[item.severity];
-                const icon = SEVERITY_ICONS[item.severity];
-
+              groups.map((group) => {
+                const isCollapsed = collapsed.has(group.key);
+                const multi = group.items.length > 1;
                 return (
-                  <div
-                    key={item.id}
-                    className={`relative flex flex-col gap-1 rounded-lg border p-3 transition-all ${
-                      item.read
-                        ? "border-white/5 bg-white/[0.02] opacity-70"
-                        : `${colors.border} ${colors.bg} shadow-sm`
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold ${colors.bg} ${colors.text}`}
-                          aria-hidden="true"
-                        >
-                          {icon}
+                  <section key={group.key} aria-label={group.key}>
+                    {multi && (
+                      <button
+                        type="button"
+                        aria-expanded={!isCollapsed}
+                        onClick={() =>
+                          setCollapsed((prev) => {
+                            const next = new Set(prev);
+                            if (!next.delete(group.key)) next.add(group.key);
+                            return next;
+                          })
+                        }
+                        className="mb-1.5 flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-pm-text/50 hover:text-pm-text"
+                      >
+                        <span>
+                          {group.key.replace(":", " ")} · {group.items.length}
                         </span>
-                        <h4 className="text-xs font-bold text-pm-text">{item.title}</h4>
-                      </div>
-                      {!item.read && (
-                        <button
-                          type="button"
-                          onClick={() => markAsRead(item.id)}
-                          className="text-[10px] text-pm-text/40 hover:text-pm-text"
-                          title="Mark as read"
-                        >
-                          Mark read
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-pm-text/70">{item.message}</p>
-                    {item.href && (
-                      <div className="mt-1 flex justify-end">
-                        <Link
-                          href={item.href}
-                          onClick={() => {
-                            markAsRead(item.id);
-                            setIsOpen(false);
-                          }}
-                          className="text-[11px] font-semibold text-pm-violet hover:underline"
-                        >
-                          View Details →
-                        </Link>
-                      </div>
+                        {group.unread > 0 && (
+                          <span className="text-pm-violet">{group.unread} new</span>
+                        )}
+                      </button>
                     )}
-                  </div>
+                    <div className="space-y-2.5">
+                      {!isCollapsed &&
+                        group.items.map((item) => {
+                          const colors = SEVERITY_COLORS[item.severity];
+                          const icon = SEVERITY_ICONS[item.severity];
+
+                          return (
+                            <div
+                              key={item.id}
+                              className={`relative flex flex-col gap-1 rounded-lg border p-3 transition-all ${
+                                item.read
+                                  ? "border-white/5 bg-white/[0.02] opacity-70"
+                                  : `${colors.border} ${colors.bg} shadow-sm`
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold ${colors.bg} ${colors.text}`}
+                                    aria-hidden="true"
+                                  >
+                                    {icon}
+                                  </span>
+                                  <h4 className="text-xs font-bold text-pm-text">{item.title}</h4>
+                                </div>
+                                {!item.read && (
+                                  <button
+                                    type="button"
+                                    onClick={() => markAsRead(item.id)}
+                                    className="text-[10px] text-pm-text/40 hover:text-pm-text"
+                                    title="Mark as read"
+                                  >
+                                    Mark read
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-pm-text/70">
+                                {item.message}
+                              </p>
+                              {item.href && (
+                                <div className="mt-1 flex justify-end">
+                                  <Link
+                                    href={item.href}
+                                    onClick={() => {
+                                      markAsRead(item.id);
+                                      setIsOpen(false);
+                                    }}
+                                    className="text-[11px] font-semibold text-pm-violet hover:underline"
+                                  >
+                                    View Details →
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </section>
                 );
               })
             )}

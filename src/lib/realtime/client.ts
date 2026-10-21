@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api/client";
+import { applyFrame, isRejection, isTopicFrame, type TopicState } from "./patch";
 
 type Handler = (payload: unknown) => void;
 
@@ -19,6 +20,7 @@ class RealtimeClient {
   private handlers = new Map<string, Set<Handler>>();
   private attempt = 0;
   private closedByUser = false;
+  private topicState = new Map<string, TopicState>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(): void {
@@ -41,19 +43,45 @@ class RealtimeClient {
     });
     this.socket.addEventListener("message", (event) => {
       try {
-        const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
-        this.handlers.get(topic)?.forEach((handler) => handler(payload));
+        const { topic, payload } = JSON.parse(event.data as string) as {
+          topic: string;
+          payload: unknown;
+        };
+        this.dispatch(topic, payload);
       } catch {
         // Malformed message — ignore, don't crash the connection.
       }
     });
     this.socket.addEventListener("close", () => {
       this.socket = null;
+      this.topicState.clear();
       if (!this.closedByUser) this.scheduleReconnect();
     });
     this.socket.addEventListener("error", () => {
       this.socket?.close();
     });
+  }
+
+  /**
+   * Snapshot/patch frames (contract v2) are folded into per-topic state and
+   * handlers receive the resulting data; any other payload is passed through
+   * unchanged so topics can opt in to deltas independently.
+   */
+  private dispatch(topic: string, payload: unknown): void {
+    let out = payload;
+    if (isTopicFrame(payload)) {
+      const result = applyFrame(this.topicState.get(topic) ?? null, payload);
+      if (isRejection(result)) {
+        if (result.resync && this.socket?.readyState === WebSocket.OPEN) {
+          this.topicState.delete(topic);
+          this.socket.send(JSON.stringify({ type: "resync", topic }));
+        }
+        return;
+      }
+      this.topicState.set(topic, result);
+      out = result.data;
+    }
+    this.handlers.get(topic)?.forEach((handler) => handler(out));
   }
 
   private scheduleReconnect(): void {
