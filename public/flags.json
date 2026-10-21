@@ -1,5 +1,8 @@
 {
   "flags": {
-    "realtime-oracle": false
+    "oracle.readings": false,
+    "claims.settlement": false,
+    "pool.stats": false,
+    "notifications": false
   }
 }

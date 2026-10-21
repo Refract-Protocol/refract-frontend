@@ -1,4 +1,4 @@
-export type WalletAdapterId = "freighter" | "xbull";
+export type WalletAdapterId = "freighter" | "xbull" | "walletconnect";
 
 export interface WalletNetworkInfo {
   network: string;
@@ -18,5 +18,12 @@ export interface WalletAdapter {
   getAddress(): Promise<string | null>;
   getNetwork(): Promise<WalletNetworkInfo>;
   /** Resolves with the signed XDR. */
-  signTransaction(txXdr: string, opts: { networkPassphrase: string; address: string }): Promise<string>;
+  signTransaction(
+    txXdr: string,
+    opts: { networkPassphrase: string; address: string }
+  ): Promise<string>;
+  /** Releases transport/session resources when supported. */
+  disconnect?(): Promise<void> | void;
+  /** Reports a remote session deletion to WalletProvider. */
+  subscribeDisconnect?(listener: () => void): () => void;
 }

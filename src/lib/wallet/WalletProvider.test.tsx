@@ -3,6 +3,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { WalletProvider, useWallet } from "./WalletProvider";
 import type { WalletAdapter } from "./adapters";
+import {
+  useWalletPreferencesStore,
+  WALLET_PREFERENCES_STORAGE_KEY,
+} from "@/lib/store/walletPreferencesStore";
 
 const fake = (id: "freighter" | "xbull", address: string, available = true) => ({
   id,
@@ -30,12 +34,14 @@ vi.mock("./adapters", async () => {
   };
 });
 
-const wrapper = ({ children }: { children: ReactNode }) => createElement(WalletProvider, null, children);
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(WalletProvider, null, children);
 
 beforeEach(() => {
   freighter = fake("freighter", "GFREIGHTER");
   xbull = fake("xbull", "GXBULL");
   localStorage.clear();
+  useWalletPreferencesStore.setState({ rememberedAdapter: null, hardwareWallet: false });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -57,7 +63,7 @@ describe("WalletProvider (adapter-driven)", () => {
       error: null,
       adapterId: "xbull",
     });
-    expect(localStorage.getItem("refract:wallet-adapter")).toBe("xbull");
+    expect(useWalletPreferencesStore.getState().rememberedAdapter).toBe("xbull");
   });
 
   it("defaults connect() to the first available adapter (no breaking change for existing callers)", async () => {
@@ -94,22 +100,38 @@ describe("WalletProvider (adapter-driven)", () => {
   });
 
   it("silently rehydrates per-adapter, and legacy sessions default to Freighter", async () => {
-    localStorage.setItem("refract:wallet-connected", "1");
-    localStorage.setItem("refract:wallet-adapter", "xbull");
+    localStorage.setItem(
+      WALLET_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ state: { rememberedAdapter: "xbull", hardwareWallet: false }, version: 1 })
+    );
     const first = renderHook(() => useWallet(), { wrapper });
     await waitFor(() => expect(first.result.current.status).toBe("connected"));
     expect(first.result.current.address).toBe("GXBULL");
     expect(xbull.connect).not.toHaveBeenCalled();
     first.unmount();
 
-    localStorage.removeItem("refract:wallet-adapter");
+    useWalletPreferencesStore.setState({ rememberedAdapter: null, hardwareWallet: false });
+    localStorage.setItem(
+      WALLET_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({
+        state: { rememberedAdapter: "freighter", hardwareWallet: false },
+        version: 1,
+      })
+    );
     const legacy = renderHook(() => useWallet(), { wrapper });
     await waitFor(() => expect(legacy.result.current.status).toBe("connected"));
     expect(legacy.result.current.address).toBe("GFREIGHTER");
   });
 
   it("does not rehydrate when the wallet no longer authorizes the dApp", async () => {
-    localStorage.setItem("refract:wallet-connected", "1");
+    useWalletPreferencesStore.setState({ rememberedAdapter: null, hardwareWallet: false });
+    localStorage.setItem(
+      WALLET_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({
+        state: { rememberedAdapter: "freighter", hardwareWallet: false },
+        version: 1,
+      })
+    );
     freighter.getAddress.mockResolvedValue(null);
     const { result } = renderHook(() => useWallet(), { wrapper });
     await waitFor(() => expect(result.current.ready).toBe(true));
@@ -124,7 +146,7 @@ describe("WalletProvider (adapter-driven)", () => {
     });
     act(() => result.current.disconnect());
     expect(result.current).toMatchObject({ status: "idle", address: null, adapterId: null });
-    expect(localStorage.getItem("refract:wallet-connected")).toBeNull();
+    expect(useWalletPreferencesStore.getState().rememberedAdapter).toBeNull();
   });
 
   it("blocks submission once idle until the user re-confirms", async () => {

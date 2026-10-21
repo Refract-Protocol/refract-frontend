@@ -7,12 +7,10 @@ const BASE_BACKOFF_MS = 1_000;
 
 /**
  * A small reconnecting WebSocket wrapper exposing a subscribe-by-topic API.
- * The backend contract this assumes (documented, not yet implemented
- * upstream): connect to `${wsUrl}`, receive JSON messages shaped
- * `{ topic: string, payload: unknown }`, one topic per push-based update
- * type (e.g. "oracle_update"). Callers must treat this connection as
- * best-effort — always keep an independent REST fetch as the source of
- * truth for initial state.
+ * The versioned backend contract, topic semantics, resume behavior and auth
+ * handshake are specified in docs/realtime-protocol.md. This wrapper still
+ * exposes the legacy payload-only handler until protocol wiring lands;
+ * callers keep REST as the source of truth for initial state.
  */
 class RealtimeClient {
   private socket: WebSocket | null = null;
@@ -41,7 +39,10 @@ class RealtimeClient {
     });
     this.socket.addEventListener("message", (event) => {
       try {
-        const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
+        const { topic, payload } = JSON.parse(event.data as string) as {
+          topic: string;
+          payload: unknown;
+        };
         this.handlers.get(topic)?.forEach((handler) => handler(payload));
       } catch {
         // Malformed message — ignore, don't crash the connection.
