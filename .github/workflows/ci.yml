@@ -78,6 +78,9 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
+      - name: Realtime bundle assertions
+        run: npm run size:realtime
+
       - name: Start production server
         run: npm run start &
         env:

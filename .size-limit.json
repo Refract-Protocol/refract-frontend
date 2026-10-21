@@ -1,7 +1,7 @@
 [
   {
-    "name": "shared JS (all routes)",
-    "path": ".next/static/chunks/*.js",
+    "name": "shared JS (all routes, excluding lazy realtime chunk)",
+    "path": [".next/static/chunks/*.js", "!.next/static/chunks/realtime*.js"],
     "limit": "250 kB",
     "gzip": true
   },
@@ -21,6 +21,12 @@
     "name": "all route chunks",
     "path": ".next/static/chunks/app/**/*.js",
     "limit": "400 kB",
+    "gzip": true
+  },
+  {
+    "name": "realtime client (lazy chunk)",
+    "path": ".next/static/chunks/realtime*.js",
+    "limit": "8 kB",
     "gzip": true
   }
 ]
