@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
 import { RealtimeClient } from "./client";
 import { fakeRealtimeClock } from "./testClock";
 import { createMockRealtimeServer } from "@/mocks/realtimeServer";
@@ -60,11 +62,15 @@ describe("RealtimeClient lifecycle", () => {
     coldClient.disconnect();
   });
 
-  it("does no socket work during server rendering", () => {
+  it("does no socket work while the app shell renders on the server", () => {
     vi.unstubAllGlobals();
     const socketFactory = vi.fn();
     const client = new RealtimeClient({ socketFactory });
-    client.warm();
+    function ServerShell() {
+      client.warm();
+      return createElement("main", null, "server content");
+    }
+    expect(renderToString(createElement(ServerShell))).toContain("server content");
     expect(socketFactory).not.toHaveBeenCalled();
   });
 
