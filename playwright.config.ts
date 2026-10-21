@@ -11,6 +11,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // `.e2e.ts` keeps Vitest (which globs *.spec.ts) from collecting Playwright specs.
+  testMatch: "**/*.e2e.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
