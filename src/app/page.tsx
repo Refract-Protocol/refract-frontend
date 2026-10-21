@@ -8,7 +8,7 @@ import { useOracleStatus } from "@/hooks/useOracleStatus";
 import { useRecentClaims } from "@/hooks/useRecentClaims";
 import { usePoolStats } from "@/hooks/usePoolStats";
 import { useClaimStats } from "@/hooks/useClaimStats";
-import type { OracleReading } from "@/lib/api/oracle";
+import type { OracleReading } from "@/lib/domain/realtime";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";

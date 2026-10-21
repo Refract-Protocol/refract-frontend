@@ -1,8 +1,9 @@
 import { apiRequest } from "./client";
 import type { ApiSchemas } from "./generated";
+import type { ClaimRecord } from "@/lib/domain/realtime";
 
 /** Types are generated from openapi/refract-api.yaml, which mirrors ClaimResult from refract-backend/src/claim/claim-result.ts. */
-export type ClaimRecord = ApiSchemas["ClaimRecord"];
+export type { ClaimRecord } from "@/lib/domain/realtime";
 
 /**
  * Assumed pagination contract (to be coordinated with refract-backend):
@@ -22,6 +23,13 @@ export interface PaginatedResponse<T> {
   hasMore: boolean;
 }
 
+interface ClaimsEndpointResponse {
+  claims?: ApiSchemas["ClaimRecord"][];
+  items?: ApiSchemas["ClaimRecord"][];
+  nextCursor?: string;
+  hasMore?: boolean;
+}
+
 function buildPaginationQuery({ cursor, limit }: PaginationParams = {}): string {
   const params = new URLSearchParams();
   if (cursor) params.set("cursor", cursor);
@@ -34,10 +42,11 @@ function buildPaginationQuery({ cursor, limit }: PaginationParams = {}): string 
  * Normalizes a list response that may or may not include pagination metadata.
  * Falls back to the legacy `{ claims }` shape when metadata is absent.
  */
-function normalizeClaimsResponse(
-  response: { claims?: ClaimRecord[]; items?: ClaimRecord[]; nextCursor?: string; hasMore?: boolean },
-): PaginatedResponse<ClaimRecord> {
-  const items = response.items ?? response.claims ?? [];
+function normalizeClaimsResponse(response: ClaimsEndpointResponse): PaginatedResponse<ClaimRecord> {
+  const items = (response.items ?? response.claims ?? []).map((claim) => ({
+    ...claim,
+    processedAt: claim.processedAt * 1000,
+  }));
   const hasMore = response.hasMore ?? false;
   return { items, nextCursor: response.nextCursor, hasMore };
 }
@@ -45,20 +54,21 @@ function normalizeClaimsResponse(
 export function fetchHolderClaims(
   address: string,
   params: PaginationParams = {},
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/holder/${address}${buildPaginationQuery(params)}`, { signal }).then(
-    normalizeClaimsResponse,
-  );
+  return apiRequest<ClaimsEndpointResponse>(
+    `/claims/holder/${address}${buildPaginationQuery(params)}`,
+    { signal }
+  ).then(normalizeClaimsResponse);
 }
 
 export function fetchRecentClaims(
   params: PaginationParams = {},
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/recent${buildPaginationQuery(params)}`, { signal }).then(
-    normalizeClaimsResponse,
-  );
+  return apiRequest<ClaimsEndpointResponse>(`/claims/recent${buildPaginationQuery(params)}`, {
+    signal,
+  }).then(normalizeClaimsResponse);
 }
 
 /** Types are generated from openapi/refract-api.yaml, which mirrors ClaimService.getStats()'s response in refract-backend. */
