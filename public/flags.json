@@ -1,5 +1,13 @@
 {
   "flags": {
     "realtime-oracle": false
+  },
+  "realtime": {
+    "topics": {
+      "oracle_update": { "enabled": false },
+      "claims": { "enabled": false },
+      "pool_stats": { "enabled": false },
+      "notifications": { "enabled": false }
+    }
   }
 }

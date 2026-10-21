@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api/client";
+import { isTopicEnabled, onTopicFlagChange } from "./flags";
 
 type Handler = (payload: unknown) => void;
 
@@ -17,9 +18,28 @@ const BASE_BACKOFF_MS = 1_000;
 class RealtimeClient {
   private socket: WebSocket | null = null;
   private handlers = new Map<string, Set<Handler>>();
+  /** Handlers for flag-disabled topics: held in memory only, never on the socket. */
+  private parked = new Map<string, Set<Handler>>();
   private attempt = 0;
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    onTopicFlagChange((topic, enabled) => {
+      if (enabled) {
+        const parked = this.parked.get(topic);
+        if (!parked?.size) return;
+        this.parked.delete(topic);
+        parked.forEach((handler) => this.attach(topic, handler));
+      } else {
+        const live = this.handlers.get(topic);
+        if (!live) return;
+        this.handlers.delete(topic);
+        if (live.size) this.parked.set(topic, live);
+        if (this.handlers.size === 0) this.disconnect();
+      }
+    });
+  }
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -66,14 +86,29 @@ class RealtimeClient {
     }, delay);
   }
 
+  /**
+   * Disabled topics never open a subscription: the handler is parked (so a
+   * mid-session enable can activate it) and callers keep using their REST path.
+   */
   subscribe(topic: string, handler: Handler): () => void {
-    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
-    this.handlers.get(topic)!.add(handler);
-    this.connect();
+    if (isTopicEnabled(topic)) this.attach(topic, handler);
+    else this.park(topic, handler);
 
     return () => {
       this.handlers.get(topic)?.delete(handler);
+      this.parked.get(topic)?.delete(handler);
     };
+  }
+
+  private park(topic: string, handler: Handler): void {
+    if (!this.parked.has(topic)) this.parked.set(topic, new Set());
+    this.parked.get(topic)!.add(handler);
+  }
+
+  private attach(topic: string, handler: Handler): void {
+    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
+    this.handlers.get(topic)!.add(handler);
+    this.connect();
   }
 
   disconnect(): void {

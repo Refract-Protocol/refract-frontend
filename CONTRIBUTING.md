@@ -35,3 +35,8 @@ const wallet = useStoreSelector(walletStore, (s) => s);
 - Never read `localStorage` during render. Apply persisted state after mount
   to avoid hydration mismatches.
 - Review checklist: reject any PR that subscribes to a whole store object.
+
+## Realtime conventions
+
+- Subscribe only through `realtimeClient` from `@/lib/realtime`, inside a `useEffect`/`useLayoutEffect`; never `new WebSocket`/`new EventSource` or deep imports like `@/lib/realtime/client` (enforced by ESLint). Escape hatch: `// eslint-disable-next-line <rule> -- <justification>`.
+- Per-topic flags live in `public/flags.json` under `realtime.topics.<topic>` (`{ "enabled": boolean, "kill"?: boolean }`). Precedence: kill > in-memory override > `NEXT_PUBLIC_REALTIME_TOPICS_OVERRIDE` > flags.json > disabled. Missing or malformed entries fail closed.
