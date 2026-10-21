@@ -1,9 +1,14 @@
 import { API_BASE_URL } from "@/lib/api/client";
+import { RingBuffer } from "./ringBuffer";
+import { REALTIME_TOPICS, TOPIC_BUFFER_CAPS, type RealtimeTopic } from "./topics";
 
 type Handler = (payload: unknown) => void;
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
+
+/** Default buffer capacity for topics not listed in TOPIC_BUFFER_CAPS. */
+const DEFAULT_BUFFER_CAP = 50;
 
 /**
  * A small reconnecting WebSocket wrapper exposing a subscribe-by-topic API.
@@ -13,13 +18,30 @@ const BASE_BACKOFF_MS = 1_000;
  * type (e.g. "oracle_update"). Callers must treat this connection as
  * best-effort — always keep an independent REST fetch as the source of
  * truth for initial state.
+ *
+ * Each topic is backed by a bounded {@link RingBuffer} so a high-frequency
+ * or misbehaving stream cannot grow client memory without limit. The buffer
+ * cap is documented per topic in {@link TOPIC_BUFFER_CAPS} and defaults to
+ * 50 for unknown topics. The most recent events are always available via
+ * {@link getEvents} without unbounded accumulation.
  */
 class RealtimeClient {
   private socket: WebSocket | null = null;
   private handlers = new Map<string, Set<Handler>>();
+  private buffers = new Map<string, RingBuffer<unknown>>();
   private attempt = 0;
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private getBuffer(topic: string): RingBuffer<unknown> {
+    let buf = this.buffers.get(topic);
+    if (!buf) {
+      const cap = (TOPIC_BUFFER_CAPS as Record<string, number>)[topic] ?? DEFAULT_BUFFER_CAP;
+      buf = new RingBuffer<unknown>(cap);
+      this.buffers.set(topic, buf);
+    }
+    return buf;
+  }
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -42,6 +64,7 @@ class RealtimeClient {
     this.socket.addEventListener("message", (event) => {
       try {
         const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
+        this.getBuffer(topic).push(payload);
         this.handlers.get(topic)?.forEach((handler) => handler(payload));
       } catch {
         // Malformed message — ignore, don't crash the connection.
@@ -76,6 +99,19 @@ class RealtimeClient {
     };
   }
 
+  /**
+   * Returns a shallow copy of the most recent events buffered for `topic`,
+   * oldest-first. Returns an empty array for topics with no events yet.
+   */
+  getEvents(topic: RealtimeTopic): unknown[] {
+    return this.getBuffer(topic).toArray();
+  }
+
+  /** Returns the most recent event for `topic`, or `undefined`. */
+  getLatest(topic: RealtimeTopic): unknown | undefined {
+    return this.getBuffer(topic).latest();
+  }
+
   disconnect(): void {
     this.closedByUser = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -85,3 +121,4 @@ class RealtimeClient {
 }
 
 export const realtimeClient = new RealtimeClient();
+export { REALTIME_TOPICS, type RealtimeTopic };

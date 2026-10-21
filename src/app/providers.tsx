@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
+import { AriaLiveProvider } from "@/components/ui/AriaLiveProvider";
+import { RealtimeSyncProvider } from "@/lib/realtime/RealtimeSyncProvider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // One client per browser session. Query functions already fold failures
@@ -13,7 +15,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WalletProvider>{children}</WalletProvider>
+      <AriaLiveProvider>
+        <RealtimeSyncProvider>
+          <WalletProvider>{children}</WalletProvider>
+        </RealtimeSyncProvider>
+      </AriaLiveProvider>
     </QueryClientProvider>
   );
 }
