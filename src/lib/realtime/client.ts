@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/lib/api/client";
 
+import { recordBytes, utf8Length } from "./metrics";
+
 type Handler = (payload: unknown) => void;
 
 const MAX_BACKOFF_MS = 30_000;
@@ -41,7 +43,9 @@ class RealtimeClient {
     });
     this.socket.addEventListener("message", (event) => {
       try {
-        const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
+        const raw = event.data as string;
+        const { topic, payload } = JSON.parse(raw) as { topic: string; payload: unknown };
+        recordBytes(topic, "in", utf8Length(raw));
         this.handlers.get(topic)?.forEach((handler) => handler(payload));
       } catch {
         // Malformed message — ignore, don't crash the connection.
