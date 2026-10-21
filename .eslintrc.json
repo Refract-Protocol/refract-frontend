@@ -12,7 +12,7 @@
         "message": "Hard-coded rgb()/rgba() colours are not allowed in JSX. Use design tokens from src/lib/coverage/metadata.ts or CSS custom properties (see CONTRIBUTING.md)."
       },
       {
-        "selector": "Literal[value=1e7]",
+        "selector": "Literal[value=\"1e7\"]",
         "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of the literal 1e7."
       },
       {
