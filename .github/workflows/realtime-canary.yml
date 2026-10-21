@@ -1,0 +1,24 @@
+name: Realtime Canary
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Probe realtime endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run canary
+        run: npm run canary:realtime
+        env:
+          REALTIME_CANARY_URL: ${{ vars.REALTIME_CANARY_URL }}
+          REALTIME_CANARY_TOKEN: ${{ secrets.REALTIME_CANARY_TOKEN }}

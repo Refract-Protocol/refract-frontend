@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api/client";
+import { LastValueCache, normalizeTopic, type CachedValue } from "./lastValueCache";
 
 type Handler = (payload: unknown) => void;
 
@@ -20,6 +21,7 @@ class RealtimeClient {
   private attempt = 0;
   private closedByUser = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cache = new LastValueCache();
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -41,8 +43,11 @@ class RealtimeClient {
     });
     this.socket.addEventListener("message", (event) => {
       try {
-        const { topic, payload } = JSON.parse(event.data as string) as { topic: string; payload: unknown };
-        this.handlers.get(topic)?.forEach((handler) => handler(payload));
+        const { topic, payload } = JSON.parse(event.data as string) as {
+          topic: string;
+          payload: unknown;
+        };
+        this.publish(topic, payload);
       } catch {
         // Malformed message — ignore, don't crash the connection.
       }
@@ -66,13 +71,35 @@ class RealtimeClient {
     }, delay);
   }
 
+  /**
+   * Single dispatch path for every source (WebSocket, Soroban events, mocks):
+   * the last-value cache is written before subscribers are notified so a
+   * subscriber mounting from inside a handler never reads an older value.
+   */
+  publish(topic: string, payload: unknown, source = "ws", sequence?: number): void {
+    const key = normalizeTopic(topic);
+    this.cache.set(key, payload, source, sequence);
+    this.handlers.get(key)?.forEach((handler) => handler(payload));
+  }
+
+  /** Synchronous read of the latest pushed value for a topic, if still fresh. */
+  getLastValue<T = unknown>(topic: string): CachedValue<T> | undefined {
+    return this.cache.get<T>(topic);
+  }
+
+  /** Call on account switch or network switch. */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
   subscribe(topic: string, handler: Handler): () => void {
-    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
-    this.handlers.get(topic)!.add(handler);
+    const key = normalizeTopic(topic);
+    if (!this.handlers.has(key)) this.handlers.set(key, new Set());
+    this.handlers.get(key)!.add(handler);
     this.connect();
 
     return () => {
-      this.handlers.get(topic)?.delete(handler);
+      this.handlers.get(key)?.delete(handler);
     };
   }
 
@@ -81,6 +108,7 @@ class RealtimeClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
+    this.cache.clear();
   }
 }
 
