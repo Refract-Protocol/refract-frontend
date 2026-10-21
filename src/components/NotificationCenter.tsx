@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useNotifications } from "@/hooks/useNotifications";
+import { usePreferencesStore } from "@/lib/store/preferencesStore";
 import type { RefractNotification } from "@/lib/notifications";
 
 const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
@@ -22,6 +23,8 @@ const SEVERITY_COLORS: Record<RefractNotification["severity"], { bg: string; tex
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const attentionCues = usePreferencesStore((s) => s.attentionCues);
+  const setAttentionCues = usePreferencesStore((s) => s.setAttentionCues);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -104,6 +107,15 @@ export function NotificationCenter() {
               </button>
             )}
           </div>
+
+          <label className="mb-3 flex cursor-pointer items-center gap-2 text-[11px] text-pm-text/70">
+            <input
+              type="checkbox"
+              checked={attentionCues}
+              onChange={(e) => setAttentionCues(e.target.checked)}
+            />
+            Sound &amp; vibration for critical alerts
+          </label>
 
           <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
             {notifications.length === 0 ? (

@@ -35,3 +35,7 @@ const wallet = useStoreSelector(walletStore, (s) => s);
 - Never read `localStorage` during render. Apply persisted state after mount
   to avoid hydration mismatches.
 - Review checklist: reject any PR that subscribes to a whole store object.
+
+## Testing realtime hooks
+
+Use the in-memory fake transport (`@/lib/realtime/testing`) instead of hand-rolled WebSocket mocks. See [docs/realtime.md](docs/realtime.md).
