@@ -62,3 +62,19 @@ export function resolveNetwork(raw: string | undefined): StellarNetworkConfig {
 }
 
 export const ACTIVE_NETWORK = resolveNetwork(process.env.NEXT_PUBLIC_STELLAR_NETWORK);
+
+/** Ordered endpoint overrides are scoped by network to avoid cross-network failover. */
+export function realtimeEndpoints(apiBase: string, network = ACTIVE_NETWORK.id): string[] {
+  const configured = process.env.NEXT_PUBLIC_REALTIME_ENDPOINTS;
+  const overrides: unknown = configured ? JSON.parse(configured) : {};
+  const urls = (overrides as Partial<Record<StellarNetworkId, unknown>>)[network];
+  const endpoints =
+    urls === undefined ? [apiBase.replace(/^http/, "ws").replace(/\/api\/v1$/, "/ws")] : urls;
+  if (
+    !Array.isArray(endpoints) ||
+    !endpoints.length ||
+    endpoints.some((url) => typeof url !== "string" || !/^wss?:\/\//.test(url))
+  )
+    throw new Error("Invalid realtime endpoints");
+  return [...new Set(endpoints)] as string[];
+}

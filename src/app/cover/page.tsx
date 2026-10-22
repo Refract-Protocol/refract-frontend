@@ -6,6 +6,7 @@ import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState, RelativeDate } from "@/components/ui";
 import { WalletButton, WrongNetworkBanner, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
+import { useOracleStatus } from "@/hooks/useOracleStatus";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
 import { useEstimatedFee } from "@/hooks/useEstimatedFee";
@@ -146,6 +147,7 @@ export default function CoverPage() {
   }, [cart, cartLoaded]);
 
   const ct = coverageTypes?.[selectedType];
+  useOracleStatus(ct ? String(ct.id) : null);
 
   const premium = useMemo(() => {
     if (!ct) return 0;
