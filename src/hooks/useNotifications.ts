@@ -6,10 +6,8 @@ import { useHolderPolicies } from "./useHolderPolicies";
 import { useClaims } from "./useClaims";
 import { useLockupStatus } from "./useLockupStatus";
 import { useOracleStatus } from "./useOracleStatus";
-import {
-  deriveNotifications,
-  type RefractNotification,
-} from "@/lib/notifications";
+import { useAdaptivePolling } from "./useAdaptivePolling";
+import { deriveNotifications, type RefractNotification } from "@/lib/notifications";
 
 const STORAGE_KEY = "refract_read_notifications_v1";
 
@@ -23,6 +21,21 @@ export function useNotifications() {
   const { data: oracleReadings } = useOracleStatus();
 
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+
+  // Time-window notifications ("expires in 3 days", "lockup ends soon") only
+  // change as time passes, so re-derive on the shared scheduler's cadence
+  // rather than a bespoke interval. The data feeding them is kept fresh by the
+  // underlying hooks' own adaptive polling and realtime frames.
+  const tickInterval = useAdaptivePolling({ topic: "holder_claim", tier: "background" });
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (tickInterval === false) return;
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      setNow(Date.now());
+    }, tickInterval);
+    return () => clearInterval(id);
+  }, [tickInterval]);
 
   useEffect(() => {
     try {
@@ -51,8 +64,9 @@ export function useNotifications() {
       lockupExpiresAt,
       oracleReadings,
       readIds,
+      now,
     });
-  }, [policies, claims, lockupExpiresAt, oracleReadings, readIds]);
+  }, [policies, claims, lockupExpiresAt, oracleReadings, readIds, now]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.read).length;
