@@ -1,9 +1,24 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Modal } from "@/components/ui/Modal";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
-import { WALLET_ADAPTERS, getAdapter, setActiveAdapter, type WalletAdapter, type WalletAdapterId } from "./adapters";
+import { realtimeClient } from "@/lib/realtime/client";
+import {
+  WALLET_ADAPTERS,
+  getAdapter,
+  setActiveAdapter,
+  type WalletAdapter,
+  type WalletAdapterId,
+} from "./adapters";
 
 export type WalletStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -78,6 +93,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const connected = state.status === "connected";
   const { idle, reset: resetIdle } = useIdleTimer({ enabled: connected });
 
+  // Realtime de-dup ids and resume cursors belong to one account on one
+  // network; start fresh whenever either changes.
+  const sessionKey = `${state.address ?? ""}|${state.networkPassphrase ?? ""}`;
+  const previousSessionKey = useRef(sessionKey);
+  useEffect(() => {
+    if (previousSessionKey.current === sessionKey) return;
+    previousSessionKey.current = sessionKey;
+    realtimeClient.resetSession();
+  }, [sessionKey]);
+
   // On mount: silently rehydrate a previously-granted connection (no popup) —
   // only if the stored wallet is present and still authorizes this dApp.
   useEffect(() => {
@@ -89,7 +114,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setHardwareWalletState(localStorage.getItem(HARDWARE_KEY) === "1");
         const wasConnectedHere = localStorage.getItem(STORAGE_KEY) === "1";
         // Sessions saved before multi-wallet support carry no adapter key and were Freighter.
-        const adapter = getAdapter((localStorage.getItem(ADAPTER_KEY) as WalletAdapterId | null) ?? "freighter");
+        const adapter = getAdapter(
+          (localStorage.getItem(ADAPTER_KEY) as WalletAdapterId | null) ?? "freighter"
+        );
         if (!wasConnectedHere || !adapter.isAvailable()) {
           if (!cancelled) setState((s) => ({ ...s, ready: true, installed }));
           return;
@@ -105,7 +132,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setActiveAdapter(adapter.id);
         setAdapterId(adapter.id);
-        setState({ status: "connected", address, network, networkPassphrase, ready: true, installed, error: null });
+        setState({
+          status: "connected",
+          address,
+          network,
+          networkPassphrase,
+          ready: true,
+          installed,
+          error: null,
+        });
       } catch {
         if (!cancelled) setState((s) => ({ ...s, ready: true, installed }));
       }
@@ -139,7 +174,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(ADAPTER_KEY, adapter.id);
       setActiveAdapter(adapter.id);
       setAdapterId(adapter.id);
-      setState({ status: "connected", address, network, networkPassphrase, ready: true, installed: true, error: null });
+      setState({
+        status: "connected",
+        address,
+        network,
+        networkPassphrase,
+        ready: true,
+        installed: true,
+        error: null,
+      });
       return address;
     } catch (err) {
       setState((s) => ({
@@ -157,7 +200,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(ADAPTER_KEY);
     setAdapterId(null);
-    setState((s) => ({ ...s, status: "idle", address: null, network: null, networkPassphrase: null, error: null }));
+    setState((s) => ({
+      ...s,
+      status: "idle",
+      address: null,
+      network: null,
+      networkPassphrase: null,
+      error: null,
+    }));
   }, []);
 
   const setHardwareWallet = useCallback((value: boolean) => {
@@ -196,7 +246,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         resetIdle();
         settle(true);
       } else {
-        setConfirmError("Your wallet is locked or switched accounts. Unlock it, or disconnect and reconnect.");
+        setConfirmError(
+          "Your wallet is locked or switched accounts. Unlock it, or disconnect and reconnect."
+        );
       }
     } catch {
       setConfirmError("Couldn't reach your wallet. Try again.");
@@ -218,7 +270,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }),
     // `installed` changes whenever availability is re-evaluated, which keeps availableWallets fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, adapterId, connected, idle, ensureActive, hardwareWallet, setHardwareWallet, connect, disconnect]
+    [
+      state,
+      adapterId,
+      connected,
+      idle,
+      ensureActive,
+      hardwareWallet,
+      setHardwareWallet,
+      connect,
+      disconnect,
+    ]
   );
 
   return (
@@ -226,7 +288,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       {children}
       <Modal open={confirming} onClose={() => settle(false)} title="Still there?">
         <p className="text-[13px] text-pm-text/70">
-          You&apos;ve been inactive for a while. Confirm it&apos;s still you before sending another transaction.
+          You&apos;ve been inactive for a while. Confirm it&apos;s still you before sending another
+          transaction.
         </p>
         {confirmError && (
           <p role="alert" className="mt-3 text-[12px] text-pm-red">
@@ -234,10 +297,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           </p>
         )}
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className="pm-btn pm-btn-outline pm-btn-sm" onClick={() => settle(false)}>
+          <button
+            type="button"
+            className="pm-btn pm-btn-outline pm-btn-sm"
+            onClick={() => settle(false)}
+          >
             Cancel
           </button>
-          <button type="button" className="pm-btn pm-btn-primary pm-btn-sm" onClick={() => void reconfirm()}>
+          <button
+            type="button"
+            className="pm-btn pm-btn-primary pm-btn-sm"
+            onClick={() => void reconfirm()}
+          >
             I&apos;m still here
           </button>
         </div>
