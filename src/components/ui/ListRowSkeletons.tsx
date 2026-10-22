@@ -5,7 +5,7 @@ interface ListRowSkeletonsProps {
   count?: number;
   height?: number | string;
   className?: string;
-  rounded?: "sm" | "md" | "lg" | "full";
+  rounded?: "sm" | "md" | "full";
   ariaLabel?: string;
 }
 
@@ -20,11 +20,7 @@ export function ListRowSkeletons({
   ariaLabel = "Loading items",
 }: ListRowSkeletonsProps) {
   return (
-    <div
-      className={cn("flex flex-col gap-2.5", className)}
-      role="status"
-      aria-label={ariaLabel}
-    >
+    <div className={cn("flex flex-col gap-2.5", className)} role="status" aria-label={ariaLabel}>
       {Array.from({ length: count }).map((_, i) => (
         <Skeleton key={i} height={height} rounded={rounded} />
       ))}

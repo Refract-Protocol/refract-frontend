@@ -34,9 +34,9 @@ describe("aggregateExposure", () => {
     expect(res.totalExposure).toBe(5000);
     expect(res.activeExposure).toBe(5000);
     expect(res.breakdowns.length).toBe(1);
-    expect(res.breakdowns[0].coverageType).toBe(0);
-    expect(res.breakdowns[0].totalAmount).toBe(5000);
-    expect(res.breakdowns[0].percentageOfTotal).toBe(100);
+    expect(res.breakdowns[0]!.coverageType).toBe(0);
+    expect(res.breakdowns[0]!.totalAmount).toBe(5000);
+    expect(res.breakdowns[0]!.percentageOfTotal).toBe(100);
     expect(res.concentrationRisk).toBe("high");
   });
 

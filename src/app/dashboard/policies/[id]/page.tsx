@@ -2,56 +2,57 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "@/hooks/useHolderPolicies";
 import { useOracleStatus } from "@/hooks/useOracleStatus";
 import { useClaims } from "@/hooks/useClaims";
 import { stellarExpertTxUrl } from "@/lib/stellar";
-import { ORACLE_FEED_DISPLAY } from "@/app/page";
+import { formatUsd, fromStroops } from "@/lib/format";
+import { ORACLE_FEED_DISPLAY, oracleKeyForCoverageType } from "@/lib/oracle/feeds";
 
-function formatDate(value?: string | number | null): string {
+function formatDate(value: string | number | null | undefined, unit: "s" | "ms" = "ms"): string {
   if (value === undefined || value === null || value === "") return "—";
-  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  const date =
+    typeof value === "number" ? new Date(unit === "s" ? value * 1000 : value) : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatAmount(value?: string | number | null): string {
-  if (value === undefined || value === null || value === "") return "—";
-  const num = typeof value === "number" ? value : Number(value);
-  if (Number.isNaN(num)) return String(value);
-  return num.toLocaleString();
-}
-
-function feedDisplay(coverageType?: string) {
-  if (!coverageType) return null;
-  return ORACLE_FEED_DISPLAY[coverageType] ?? null;
 }
 
 export default function PolicyDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
 
-  const { data: policies, loading: policiesLoading } = useHolderPolicies();
+  const wallet = useWallet();
+  const address = wallet.status === "connected" ? wallet.address : null;
+  const { data: policies, loading: policiesLoading } = useHolderPolicies(address);
   const { data: readings, loading: oracleLoading, isFixture } = useOracleStatus();
-  const { data: claims, loading: claimsLoading } = useClaims();
+  const claims = useClaims(address, policies);
 
   const policy = policies?.find((p) => String(p.id) === String(id)) ?? null;
-  const coverageType = policy?.coverageType ?? policy?.coverage_type;
-  const display = feedDisplay(coverageType);
-  const reading = readings?.find((r) => r.coverageType === coverageType) ?? null;
-  const claim = claims?.find((c) => String(c.policyId) === String(id)) ?? null;
+  const oracleKey = policy ? oracleKeyForCoverageType(policy.coverageType) : null;
+  const display = oracleKey ? (ORACLE_FEED_DISPLAY[oracleKey] ?? null) : null;
+  const reading = readings?.find((r) => r.coverageType === oracleKey) ?? null;
+  const claim = claims.find((c) => String(c.policyId) === String(id)) ?? null;
 
-  const threshold = policy?.threshold ?? reading?.threshold ?? null;
+  const threshold = reading?.threshold ?? null;
   const currentValue = reading?.value ?? null;
-  const triggered = policy?.status === "triggered" || policy?.status === "paid" || Boolean(claim);
-  const expired = policy?.expiry ? new Date(policy.expiry).getTime() < Date.now() : false;
+  const triggered = Boolean(claim?.triggered);
+  const expired = policy ? policy.expiresAt * 1000 < Date.now() : false;
+  const status = triggered
+    ? "paid"
+    : expired
+      ? "expired"
+      : policy?.isActive
+        ? "active"
+        : "inactive";
 
   const progress =
-    threshold !== null && currentValue !== null && Number(threshold) > 0
-      ? Math.min(100, Math.max(0, (Number(currentValue) / Number(threshold)) * 100))
+    threshold !== null && currentValue !== null && threshold > 0
+      ? Math.min(100, Math.max(0, (currentValue / threshold) * 100))
       : null;
 
-  const loading = policiesLoading || oracleLoading || claimsLoading;
+  const loading = policiesLoading || oracleLoading;
+  const txUrl = claim?.settlementTxHash ? stellarExpertTxUrl(claim.settlementTxHash) : null;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -59,7 +60,9 @@ export default function PolicyDetailPage() {
         ← Back to dashboard
       </Link>
 
-      {loading ? (
+      {!address ? (
+        <p className="mt-6 text-gray-500">Connect your wallet to view this policy.</p>
+      ) : loading ? (
         <p className="mt-6 text-gray-500">Loading policy…</p>
       ) : !policy ? (
         <div className="mt-6 rounded-lg border border-gray-200 p-6">
@@ -72,9 +75,7 @@ export default function PolicyDetailPage() {
         <div className="mt-6 space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold">Policy #{policy.id}</h1>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-sm capitalize">
-              {policy.status ?? "unknown"}
-            </span>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-sm capitalize">{status}</span>
           </div>
 
           <section className="rounded-lg border border-gray-200 p-6">
@@ -86,31 +87,31 @@ export default function PolicyDetailPage() {
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Coverage type</dt>
-                <dd>{display?.label ?? coverageType ?? "—"}</dd>
+                <dd>{policy.coverageTypeName}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Holder</dt>
-                <dd className="font-mono break-all">{policy.holder ?? "—"}</dd>
+                <dd className="font-mono break-all">{policy.holder}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Coverage amount</dt>
-                <dd>{formatAmount(policy.coverageAmount ?? policy.coverage_amount)}</dd>
+                <dd>{formatUsd(fromStroops(policy.coverageAmount))}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Premium</dt>
-                <dd>{formatAmount(policy.premium)}</dd>
+                <dd>{formatUsd(fromStroops(policy.premium))}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Duration</dt>
-                <dd>{policy.duration ?? "—"}</dd>
+                <dd>{policy.durationDays} days</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Created</dt>
-                <dd>{formatDate(policy.createdAt ?? policy.created_at)}</dd>
+                <dd>{formatDate(policy.createdAt)}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Expiry</dt>
-                <dd>{formatDate(policy.expiry)}</dd>
+                <dd>{formatDate(policy.expiresAt, "s")}</dd>
               </div>
             </dl>
           </section>
@@ -119,20 +120,16 @@ export default function PolicyDetailPage() {
             <h2 className="text-lg font-medium">Oracle trigger</h2>
             {!display ? (
               <p className="mt-2 text-gray-600">
-                No oracle feed is configured for coverage type{" "}
-                <span className="font-mono">{coverageType ?? "unknown"}</span>.
+                No live oracle feed is shown for {policy.coverageTypeName}.
               </p>
             ) : !reading ? (
-              <p className="mt-2 text-gray-600">
-                No current reading available for {display.label}.
-              </p>
+              <p className="mt-2 text-gray-600">No current reading available for {display.feed}.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{display.label} reading</span>
+                  <span className="text-gray-500">{display.feed} reading</span>
                   <span className="font-medium">
-                    {formatAmount(currentValue)}
-                    {threshold !== null ? ` / ${formatAmount(threshold)}` : ""}
+                    {display.formatValue(reading)} / {threshold}
                   </span>
                 </div>
                 {progress !== null && (
@@ -143,13 +140,7 @@ export default function PolicyDetailPage() {
                     />
                   </div>
                 )}
-                <p className="text-sm text-gray-600">
-                  {triggered
-                    ? "Threshold reached — this policy has triggered."
-                    : progress !== null
-                      ? `${progress.toFixed(0)}% of the way to the payout threshold.`
-                      : "Threshold data unavailable."}
-                </p>
+                <p className="text-sm text-gray-600">{reading.message}</p>
                 {isFixture && (
                   <p className="text-xs text-amber-600">Showing fixture oracle data.</p>
                 )}
@@ -163,23 +154,23 @@ export default function PolicyDetailPage() {
               <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <dt className="text-sm text-gray-500">Status</dt>
-                  <dd className="capitalize">{claim.status ?? "—"}</dd>
+                  <dd>{claim.triggered ? "Paid out" : "Not triggered"}</dd>
                 </div>
                 <div>
                   <dt className="text-sm text-gray-500">Payout</dt>
-                  <dd>{formatAmount(claim.amount)}</dd>
+                  <dd>{formatUsd(fromStroops(claim.payout))}</dd>
                 </div>
                 <div className="sm:col-span-2">
                   <dt className="text-sm text-gray-500">Transaction</dt>
                   <dd>
-                    {claim.txHash ? (
+                    {txUrl ? (
                       <a
-                        href={stellarExpertTxUrl(claim.txHash)}
+                        href={txUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-blue-600 hover:underline break-all"
                       >
-                        {claim.txHash}
+                        {claim.settlementTxHash}
                       </a>
                     ) : (
                       "—"
@@ -188,13 +179,9 @@ export default function PolicyDetailPage() {
                 </div>
               </dl>
             ) : expired ? (
-              <p className="mt-2 text-gray-600">
-                This policy expired without a payout.
-              </p>
+              <p className="mt-2 text-gray-600">This policy expired without a payout.</p>
             ) : (
-              <p className="mt-2 text-gray-600">
-                No settlement yet — this policy is still active.
-              </p>
+              <p className="mt-2 text-gray-600">No settlement yet — this policy is still active.</p>
             )}
           </section>
         </div>

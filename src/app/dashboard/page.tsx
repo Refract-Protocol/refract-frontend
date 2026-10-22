@@ -12,11 +12,16 @@ import { stellarExpertTxUrl } from "@/lib/stellar";
 import {
   buildPolicyHistoryCsv,
   buildPolicyHistoryJson,
-  downloadExport,
+  downloadTextFile,
 } from "@/lib/export/exportPolicyHistory";
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/api/claims";
-import { normalizePolicies, normalizeClaims, selectPolicyStatus, type PolicyStatus } from "@/lib/entities/policies";
+import {
+  normalizePolicies,
+  normalizeClaims,
+  selectPolicyStatus,
+  type PolicyStatus,
+} from "@/lib/entities/policies";
 
 const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
 const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
@@ -38,10 +43,14 @@ export default function DashboardPage() {
 
   const summary = policies
     ? {
-        active: policies.filter((p) => selectPolicyStatus(policiesById, claimsByPolicyId, p.id) === "active").length,
+        active: policies.filter(
+          (p) => selectPolicyStatus(policiesById, claimsByPolicyId, p.id) === "active"
+        ).length,
         totalCoverage: policies.reduce((sum, p) => sum + fromStroops(p.coverageAmount), 0),
         totalPremiums: policies.reduce((sum, p) => sum + fromStroops(p.premium), 0),
-        totalPayouts: claims.filter((c) => c.triggered).reduce((sum, c) => sum + fromStroops(c.payout), 0),
+        totalPayouts: claims
+          .filter((c) => c.triggered)
+          .reduce((sum, c) => sum + fromStroops(c.payout), 0),
       }
     : null;
 
@@ -53,16 +62,16 @@ export default function DashboardPage() {
     try {
       const stamp = new Date().toISOString().slice(0, 10);
       if (format === "csv") {
-        downloadExport(
+        downloadTextFile(
           `policy-history-${stamp}.csv`,
-          buildPolicyHistoryCsv(policies, claims),
-          "text/csv;charset=utf-8",
+          buildPolicyHistoryCsv({ address: address ?? "", policies, claims }),
+          "text/csv;charset=utf-8"
         );
       } else {
-        downloadExport(
+        downloadTextFile(
           `policy-history-${stamp}.json`,
-          buildPolicyHistoryJson(policies, claims),
-          "application/json;charset=utf-8",
+          buildPolicyHistoryJson({ address: address ?? "", policies, claims }),
+          "application/json;charset=utf-8"
         );
       }
     } finally {
@@ -125,16 +134,27 @@ export default function DashboardPage() {
             </Card>
           ) : !address ? (
             <Card padding="lg" className="flex flex-col items-center gap-4 py-16 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pm-violet/10 text-2xl" aria-hidden="true">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-pm-violet/10 text-2xl"
+                aria-hidden="true"
+              >
                 🔗
               </div>
               <div>
-                <h2 className="mb-1.5 font-display text-lg font-bold text-pm-text">Connect your wallet</h2>
+                <h2 className="mb-1.5 font-display text-lg font-bold text-pm-text">
+                  Connect your wallet
+                </h2>
                 <p className="mx-auto max-w-[360px] text-sm text-pm-text/45">
-                  Connect Freighter to see the policies, claim status, and payout history tied to your address.
+                  Connect Freighter to see the policies, claim status, and payout history tied to
+                  your address.
                 </p>
               </div>
-              <Button type="button" variant="primary" onClick={() => void wallet.connect()} loading={wallet.status === "connecting"}>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void wallet.connect()}
+                loading={wallet.status === "connecting"}
+              >
                 Connect Wallet
               </Button>
             </Card>
@@ -151,13 +171,27 @@ export default function DashboardPage() {
                     ))
                   : [
                       { label: "Active Policies", value: summary.active.toString() },
-                      { label: "Total Coverage", value: formatUsd(summary.totalCoverage, { maximumFractionDigits: 0 }) },
-                      { label: "Premiums Paid", value: formatUsd(summary.totalPremiums, { maximumFractionDigits: 0 }) },
-                      { label: "Total Payouts", value: formatUsd(summary.totalPayouts, { maximumFractionDigits: 0 }), accent: summary.totalPayouts > 0 },
+                      {
+                        label: "Total Coverage",
+                        value: formatUsd(summary.totalCoverage, { maximumFractionDigits: 0 }),
+                      },
+                      {
+                        label: "Premiums Paid",
+                        value: formatUsd(summary.totalPremiums, { maximumFractionDigits: 0 }),
+                      },
+                      {
+                        label: "Total Payouts",
+                        value: formatUsd(summary.totalPayouts, { maximumFractionDigits: 0 }),
+                        accent: summary.totalPayouts > 0,
+                      },
                     ].map((s) => (
                       <Card key={s.label} padding="sm" className="!p-[18px]">
-                        <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{s.label}</div>
-                        <div className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}>
+                        <div className="mb-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">
+                          {s.label}
+                        </div>
+                        <div
+                          className={`font-display text-[22px] font-extrabold tracking-tight ${s.accent ? "text-pm-green" : "text-pm-text"}`}
+                        >
                           {s.value}
                         </div>
                       </Card>
@@ -166,7 +200,10 @@ export default function DashboardPage() {
 
               {/* Policies */}
               <section aria-labelledby="policies-heading" className="mb-8">
-                <h2 id="policies-heading" className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text">
+                <h2
+                  id="policies-heading"
+                  className="mb-4 font-display text-lg font-bold tracking-tight text-pm-text"
+                >
                   Your Policies
                 </h2>
 
@@ -186,7 +223,9 @@ export default function DashboardPage() {
 
                 {!loading && policies && policies.length === 0 && (
                   <Card className="py-12 text-center">
-                    <p className="text-sm text-pm-text/45">No policies yet. Get covered to see it here.</p>
+                    <p className="text-sm text-pm-text/45">
+                      No policies yet. Get covered to see it here.
+                    </p>
                     <Button href="/cover" variant="outline" className="mt-4 inline-flex">
                       Browse coverage
                     </Button>
@@ -211,11 +250,21 @@ export default function DashboardPage() {
                               </span>
                               <div>
                                 <div className="mb-0.5 flex items-center gap-2">
-                                  <span className="text-sm font-semibold text-pm-text">{policy.coverageTypeName}</span>
+                                  <span className="text-sm font-semibold text-pm-text">
+                                    {policy.coverageTypeName}
+                                  </span>
                                   <Badge tone={badge.tone}>{badge.label}</Badge>
                                 </div>
                                 <div className="text-xs text-pm-text/40">
-                                  Coverage {formatUsd(fromStroops(policy.coverageAmount), { maximumFractionDigits: 0 })} · Premium {formatUsd(fromStroops(policy.premium), { maximumFractionDigits: 0 })} · {status === "expired" ? "Expired" : "Expires"}{" "}
+                                  Coverage{" "}
+                                  {formatUsd(fromStroops(policy.coverageAmount), {
+                                    maximumFractionDigits: 0,
+                                  })}{" "}
+                                  · Premium{" "}
+                                  {formatUsd(fromStroops(policy.premium), {
+                                    maximumFractionDigits: 0,
+                                  })}{" "}
+                                  · {status === "expired" ? "Expired" : "Expires"}{" "}
                                   <RelativeDate target={policy.expiresAt * 1000} />
                                 </div>
                               </div>

@@ -39,20 +39,21 @@ const POLICY_HEADERS = [
   "Policy ID",
   "Policyholder",
   "Coverage Amount (USD)",
+  "Coverage Type",
   "Premium (USD)",
-  "Status",
-  "Start Date",
-  "End Date",
+  "Active",
+  "Created At",
+  "Expires At",
 ];
 
 const CLAIM_HEADERS = [
-  "Claim ID",
   "Policy ID",
-  "Claimant",
-  "Claim Amount (USD)",
-  "Status",
+  "Holder",
+  "Payout (USD)",
+  "Triggered",
   "Reason",
-  "Filed At",
+  "Processed At",
+  "Settlement Tx",
 ];
 
 function policyRow(policy: Policy): string {
@@ -60,22 +61,23 @@ function policyRow(policy: Policy): string {
     policy.id,
     policy.holder,
     formatAmount(policy.coverageAmount),
+    policy.coverageTypeName,
     formatAmount(policy.premium),
-    policy.status,
-    policy.startDate,
-    policy.endDate,
+    policy.isActive,
+    policy.createdAt,
+    new Date(policy.expiresAt * 1000).toISOString(),
   ]);
 }
 
 function claimRow(claim: ClaimRecord): string {
   return toCsvRow([
-    claim.id,
     claim.policyId,
-    claim.claimant,
-    formatAmount(claim.amount),
-    claim.status,
+    claim.holder,
+    formatAmount(claim.payout),
+    claim.triggered,
     claim.reason,
-    claim.filedAt,
+    new Date(claim.processedAt).toISOString(),
+    claim.settlementTxHash ?? "",
   ]);
 }
 
@@ -113,7 +115,7 @@ export function buildPolicyHistoryJson(dataset: ExportDataset): string {
     })),
     claims: dataset.claims.map((claim) => ({
       ...claim,
-      amountUsd: formatAmount(claim.amount),
+      payoutUsd: formatAmount(claim.payout),
     })),
   };
   return JSON.stringify(payload, null, 2);

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  type ReactNode,
-} from "react";
+import { forwardRef, useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
@@ -48,11 +41,11 @@ export interface DialogProps {
 
 export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
   { open, onOpenChange, title, description, size = "md", footer, children, className },
-  ref,
+  ref
 ) {
   const titleId = useId();
   const descriptionId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -62,7 +55,7 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
       if (typeof ref === "function") ref(node);
       else if (ref) ref.current = node;
     },
-    [ref],
+    [ref]
   );
 
   // Move focus into the dialog on open and restore it on close.
@@ -100,7 +93,7 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
       const panel = panelRef.current;
       if (!panel) return;
       const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (el) => el.offsetParent !== null || el === document.activeElement,
+        (el) => el.offsetParent !== null || el === document.activeElement
       );
       if (focusable.length === 0) {
         e.preventDefault();
@@ -109,6 +102,7 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
       const active = document.activeElement;
       if (e.shiftKey && (active === first || active === panel)) {
         e.preventDefault();
@@ -143,7 +137,7 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
           sizeClasses[size],
           "rounded-b-none xs:rounded-b-lg",
           !reducedMotion && "animate-fade-up",
-          className,
+          className
         )}
       >
         <div className="border-b border-pm-border px-5 py-4">
@@ -162,6 +156,6 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
         )}
       </div>
     </div>,
-    document.body,
+    document.body
   );
 });

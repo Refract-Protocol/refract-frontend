@@ -22,7 +22,7 @@ describe("useTransactionFlow", () => {
       ready: true,
       installed: true,
       error: null,
-    });
+    } as unknown as ReturnType<typeof walletProvider.useWallet>);
 
     let hookResult: any = null;
     function TestComponent() {

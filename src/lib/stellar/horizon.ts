@@ -62,14 +62,15 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function readU32(b: Uint8Array, off: number): number {
-  return ((b[off] << 24) | (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3]) >>> 0;
+  return ((b[off]! << 24) | (b[off + 1]! << 16) | (b[off + 2]! << 8) | b[off + 3]!) >>> 0;
 }
 
 function crc16xmodem(bytes: Uint8Array): number {
   let crc = 0;
   for (const byte of bytes) {
     crc ^= byte << 8;
-    for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    for (let i = 0; i < 8; i++)
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
   }
   return crc;
 }
@@ -124,7 +125,10 @@ export function decodeSymbol(b64: string): string | null {
 // --- parsing ---
 
 /** Turns raw Horizon operations into history rows, keeping only Refract contract invocations. */
-export function parseOperations(records: HorizonOperation[], contractIds: string[] = REFRACT_CONTRACT_IDS): HistoryEntry[] {
+export function parseOperations(
+  records: HorizonOperation[],
+  contractIds: string[] = REFRACT_CONTRACT_IDS
+): HistoryEntry[] {
   const entries: HistoryEntry[] = [];
   for (const op of records) {
     if (op.type !== "invoke_host_function") continue;
@@ -140,7 +144,9 @@ export function parseOperations(records: HorizonOperation[], contractIds: string
       contractId,
       operation: (fnParam && decodeSymbol(fnParam.value)) ?? "contract_call",
       amount: change ? Number(change.amount) : null,
-      asset: change ? (change.asset_code ?? (change.asset_type === "native" ? "XLM" : change.asset_type)) : null,
+      asset: change
+        ? (change.asset_code ?? (change.asset_type === "native" ? "XLM" : change.asset_type))
+        : null,
       successful: op.transaction_successful ?? true,
     });
   }
@@ -148,7 +154,10 @@ export function parseOperations(records: HorizonOperation[], contractIds: string
 }
 
 export class HorizonError extends Error {
-  constructor(message: string, public status?: number) {
+  constructor(
+    message: string,
+    public status?: number
+  ) {
     super(message);
     this.name = "HorizonError";
   }
@@ -163,7 +172,9 @@ async function fetchWithBackoff(url: string, signal?: AbortSignal): Promise<Resp
     const retryable = res.status === 429 || res.status >= 500;
     if (!retryable || attempt >= MAX_RETRIES) {
       throw new HorizonError(
-        res.status === 429 ? "Horizon rate limit reached — try again shortly" : `Horizon request failed (${res.status})`,
+        res.status === 429
+          ? "Horizon rate limit reached — try again shortly"
+          : `Horizon request failed (${res.status})`,
         res.status
       );
     }
@@ -188,11 +199,14 @@ export async function fetchHistoryPage(
 ): Promise<HistoryPage> {
   const params = new URLSearchParams({ order: "desc", limit: String(limit), join: "transactions" });
   if (cursor) params.set("cursor", cursor);
-  const res = await fetchWithBackoff(`${ACTIVE_NETWORK.horizonUrl}/accounts/${address}/operations?${params}`, signal);
+  const res = await fetchWithBackoff(
+    `${ACTIVE_NETWORK.horizonUrl}/accounts/${address}/operations?${params}`,
+    signal
+  );
   const page = (await res.json()) as HorizonPage;
   const records = page._embedded.records;
   return {
     entries: parseOperations(records),
-    nextCursor: records.length < limit ? null : records[records.length - 1].paging_token,
+    nextCursor: records.length < limit ? null : records[records.length - 1]!.paging_token,
   };
 }

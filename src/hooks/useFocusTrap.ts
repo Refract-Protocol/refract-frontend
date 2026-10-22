@@ -1,18 +1,18 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, type RefObject } from "react";
 
 const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
-].join(',');
+].join(",");
 
 function getFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1);
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => !el.hasAttribute("disabled") && el.tabIndex !== -1
+  );
 }
 
 /**
@@ -28,7 +28,7 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 export function useFocusTrap(
   containerRef: RefObject<HTMLElement>,
   active: boolean,
-  initialFocusRef?: RefObject<HTMLElement>,
+  initialFocusRef?: RefObject<HTMLElement>
 ): void {
   useEffect(() => {
     if (!active) return;
@@ -38,8 +38,7 @@ export function useFocusTrap(
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
     const focusInitial = () => {
-      const target =
-        initialFocusRef?.current ?? getFocusable(container)[0] ?? container;
+      const target = initialFocusRef?.current ?? getFocusable(container)[0] ?? container;
       target.focus();
     };
 
@@ -47,7 +46,7 @@ export function useFocusTrap(
     const raf = requestAnimationFrame(focusInitial);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
+      if (event.key !== "Tab") return;
 
       const focusable = getFocusable(container);
       if (focusable.length === 0) {
@@ -58,6 +57,7 @@ export function useFocusTrap(
 
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
       const current = document.activeElement as HTMLElement | null;
 
       if (event.shiftKey) {
@@ -71,12 +71,12 @@ export function useFocusTrap(
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
         previouslyFocused.focus();
       }
     };

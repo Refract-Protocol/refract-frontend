@@ -41,7 +41,10 @@ export function aggregateExposure(policies: Policy[] | null | undefined): Portfo
     };
   }
 
-  const map = new Map<number, { coverageTypeName: string; totalAmount: number; policyCount: number }>();
+  const map = new Map<
+    number,
+    { coverageTypeName: string; totalAmount: number; policyCount: number }
+  >();
   let totalExposure = 0;
   let activeExposure = 0;
 
@@ -58,7 +61,10 @@ export function aggregateExposure(policies: Policy[] | null | undefined): Portfo
       existing.policyCount += 1;
     } else {
       map.set(policy.coverageType, {
-        coverageTypeName: policy.coverageTypeName || TYPE_CONFIG[policy.coverageType]?.name || `Type ${policy.coverageType}`,
+        coverageTypeName:
+          policy.coverageTypeName ||
+          TYPE_CONFIG[policy.coverageType]?.name ||
+          `Type ${policy.coverageType}`,
         totalAmount: amount,
         policyCount: 1,
       });
@@ -66,7 +72,11 @@ export function aggregateExposure(policies: Policy[] | null | undefined): Portfo
   }
 
   const breakdowns: ExposureBreakdown[] = Array.from(map.entries()).map(([typeId, data]) => {
-    const config = TYPE_CONFIG[typeId] || { name: data.coverageTypeName, color: "#8b5cf6", icon: "📋" };
+    const config = TYPE_CONFIG[typeId] || {
+      name: data.coverageTypeName,
+      color: "#8b5cf6",
+      icon: "📋",
+    };
     const pct = totalExposure > 0 ? (data.totalAmount / totalExposure) * 100 : 0;
     return {
       coverageType: typeId,
@@ -82,12 +92,15 @@ export function aggregateExposure(policies: Policy[] | null | undefined): Portfo
   // Sort by highest exposure first
   breakdowns.sort((a, b) => b.totalAmount - a.totalAmount);
 
-  const maxSingleCategory = breakdowns.length > 0 ? breakdowns[0] : null;
+  const maxSingleCategory = breakdowns[0] ?? null;
 
   let concentrationRisk: "low" | "medium" | "high" | "none" = "low";
   if (breakdowns.length === 0) {
     concentrationRisk = "none";
-  } else if (breakdowns.length === 1 || (maxSingleCategory && maxSingleCategory.percentageOfTotal > 65)) {
+  } else if (
+    breakdowns.length === 1 ||
+    (maxSingleCategory && maxSingleCategory.percentageOfTotal > 65)
+  ) {
     concentrationRisk = "high";
   } else if (maxSingleCategory && maxSingleCategory.percentageOfTotal > 40) {
     concentrationRisk = "medium";

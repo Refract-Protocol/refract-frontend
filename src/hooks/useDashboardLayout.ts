@@ -33,7 +33,8 @@ export function parseStoredLayout(raw: string | null): DashboardSectionLayout[] 
   if (!raw) return DEFAULT_DASHBOARD_LAYOUT;
   try {
     const parsed = JSON.parse(raw) as { version?: unknown; sections?: unknown };
-    if (parsed.version !== LAYOUT_VERSION || !Array.isArray(parsed.sections)) return DEFAULT_DASHBOARD_LAYOUT;
+    if (parsed.version !== LAYOUT_VERSION || !Array.isArray(parsed.sections))
+      return DEFAULT_DASHBOARD_LAYOUT;
     const known = new Set(DEFAULT_DASHBOARD_LAYOUT.map((s) => s.id));
     const sections = parsed.sections.filter(
       (s): s is DashboardSectionLayout =>
@@ -42,7 +43,10 @@ export function parseStoredLayout(raw: string | null): DashboardSectionLayout[] 
     if (sections.length !== known.size || new Set(sections.map((s) => s.id)).size !== known.size) {
       return DEFAULT_DASHBOARD_LAYOUT;
     }
-    return sections.map((s) => ({ id: s.id, hidden: UNHIDEABLE_SECTIONS.includes(s.id) ? false : s.hidden }));
+    return sections.map((s) => ({
+      id: s.id,
+      hidden: UNHIDEABLE_SECTIONS.includes(s.id) ? false : s.hidden,
+    }));
   } catch {
     return DEFAULT_DASHBOARD_LAYOUT;
   }
@@ -74,7 +78,10 @@ export function useDashboardLayout(address: string | null) {
         const value = next(prev);
         if (address) {
           try {
-            window.localStorage.setItem(storageKey(address), JSON.stringify({ version: LAYOUT_VERSION, sections: value }));
+            window.localStorage.setItem(
+              storageKey(address),
+              JSON.stringify({ version: LAYOUT_VERSION, sections: value })
+            );
           } catch {
             // Storage unavailable — keep the in-memory layout only.
           }
@@ -92,7 +99,7 @@ export function useDashboardLayout(address: string | null) {
         if (to < 0 || to >= prev.length || from === to) return prev;
         const next = [...prev];
         const [item] = next.splice(from, 1);
-        next.splice(to, 0, item);
+        if (item) next.splice(to, 0, item);
         return next;
       }),
     [update]
@@ -101,7 +108,9 @@ export function useDashboardLayout(address: string | null) {
   const toggleHidden = useCallback(
     (id: DashboardSectionId) =>
       update((prev) =>
-        UNHIDEABLE_SECTIONS.includes(id) ? prev : prev.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s))
+        UNHIDEABLE_SECTIONS.includes(id)
+          ? prev
+          : prev.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s))
       ),
     [update]
   );

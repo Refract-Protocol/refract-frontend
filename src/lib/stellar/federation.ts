@@ -25,7 +25,7 @@ export function parseFederationServer(toml: string): string | null {
   const match = toml.match(/^\s*FEDERATION_SERVER\s*=\s*["']([^"']+)["']\s*(?:#.*)?$/m);
   if (!match) return null;
   try {
-    const url = new URL(match[1]);
+    const url = new URL(match[1]!);
     return url.protocol === "https:" ? url.toString() : null;
   } catch {
     return null;
@@ -33,7 +33,10 @@ export function parseFederationServer(toml: string): string | null {
 }
 
 async function fetchWithTimeout(url: string, signal: AbortSignal): Promise<Response> {
-  const res = await fetch(url, { signal, headers: { Accept: "application/json, text/plain, */*" } });
+  const res = await fetch(url, {
+    signal,
+    headers: { Accept: "application/json, text/plain, */*" },
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res;
 }
@@ -51,12 +54,15 @@ export async function resolveFederationAddress(input: string): Promise<string | 
 
   const match = value.match(FEDERATION_RE);
   if (!match) return null;
-  const domain = match[1].toLowerCase();
+  const domain = match[1]!.toLowerCase();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FEDERATION_TIMEOUT_MS);
   try {
-    const tomlRes = await fetchWithTimeout(`https://${domain}/.well-known/stellar.toml`, controller.signal);
+    const tomlRes = await fetchWithTimeout(
+      `https://${domain}/.well-known/stellar.toml`,
+      controller.signal
+    );
     const server = parseFederationServer(await tomlRes.text());
     if (!server) return null;
 

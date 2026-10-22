@@ -3,13 +3,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, Input, Button, Skeleton, SuccessBurst, QuickAmountChips, Tour, TourReplayButton, useTour, type TourStep, AsyncState, RelativeDate } from "@/components/ui";
+import {
+  Container,
+  Card,
+  Badge,
+  Input,
+  Button,
+  Skeleton,
+  SuccessBurst,
+  QuickAmountChips,
+  Tour,
+  TourReplayButton,
+  useTour,
+  type TourStep,
+  AsyncState,
+  RelativeDate,
+  Slider,
+} from "@/components/ui";
 import { WalletButton, WrongNetworkBanner, TxErrorMessage } from "@/components/wallet";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useCoverageTypes } from "@/hooks/useCoverageTypes";
 import { useCoverageBounds } from "@/hooks/useCoverageBounds";
 import { useEstimatedFee } from "@/hooks/useEstimatedFee";
-import { buyPolicy, type BuyPolicyResponse } from "@/lib/api/policies";
+import { buyPolicy, type BuyPolicyResponse, type TriggerParams } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
@@ -43,13 +59,35 @@ const RISK_TAG_COLORS: Record<string, string> = {
 
 const RISK_HEAT: Record<string, number> = { low: 20, medium: 45, high: 72, critical: 95 };
 
-const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000].map((v) => ({ label: `$${v.toLocaleString()}`, value: String(v) }));
+const QUICK_AMOUNTS = [1_000, 5_000, 10_000, 25_000].map((v) => ({
+  label: `$${v.toLocaleString()}`,
+  value: String(v),
+}));
 
 const COVER_TOUR: TourStep[] = [
-  { target: "cover-type", title: "Pick a coverage type", content: "Each type pays out automatically when its on-chain trigger fires — no claims form. Use the arrow keys to move between types." },
-  { target: "cover-amount", title: "Set your coverage amount", content: "This is the USDC payout you'd receive if the trigger fires. Quick chips fill in common amounts." },
-  { target: "cover-duration", title: "Choose a duration", content: "Your premium scales with how long the policy stays active, from 1 day up to a year." },
-  { target: "cover-buy", title: "Review and buy", content: "Check the premium, then buy and confirm in your wallet — or add several policies to the cart and check out together." },
+  {
+    target: "cover-type",
+    title: "Pick a coverage type",
+    content:
+      "Each type pays out automatically when its on-chain trigger fires — no claims form. Use the arrow keys to move between types.",
+  },
+  {
+    target: "cover-amount",
+    title: "Set your coverage amount",
+    content:
+      "This is the USDC payout you'd receive if the trigger fires. Quick chips fill in common amounts.",
+  },
+  {
+    target: "cover-duration",
+    title: "Choose a duration",
+    content: "Your premium scales with how long the policy stays active, from 1 day up to a year.",
+  },
+  {
+    target: "cover-buy",
+    title: "Review and buy",
+    content:
+      "Check the premium, then buy and confirm in your wallet — or add several policies to the cart and check out together.",
+  },
 ];
 
 const CART_STORAGE_KEY = "refract:cover-cart";
@@ -63,6 +101,20 @@ const CART_STATUS_LABEL: Record<CartItemStatus, { label: string; className: stri
   skipped: { label: "Skipped", className: "text-pm-text/30" },
 };
 
+/**
+ * The cover form has no departure-date picker yet, so flight-delay policies
+ * are bought for today's departure of the selected flight.
+ */
+function flightTriggerParams(flightNumber: string): TriggerParams {
+  return {
+    coverageType: 4,
+    params: {
+      flightNumber: flightNumber.trim(),
+      departureDate: new Date().toISOString().slice(0, 10),
+    },
+  };
+}
+
 const WIZARD_STEPS = [
   { id: 1, title: "Coverage Type", shortTitle: "Type" },
   { id: 2, title: "Trigger Parameters", shortTitle: "Trigger" },
@@ -74,7 +126,12 @@ export default function CoverPage() {
   const wallet = useWallet();
   const { requestReview, reviewDialog } = useTxReview();
   const searchParams = useSearchParams();
-  const { data: coverageTypes, loading: typesLoading, error: typesError, isFixture } = useCoverageTypes();
+  const {
+    data: coverageTypes,
+    loading: typesLoading,
+    error: typesError,
+    isFixture,
+  } = useCoverageTypes();
   const { isCorrectNetwork, expectedNetwork } = useNetworkGuard();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
@@ -188,12 +245,12 @@ export default function CoverPage() {
           coverageType: ct.id,
           coverageAmount: toStroops(parseFloat(coverageAmount)),
           durationDays,
-          ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
+          ...(isFlightDelay ? { triggerParams: flightTriggerParams(flightNumber) } : {}),
         },
         typeName: ct.name,
         icon: ct.icon,
         premium,
-        status: "queued",
+        status: "queued" as const,
       },
     ]);
   }
@@ -202,14 +259,19 @@ export default function CoverPage() {
     setCart((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
-  async function purchaseCartItem(item: CartItem, holder: string, networkPassphrase: string): Promise<PurchaseResult> {
+  async function purchaseCartItem(
+    item: CartItem,
+    holder: string,
+    networkPassphrase: string
+  ): Promise<PurchaseResult> {
     try {
       const result = await buyPolicy({ ...item.params, holder });
       const txHash = await signAndSubmit(result.txXdr, holder, networkPassphrase);
       return { policyId: result.policy.id, txHash, demo: false };
     } catch (err) {
       // Same clearly-labeled demo fallback as the single-purchase flow.
-      if (err instanceof ApiUnreachableError) return { policyId: `demo-${crypto.randomUUID()}`, demo: true };
+      if (err instanceof ApiUnreachableError)
+        return { policyId: `demo-${crypto.randomUUID()}`, demo: true };
       throw err;
     }
   }
@@ -223,7 +285,11 @@ export default function CoverPage() {
     if (!networkPassphrase) return;
     setCheckingOut(true);
     try {
-      await runBatchCheckout(cart, (item) => purchaseCartItem(item, address, networkPassphrase), updateCartItem);
+      await runBatchCheckout(
+        cart,
+        (item) => purchaseCartItem(item, address, networkPassphrase),
+        updateCartItem
+      );
     } finally {
       setCheckingOut(false);
     }
@@ -232,15 +298,11 @@ export default function CoverPage() {
   async function handleBuy() {
     if (!ct) return;
     if (amountInvalid || flightNumberInvalid || !isCorrectNetwork) return;
-    let holder = wallet.status === "connected" ? wallet.address : null;
-    let networkPassphrase = wallet.networkPassphrase;
-    if (!holder) {
+    if (wallet.status !== "connected") {
       // Connect, then carry on with the same purchase — no second click.
       // A declined/failed connect resolves null and stops here.
       const connected = await wallet.connect();
       if (!connected) return;
-      holder = connected.address;
-      networkPassphrase = connected.networkPassphrase;
     }
     setConfirmOpen(true);
   }
@@ -248,6 +310,7 @@ export default function CoverPage() {
   async function submitBuy() {
     setConfirmOpen(false);
     if (!ct || !wallet.address) return;
+    const holder = wallet.address;
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
@@ -257,7 +320,7 @@ export default function CoverPage() {
         coverageType: ct.id,
         coverageAmount: toStroops(parseFloat(coverageAmount)),
         durationDays,
-        ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
+        ...(isFlightDelay ? { triggerParams: flightTriggerParams(flightNumber) } : {}),
       });
 
       setSubmission({ status: "signing" });
@@ -280,7 +343,9 @@ export default function CoverPage() {
         setSubmission({ status: "idle" });
         return;
       }
-      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
+      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, {
+        hardware: wallet.hardwareWallet,
+      });
       setSubmission({ status: "success", result, demo: false, txHash });
       updateTransaction(txId, { status: "confirmed", txHash });
     } catch (err) {
@@ -348,7 +413,12 @@ export default function CoverPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (step.id < currentStep || (step.id === 2 && ct) || (step.id === 3 && (!isFlightDelay || flightNumber)) || step.id === 4) {
+                        if (
+                          step.id < currentStep ||
+                          (step.id === 2 && ct) ||
+                          (step.id === 3 && (!isFlightDelay || flightNumber)) ||
+                          step.id === 4
+                        ) {
                           setCurrentStep(step.id);
                         }
                       }}
@@ -356,8 +426,8 @@ export default function CoverPage() {
                         isCurrent
                           ? "border-pm-violet bg-pm-violet/10 text-pm-violet shadow-[0_0_15px_rgba(139,92,246,0.15)]"
                           : isComplete
-                          ? "border-pm-green/40 bg-pm-green/[0.05] text-pm-green hover:border-pm-green/60"
-                          : "border-white/5 bg-white/[0.02] text-pm-text/40"
+                            ? "border-pm-green/40 bg-pm-green/[0.05] text-pm-green hover:border-pm-green/60"
+                            : "border-white/5 bg-white/[0.02] text-pm-text/40"
                       }`}
                     >
                       <span
@@ -365,8 +435,8 @@ export default function CoverPage() {
                           isCurrent
                             ? "bg-pm-violet text-white"
                             : isComplete
-                            ? "bg-pm-green text-white"
-                            : "bg-white/10 text-pm-text/60"
+                              ? "bg-pm-green text-white"
+                              : "bg-white/10 text-pm-text/60"
                         }`}
                       >
                         {isComplete ? "✓" : step.id}
@@ -399,116 +469,120 @@ export default function CoverPage() {
                     Step 1 of 4: Select Coverage Type
                   </div>
 
-                  {typesError && (
-                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {typesError}</p>
-                    </Card>
-                  )}
-
-                  {typesLoading && (
-                    <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
-                      {Array.from({ length: 5 }).map((_, i
-                  </div>
-
-                  {typesError && (
-                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {typesError}</p>
-                    </Card>
-                  )}
-
-                  {typesLoading && (
-                    <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} height={72} rounded="md" />
-                      ))}
-                    </div>
-                  }
-                  errorRender={(err) => (
-                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {err}</p>
-                    </Card>
-                  )}
-                >
-                  {coverageTypes && (
-                    <div
-                      className="flex flex-col gap-2.5"
-                      role="radiogroup"
-                      aria-label="Coverage type"
-                      onKeyDown={(e) => {
-                        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-                        e.preventDefault();
-                        const ids = coverageTypes.map((t) => t.id);
-                        const currentIndex = ids.indexOf(selectedType);
-                        let nextIndex = currentIndex;
-                        if (e.key === "ArrowDown") nextIndex = (currentIndex + 1) % ids.length;
-                        if (e.key === "ArrowUp") nextIndex = (currentIndex - 1 + ids.length) % ids.length;
-                        if (e.key === "Home") nextIndex = 0;
-                        if (e.key === "End") nextIndex = ids.length - 1;
-                        const nextId = ids[nextIndex];
-                        setSelectedType(nextId);
-                        setSubmission({ status: "idle" });
-                        radioRefs.current[nextId]?.focus();
-                      }}
-                    >
-                      {coverageTypes.map((type) => {
-                        const active = selectedType === type.id;
-                        return (
-                          <button
-                            key={type.id}
-                            ref={(el) => {
-                              radioRefs.current[type.id] = el;
-                            }}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            tabIndex={active ? 0 : -1}
-                            onClick={() => {
-                              setSelectedType(type.id);
-                              setSubmission({ status: "idle" });
-                              if (type.id !== 4) {
-                                setFlightNumber("");
-                                setSelectedFlight(null);
-                              }
-                            }}
-                            className="w-full rounded-[10px] border px-5 py-[18px] text-left transition-all"
-                            style={{
-                              background: active ? "rgba(139,92,246,0.1)" : "rgba(255,255,255,0.025)",
-                              borderColor: active ? "rgba(139,92,246,0.4)" : "rgba(255,255,255,0.06)",
-                              boxShadow: active ? "0 0 20px rgba(139,92,246,0.1)" : "none",
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <span className="text-[22px]" aria-hidden="true">{type.icon}</span>
-                                <div>
-                                  <div className="mb-0.5 text-sm font-semibold text-pm-text">{type.name}</div>
-                                  <div className="text-xs text-pm-text/40">{type.trigger}</div>
+                  <AsyncState
+                    loading={typesLoading}
+                    error={typesError}
+                    data={coverageTypes}
+                    loadingRender={
+                      <div
+                        className="flex flex-col gap-2.5"
+                        role="status"
+                        aria-label="Loading coverage types"
+                      >
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Skeleton key={i} height={72} rounded="md" />
+                        ))}
+                      </div>
+                    }
+                    errorRender={(err) => (
+                      <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
+                        <p className="text-sm text-pm-red">
+                          Couldn&apos;t load coverage types: {err}
+                        </p>
+                      </Card>
+                    )}
+                  >
+                    {coverageTypes && (
+                      <div
+                        className="flex flex-col gap-2.5"
+                        role="radiogroup"
+                        aria-label="Coverage type"
+                        onKeyDown={(e) => {
+                          if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+                          e.preventDefault();
+                          const ids = coverageTypes.map((t) => t.id);
+                          const currentIndex = ids.indexOf(selectedType);
+                          let nextIndex = currentIndex;
+                          if (e.key === "ArrowDown") nextIndex = (currentIndex + 1) % ids.length;
+                          if (e.key === "ArrowUp")
+                            nextIndex = (currentIndex - 1 + ids.length) % ids.length;
+                          if (e.key === "Home") nextIndex = 0;
+                          if (e.key === "End") nextIndex = ids.length - 1;
+                          const nextId = ids[nextIndex];
+                          if (nextId === undefined) return;
+                          setSelectedType(nextId);
+                          setSubmission({ status: "idle" });
+                          radioRefs.current[nextId]?.focus();
+                        }}
+                      >
+                        {coverageTypes.map((type) => {
+                          const active = selectedType === type.id;
+                          return (
+                            <button
+                              key={type.id}
+                              ref={(el) => {
+                                radioRefs.current[type.id] = el;
+                              }}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              tabIndex={active ? 0 : -1}
+                              onClick={() => {
+                                setSelectedType(type.id);
+                                setSubmission({ status: "idle" });
+                                if (type.id !== 4) {
+                                  setFlightNumber("");
+                                  setSelectedFlight(null);
+                                }
+                              }}
+                              className="w-full rounded-[10px] border px-5 py-[18px] text-left transition-all"
+                              style={{
+                                background: active
+                                  ? "rgba(139,92,246,0.1)"
+                                  : "rgba(255,255,255,0.025)",
+                                borderColor: active
+                                  ? "rgba(139,92,246,0.4)"
+                                  : "rgba(255,255,255,0.06)",
+                                boxShadow: active ? "0 0 20px rgba(139,92,246,0.1)" : "none",
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[22px]" aria-hidden="true">
+                                    {type.icon}
+                                  </span>
+                                  <div>
+                                    <div className="mb-0.5 text-sm font-semibold text-pm-text">
+                                      {type.name}
+                                    </div>
+                                    <div className="text-xs text-pm-text/40">{type.trigger}</div>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <div
+                                    className="mb-0.5 text-[11px] font-semibold uppercase"
+                                    style={{ color: RISK_TAG_COLORS[type.riskLevel] }}
+                                  >
+                                    {type.riskLevel}
+                                  </div>
+                                  <div className="text-[13px] font-bold text-pm-violet">
+                                    {type.baseRatePct}%/yr
+                                  </div>
                                 </div>
                               </div>
-                              <div className="shrink-0 text-right">
-                                <div
-                                  className="mb-0.5 text-[11px] font-semibold uppercase"
-                                  style={{ color: RISK_TAG_COLORS[type.riskLevel] }}
-                                >
-                                  {type.riskLevel}
+                              {active && (
+                                <div className="mt-3 flex flex-wrap gap-2 border-t border-pm-violet/15 pt-3">
+                                  <Badge tone="violet">Auto-settle</Badge>
+                                  <Badge tone="violet">No form required</Badge>
+                                  <Badge tone="safe">On-chain</Badge>
                                 </div>
-                                <div className="text-[13px] font-bold text-pm-violet">{type.baseRatePct}%/yr</div>
-                              </div>
-                            </div>
-                            {active && (
-                              <div className="mt-3 flex flex-wrap gap-2 border-t border-pm-violet/15 pt-3">
-                                <Badge tone="violet">Auto-settle</Badge>
-                                <Badge tone="violet">No form required</Badge>
-                                <Badge tone="safe">On-chain</Badge>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </AsyncState>
-              </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </AsyncState>
 
                   <div className="mt-6 flex justify-end">
                     <Button
@@ -532,7 +606,9 @@ export default function CoverPage() {
                         Step 2 of 4: Trigger Parameters
                       </div>
                       <h2 className="text-lg font-bold text-pm-text">
-                        {isFlightDelay ? "Flight Tracking & Trigger Lookup" : "Automated Oracle Trigger Parameters"}
+                        {isFlightDelay
+                          ? "Flight Tracking & Trigger Lookup"
+                          : "Automated Oracle Trigger Parameters"}
                       </h2>
                     </div>
                     <span className="text-2xl">{ct.icon}</span>
@@ -541,7 +617,9 @@ export default function CoverPage() {
                   {isFlightDelay ? (
                     <div className="flex flex-col gap-4">
                       <p className="text-xs leading-relaxed text-pm-text/60">
-                        Enter your flight number or search popular commercial routes. The on-chain oracle will monitor flight status and automatically trigger a payout if departure is delayed &gt; 120 minutes.
+                        Enter your flight number or search popular commercial routes. The on-chain
+                        oracle will monitor flight status and automatically trigger a payout if
+                        departure is delayed &gt; 120 minutes.
                       </p>
 
                       <div className="relative">
@@ -555,7 +633,11 @@ export default function CoverPage() {
                             setFlightNumber(val);
                           }}
                           placeholder="e.g. BA249, JFK, British Airways"
-                          error={flightNumberInvalid ? "Please select or enter a valid flight number" : undefined}
+                          error={
+                            flightNumberInvalid
+                              ? "Please select or enter a valid flight number"
+                              : undefined
+                          }
                         />
                       </div>
 
@@ -579,11 +661,19 @@ export default function CoverPage() {
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="font-mono text-xs font-bold text-pm-violet">{f.flightNumber}</span>
-                                  <span className="text-[10px] text-pm-text/40">{f.departureTime}</span>
+                                  <span className="font-mono text-xs font-bold text-pm-violet">
+                                    {f.flightNumber}
+                                  </span>
+                                  <span className="text-[10px] text-pm-text/40">
+                                    {f.departureTime}
+                                  </span>
                                 </div>
-                                <div className="text-xs font-semibold text-pm-text">{f.airline}</div>
-                                <div className="text-[11px] text-pm-text/50">{f.from} → {f.to}</div>
+                                <div className="text-xs font-semibold text-pm-text">
+                                  {f.airline}
+                                </div>
+                                <div className="text-[11px] text-pm-text/50">
+                                  {f.from} → {f.to}
+                                </div>
                               </button>
                             );
                           })}
@@ -593,11 +683,16 @@ export default function CoverPage() {
                       {selectedFlight && (
                         <div className="mt-2 rounded-lg border border-pm-green/20 bg-pm-green/[0.06] p-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-pm-green">✓ Flight Selected: {selectedFlight.flightNumber}</span>
-                            <span className="text-[11px] text-pm-text/40">Oracle Source: Chainlink FlightStats</span>
+                            <span className="text-xs font-bold text-pm-green">
+                              ✓ Flight Selected: {selectedFlight.flightNumber}
+                            </span>
+                            <span className="text-[11px] text-pm-text/40">
+                              Oracle Source: Chainlink FlightStats
+                            </span>
                           </div>
                           <div className="mt-1 text-xs text-pm-text/70">
-                            {selectedFlight.airline} · {selectedFlight.from} to {selectedFlight.to} ({selectedFlight.departureTime})
+                            {selectedFlight.airline} · {selectedFlight.from} to {selectedFlight.to}{" "}
+                            ({selectedFlight.departureTime})
                           </div>
                         </div>
                       )}
@@ -605,21 +700,33 @@ export default function CoverPage() {
                   ) : (
                     <div className="flex flex-col gap-4">
                       <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
-                        <div className="mb-2 text-xs font-semibold text-pm-text">Monitoring Condition</div>
+                        <div className="mb-2 text-xs font-semibold text-pm-text">
+                          Monitoring Condition
+                        </div>
                         <div className="text-sm font-medium text-pm-violet">{ct.trigger}</div>
                         <div className="mt-3 text-xs leading-relaxed text-pm-text/50">
-                          Refract contracts autonomously poll decentralized oracle feeds. When trigger criteria are met on-chain, payouts are disbursed directly to your wallet without claim forms.
+                          Refract contracts autonomously poll decentralized oracle feeds. When
+                          trigger criteria are met on-chain, payouts are disbursed directly to your
+                          wallet without claim forms.
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                          <div className="text-[10px] uppercase text-pm-text/40">Resolution Oracle</div>
-                          <div className="text-xs font-semibold text-pm-text">Pyth & Chainlink Feeds</div>
+                          <div className="text-[10px] uppercase text-pm-text/40">
+                            Resolution Oracle
+                          </div>
+                          <div className="text-xs font-semibold text-pm-text">
+                            Pyth & Chainlink Feeds
+                          </div>
                         </div>
                         <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                          <div className="text-[10px] uppercase text-pm-text/40">Settlement Speed</div>
-                          <div className="text-xs font-semibold text-pm-green">Sub-minute (~5s on Soroban)</div>
+                          <div className="text-[10px] uppercase text-pm-text/40">
+                            Settlement Speed
+                          </div>
+                          <div className="text-xs font-semibold text-pm-green">
+                            Sub-minute (~5s on Soroban)
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -633,7 +740,9 @@ export default function CoverPage() {
                       type="button"
                       variant="primary"
                       onClick={() => setCurrentStep(3)}
-                      disabled={isFlightDelay && (!flightNumber || flightNumber.trim().length === 0)}
+                      disabled={
+                        isFlightDelay && (!flightNumber || flightNumber.trim().length === 0)
+                      }
                     >
                       Next: Amount & Duration →
                     </Button>
@@ -675,21 +784,78 @@ export default function CoverPage() {
                         value={flightNumber}
                         onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
                         placeholder="BA249"
-                        error={flightNumberInvalid ? "Enter the flight number this policy should monitor" : undefined}
+                        error={
+                          flightNumberInvalid
+                            ? "Enter the flight number this policy should monitor"
+                            : undefined
+                        }
                       />
                     </div>
                   )}
 
                   <div data-tour-id="cover-duration">
-                    <div className="mb-2 flex justify-between">
-                      <label htmlFor="duration" className="text-xs text-pm-text/60">
-                        Coverage Duration
-                      </label>
-                      <span className="text-[13px] font-bold text-pm-violet">
-                        {durationDays} days · Expires {expiryDate}
-                      </span>
-                    </div>
-                    <input
+                    <Slider
+                      label="Coverage Duration"
+                      value={durationDays}
+                      onChange={setDurationDays}
+                      min={1}
+                      max={365}
+                      presets={[30, 90, 180, 365]}
+                      formatValue={(v) => `${v} day${v === 1 ? "" : "s"} · Expires ${expiryDate}`}
+                    />
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between border-t border-pm-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>
+                      ← Back
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() => setCurrentStep(4)}
+                      disabled={amountInvalid || flightNumberInvalid}
+                    >
+                      Next: Review →
+                    </Button>
+                  </div>
+                </Card>
+              )}
+
+              {/* STEP 4: Review & Confirm */}
+              {currentStep === 4 && ct && (
+                <Card padding="md">
+                  <div className="mb-4 text-[11px] uppercase tracking-wide text-pm-text/40">
+                    Step 4 of 4: Review & Confirm
+                  </div>
+                  <dl className="flex flex-col gap-2.5 text-[13px]">
+                    {[
+                      { label: "Coverage type", value: ct.name },
+                      { label: "Trigger", value: ct.trigger },
+                      ...(isFlightDelay ? [{ label: "Flight", value: flightNumber.trim() }] : []),
+                      {
+                        label: "Coverage amount",
+                        value: formatUsd(parseFloat(coverageAmount || "0")),
+                      },
+                      { label: "Duration", value: `${durationDays} days · Expires ${expiryDate}` },
+                      { label: "Premium", value: formatUsd(premium) },
+                    ].map((item) => (
+                      <div key={item.label} className="flex justify-between gap-3">
+                        <dt className="text-pm-text/45">{item.label}</dt>
+                        <dd className="text-right font-medium text-pm-text">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="mt-4 text-xs text-pm-text/45">
+                    Use the quote panel to buy now or add this policy to your cart.
+                  </p>
+                  <div className="mt-6 flex justify-start border-t border-pm-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(3)}>
+                      ← Back
+                    </Button>
+                  </div>
+                </Card>
+              )}
+            </div>
 
             {/* Right: Quote panel */}
             <div className="flex flex-col gap-5 lg:sticky lg:top-20">
@@ -705,14 +871,16 @@ export default function CoverPage() {
                   </div>
                   {submission.demo && (
                     <p className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
-                      Demo mode: the Refract API wasn&apos;t reachable, so this was simulated client-side —
-                      no real transaction was built or submitted.
+                      Demo mode: the Refract API wasn&apos;t reachable, so this was simulated
+                      client-side — no real transaction was built or submitted.
                     </p>
                   )}
                   <dl className="flex flex-col gap-2 text-[13px]">
                     <div className="flex justify-between">
                       <dt className="text-pm-text/45">Policy ID</dt>
-                      <dd className="font-mono text-pm-text">{submission.result.policy.id.slice(0, 13)}…</dd>
+                      <dd className="font-mono text-pm-text">
+                        {submission.result.policy.id.slice(0, 13)}…
+                      </dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-pm-text/45">Coverage</dt>
@@ -720,22 +888,21 @@ export default function CoverPage() {
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-pm-text/45">Holder</dt>
-                      <dd className="font-mono text-pm-text">{truncateAddress(submission.result.policy.holder)}</dd>
+                      <dd className="font-mono text-pm-text">
+                        {truncateAddress(submission.result.policy.holder)}
+                      </dd>
                     </div>
                     {submission.txHash && (
                       <div className="flex justify-between">
                         <dt className="text-pm-text/45">Transaction</dt>
-                        <dd className="font-mono text-pm-text">{truncateAddress(submission.txHash)}</dd>
+                        <dd className="font-mono text-pm-text">
+                          {truncateAddress(submission.txHash)}
+                        </dd>
                       </div>
                     )}
                   </dl>
                   <div className="mt-5 flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      variant="primary"
-                      block
-                      onClick={() => setShowCert(true)}
-                    >
+                    <Button type="button" variant="primary" block onClick={() => setShowCert(true)}>
                       📄 View / Print Certificate
                     </Button>
                     <Button
@@ -761,7 +928,9 @@ export default function CoverPage() {
               ) : (
                 <Card padding="md">
                   <div className="mb-6 flex items-center gap-2.5">
-                    <span className="text-[22px]" aria-hidden="true">{ct.icon}</span>
+                    <span className="text-[22px]" aria-hidden="true">
+                      {ct.icon}
+                    </span>
                     <div>
                       <div className="text-[15px] font-bold text-pm-text">{ct.name}</div>
                       <div className="text-xs text-pm-text/40">{durationDays}-day policy</div>
@@ -771,7 +940,10 @@ export default function CoverPage() {
                   <div className="mb-5">
                     <div className="mb-1.5 flex justify-between">
                       <span className="text-[11px] text-pm-text/40">Risk level</span>
-                      <span className="text-[11px] font-semibold uppercase" style={{ color: RISK_TAG_COLORS[ct.riskLevel] }}>
+                      <span
+                        className="text-[11px] font-semibold uppercase"
+                        style={{ color: RISK_TAG_COLORS[ct.riskLevel] }}
+                      >
                         {ct.riskLevel}
                       </span>
                     </div>
@@ -788,7 +960,10 @@ export default function CoverPage() {
 
                   <dl className="mb-5 flex flex-col gap-2.5">
                     {[
-                      { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount || "0")) },
+                      {
+                        label: "Coverage amount",
+                        value: formatUsd(parseFloat(coverageAmount || "0")),
+                      },
                       { label: "Annual rate", value: `${ct.baseRatePct}%` },
                       { label: "Duration", value: `${durationDays} days` },
                       { label: "Expires", value: expiryDate },
@@ -803,13 +978,19 @@ export default function CoverPage() {
                   <div className="mb-5 border-t border-pm-border pt-4">
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] text-pm-text/60">Total premium</span>
-                      <span className="font-display text-2xl font-extrabold text-pm-violet">{formatUsd(premium)}</span>
+                      <span className="font-display text-2xl font-extrabold text-pm-violet">
+                        {formatUsd(premium)}
+                      </span>
                     </div>
-                    <div className="mt-0.5 text-right text-[11px] text-pm-text/30">One-time payment · USDC</div>
+                    <div className="mt-0.5 text-right text-[11px] text-pm-text/30">
+                      One-time payment · USDC
+                    </div>
                     {networkFee && (
                       <div className="mt-2 flex justify-between">
                         <span className="text-[11px] text-pm-text/40">Network fee</span>
-                        <span className="text-[11px] text-pm-text/60">{networkFee} est. network fee</span>
+                        <span className="text-[11px] text-pm-text/60">
+                          {networkFee} est. network fee
+                        </span>
                       </div>
                     )}
                   </div>
@@ -821,7 +1002,11 @@ export default function CoverPage() {
                     block
                     data-tour-id="cover-buy"
                     disabled={amountInvalid || flightNumberInvalid || !isCorrectNetwork}
-                    title={!isCorrectNetwork ? `Switch your wallet to ${expectedNetwork} to continue` : undefined}
+                    title={
+                      !isCorrectNetwork
+                        ? `Switch your wallet to ${expectedNetwork} to continue`
+                        : undefined
+                    }
                     loading={
                       submission.status === "submitting" ||
                       submission.status === "signing" ||
@@ -836,18 +1021,21 @@ export default function CoverPage() {
                       : !isCorrectNetwork
                         ? `Switch to ${expectedNetwork}`
                         : wallet.status === "connected"
-                        ? "Buy Coverage"
-                        : wallet.status === "connecting"
-                          ? "Connecting…"
-                          : "Connect & Buy Coverage"}
+                          ? "Buy Coverage"
+                          : wallet.status === "connecting"
+                            ? "Connecting…"
+                            : "Connect & Buy Coverage"}
                   </Button>
                   {wallet.status !== "connected" && (
                     <p className="mt-2 text-[12px] text-pm-muted">
-                      After you connect, your purchase continues automatically — you&apos;ll still confirm it in Freighter.
+                      After you connect, your purchase continues automatically — you&apos;ll still
+                      confirm it in Freighter.
                     </p>
                   )}
 
-                  {submission.status === "error" && <TxErrorMessage rawError={submission.message} />}
+                  {submission.status === "error" && (
+                    <TxErrorMessage rawError={submission.message} />
+                  )}
 
                   <Button
                     type="button"
@@ -861,13 +1049,15 @@ export default function CoverPage() {
                   </Button>
 
                   <div className="mt-4 flex flex-col gap-1.5">
-                    {["🔒 No claims form required", "⚡ Instant payout via oracle", "🌐 Fully on-chain, non-custodial"].map(
-                      (item) => (
-                        <div key={item} className="text-[11px] text-pm-text/35">
-                          {item}
-                        </div>
-                      )
-                    )}
+                    {[
+                      "🔒 No claims form required",
+                      "⚡ Instant payout via oracle",
+                      "🌐 Fully on-chain, non-custodial",
+                    ].map((item) => (
+                      <div key={item} className="text-[11px] text-pm-text/35">
+                        {item}
+                      </div>
+                    ))}
                   </div>
                 </Card>
               )}
@@ -875,7 +1065,9 @@ export default function CoverPage() {
               {cart.length > 0 && (
                 <Card padding="md">
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="font-display text-[15px] font-bold tracking-tight text-pm-text">Cart</h2>
+                    <h2 className="font-display text-[15px] font-bold tracking-tight text-pm-text">
+                      Cart
+                    </h2>
                     <span className="text-[11px] text-pm-text/45" aria-live="polite">
                       {cart.filter((i) => i.status === "confirmed").length} of{" "}
                       {cart.filter((i) => i.status !== "skipped").length} confirmed
@@ -889,20 +1081,25 @@ export default function CoverPage() {
                             <span className="mr-1.5 text-pm-text/35">{index + 1}.</span>
                             <span aria-hidden="true">{item.icon}</span> {item.typeName}
                           </span>
-                          <span className={`text-[11px] font-semibold ${CART_STATUS_LABEL[item.status].className}`}>
+                          <span
+                            className={`text-[11px] font-semibold ${CART_STATUS_LABEL[item.status].className}`}
+                          >
                             {CART_STATUS_LABEL[item.status].label}
                           </span>
                         </div>
                         <div className="mt-0.5 text-[11px] text-pm-text/40">
-                          {formatUsd(fromStroops(item.params.coverageAmount))} · {item.params.durationDays} days ·{" "}
-                          {formatUsd(item.premium)} premium
+                          {formatUsd(fromStroops(item.params.coverageAmount))} ·{" "}
+                          {item.params.durationDays} days · {formatUsd(item.premium)} premium
                           {item.demo && " · demo"}
                           {item.txHash && ` · tx ${truncateAddress(item.txHash)}`}
                         </div>
-                        {item.error && item.status === "failed" && <TxErrorMessage rawError={item.error} />}
+                        {item.error && item.status === "failed" && (
+                          <TxErrorMessage rawError={item.error} />
+                        )}
                         {item.error && item.status === "unconfirmed" && (
                           <p className="mt-1.5 text-[11px] text-pm-amber">
-                            This may still have gone through — check your Dashboard before buying it again. ({item.error})
+                            This may still have gone through — check your Dashboard before buying it
+                            again. ({item.error})
                           </p>
                         )}
                         {!checkingOut && item.status !== "processing" && (
@@ -911,7 +1108,11 @@ export default function CoverPage() {
                               <button
                                 type="button"
                                 className="text-pm-violet"
-                                onClick={() => setCart((items) => items.map((i) => (i.id === item.id ? retryItem(i) : i)))}
+                                onClick={() =>
+                                  setCart((items) =>
+                                    items.map((i) => (i.id === item.id ? retryItem(i) : i))
+                                  )
+                                }
                               >
                                 Retry
                               </button>
@@ -920,7 +1121,11 @@ export default function CoverPage() {
                               <button
                                 type="button"
                                 className="text-pm-text/45"
-                                onClick={() => setCart((items) => items.map((i) => (i.id === item.id ? skipItem(i) : i)))}
+                                onClick={() =>
+                                  setCart((items) =>
+                                    items.map((i) => (i.id === item.id ? skipItem(i) : i))
+                                  )
+                                }
                               >
                                 Skip
                               </button>
@@ -928,7 +1133,9 @@ export default function CoverPage() {
                             <button
                               type="button"
                               className="text-pm-text/45"
-                              onClick={() => setCart((items) => items.filter((i) => i.id !== item.id))}
+                              onClick={() =>
+                                setCart((items) => items.filter((i) => i.id !== item.id))
+                              }
                             >
                               {item.status === "queued" ? "Remove" : "Dismiss"}
                             </button>
@@ -949,7 +1156,9 @@ export default function CoverPage() {
                     {wallet.status !== "connected"
                       ? "Connect to Checkout"
                       : `Checkout ${cart.filter((i) => i.status === "queued").length} ${
-                          cart.filter((i) => i.status === "queued").length === 1 ? "policy" : "policies"
+                          cart.filter((i) => i.status === "queued").length === 1
+                            ? "policy"
+                            : "policies"
                         }`}
                   </Button>
                 </Card>
@@ -967,7 +1176,7 @@ export default function CoverPage() {
             { label: "Action", value: "Buy coverage" },
             { label: "Coverage type", value: ct.name },
             { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount || "0")) },
-            { label: "Duration", value: <>{durationDays} days · Expires {expiryDate}</> },
+            { label: "Duration", value: `${durationDays} days · Expires ${expiryDate}` },
             ...(isFlightDelay ? [{ label: "Flight", value: flightNumber.trim() }] : []),
           ]}
           total={{ label: "Estimated total cost", value: formatUsd(premium) }}

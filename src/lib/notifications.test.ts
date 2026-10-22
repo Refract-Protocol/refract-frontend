@@ -37,9 +37,9 @@ describe("deriveNotifications", () => {
 
     const notifs = deriveNotifications({ policies: mockPolicies, now });
     expect(notifs.length).toBe(1);
-    expect(notifs[0].type).toBe("policy_expiring");
-    expect(notifs[0].title).toBe("Policy Expiring Soon");
-    expect(notifs[0].message).toContain("3 days");
+    expect(notifs[0]!.type).toBe("policy_expiring");
+    expect(notifs[0]!.title).toBe("Policy Expiring Soon");
+    expect(notifs[0]!.message).toContain("3 days");
   });
 
   it("creates notifications for claims and payouts", () => {
@@ -57,8 +57,8 @@ describe("deriveNotifications", () => {
 
     const notifs = deriveNotifications({ claims: mockClaims, now });
     expect(notifs.length).toBe(1);
-    expect(notifs[0].type).toBe("claim_payout");
-    expect(notifs[0].title).toBe("Claim Payout Disbursed");
+    expect(notifs[0]!.type).toBe("claim_payout");
+    expect(notifs[0]!.title).toBe("Claim Payout Disbursed");
   });
 
   it("handles lockup expiration and active oracle triggers", () => {
@@ -95,6 +95,6 @@ describe("deriveNotifications", () => {
 
     const readIds = new Set([`claim-pol-1-${Math.floor(now / 1000)}`]);
     const notifs = deriveNotifications({ claims: mockClaims, now, readIds });
-    expect(notifs[0].read).toBe(true);
+    expect(notifs[0]!.read).toBe(true);
   });
 });

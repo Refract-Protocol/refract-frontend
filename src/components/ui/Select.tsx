@@ -83,7 +83,7 @@ export function Select<T>({
 
   const selectedIndex = useMemo(
     () => options.findIndex((option) => option.value === value),
-    [options, value],
+    [options, value]
   );
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
 
@@ -93,11 +93,11 @@ export function Select<T>({
       let index = from;
       for (let i = 0; i < options.length; i += 1) {
         index = (index + step + options.length) % options.length;
-        if (!options[index].disabled) return index;
+        if (!options[index]?.disabled) return index;
       }
       return -1;
     },
-    [options],
+    [options]
   );
 
   const openList = useCallback(() => {
@@ -120,7 +120,7 @@ export function Select<T>({
       onChange(option.value);
       closeList();
     },
-    [options, onChange, closeList],
+    [options, onChange, closeList]
   );
 
   // Close on outside pointer/touch interaction.
@@ -128,10 +128,7 @@ export function Select<T>({
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (
-        !triggerRef.current?.contains(target) &&
-        !listRef.current?.contains(target)
-      ) {
+      if (!triggerRef.current?.contains(target) && !listRef.current?.contains(target)) {
         closeList(false);
       }
     };
@@ -152,9 +149,7 @@ export function Select<T>({
   // Keep the active option scrolled into view.
   useEffect(() => {
     if (!open || activeIndex < 0) return;
-    const node = listRef.current?.querySelector<HTMLElement>(
-      `[data-index="${activeIndex}"]`,
-    );
+    const node = listRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
     node?.scrollIntoView({ block: "nearest" });
   }, [open, activeIndex]);
 
@@ -162,7 +157,7 @@ export function Select<T>({
   useEffect(() => {
     if (!open) return;
     setActiveIndex((current) => {
-      if (current >= 0 && current < options.length && !options[current].disabled) {
+      if (current >= 0 && current < options.length && !options[current]?.disabled) {
         return current;
       }
       return selectedIndex >= 0 ? selectedIndex : firstEnabled(-1, 1);
@@ -184,13 +179,13 @@ export function Select<T>({
       for (let i = 1; i <= options.length; i += 1) {
         const index = (start + i) % options.length;
         const option = options[index];
-        if (!option.disabled && option.label.toLowerCase().startsWith(query)) {
+        if (option && !option.disabled && option.label.toLowerCase().startsWith(query)) {
           setActiveIndex(index);
           return;
         }
       }
     },
-    [options, activeIndex],
+    [options, activeIndex]
   );
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -258,18 +253,13 @@ export function Select<T>({
     }
   };
 
-  const activeId =
-    open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined;
+  const activeId = open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined;
   const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       {label && (
-        <label
-          id={labelId}
-          htmlFor={id}
-          className="text-xs font-semibold text-[var(--pm-muted)]"
-        >
+        <label id={labelId} htmlFor={id} className="text-xs font-semibold text-[var(--pm-muted)]">
           {label}
         </label>
       )}
@@ -294,17 +284,12 @@ export function Select<T>({
           className={cn(
             "pm-input flex w-full items-center justify-between gap-2 text-left",
             error && "border-[var(--pm-danger)]",
-            disabled && "cursor-not-allowed opacity-50",
+            disabled && "cursor-not-allowed opacity-50"
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
             {selectedOption?.icon}
-            <span
-              className={cn(
-                "truncate",
-                !selectedOption && "text-[var(--pm-muted-2)]",
-              )}
-            >
+            <span className={cn("truncate", !selectedOption && "text-[var(--pm-muted-2)]")}>
               {selectedOption ? selectedOption.label : placeholder}
             </span>
           </span>
@@ -313,7 +298,7 @@ export function Select<T>({
             viewBox="0 0 20 20"
             className={cn(
               "h-4 w-4 shrink-0 text-[var(--pm-muted)] transition-transform",
-              open && "rotate-180",
+              open && "rotate-180"
             )}
           >
             <path
@@ -338,7 +323,7 @@ export function Select<T>({
             onKeyDown={handleListKeyDown}
             className={cn(
               "pm-panel absolute left-0 z-50 max-h-64 w-full overflow-y-auto p-1 shadow-lg",
-              placement === "bottom" ? "top-full mt-1" : "bottom-full mb-1",
+              placement === "bottom" ? "top-full mt-1" : "bottom-full mb-1"
             )}
           >
             {options.map((option, index) => {
@@ -358,7 +343,7 @@ export function Select<T>({
                     "flex cursor-pointer items-start gap-2 rounded-[var(--pm-r)] px-3 py-2 text-sm",
                     isActive && "bg-[var(--pm-violet-dim)]",
                     isSelected && "text-[var(--pm-violet)]",
-                    option.disabled && "cursor-not-allowed opacity-40",
+                    option.disabled && "cursor-not-allowed opacity-40"
                   )}
                 >
                   {option.icon && <span className="mt-0.5">{option.icon}</span>}

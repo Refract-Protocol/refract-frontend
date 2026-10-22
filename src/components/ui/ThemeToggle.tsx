@@ -11,7 +11,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
  * vice versa.
  */
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme, setPreference: setTheme } = useTheme();
 
   const isDark = resolvedTheme === "dark";
   const nextTheme = isDark ? "light" : "dark";

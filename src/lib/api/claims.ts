@@ -34,9 +34,14 @@ function buildPaginationQuery({ cursor, limit }: PaginationParams = {}): string 
  * Normalizes a list response that may or may not include pagination metadata.
  * Falls back to the legacy `{ claims }` shape when metadata is absent.
  */
-function normalizeClaimsResponse(
-  response: { claims?: ClaimRecord[]; items?: ClaimRecord[]; nextCursor?: string; hasMore?: boolean },
-): PaginatedResponse<ClaimRecord> {
+type RawClaimsResponse = {
+  claims?: ClaimRecord[];
+  items?: ClaimRecord[];
+  nextCursor?: string;
+  hasMore?: boolean;
+};
+
+function normalizeClaimsResponse(response: RawClaimsResponse): PaginatedResponse<ClaimRecord> {
   const items = response.items ?? response.claims ?? [];
   const hasMore = response.hasMore ?? false;
   return { items, nextCursor: response.nextCursor, hasMore };
@@ -45,20 +50,20 @@ function normalizeClaimsResponse(
 export function fetchHolderClaims(
   address: string,
   params: PaginationParams = {},
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/holder/${address}${buildPaginationQuery(params)}`, { signal }).then(
-    normalizeClaimsResponse,
-  );
+  return apiRequest<RawClaimsResponse>(`/claims/holder/${address}${buildPaginationQuery(params)}`, {
+    signal,
+  }).then(normalizeClaimsResponse);
 }
 
 export function fetchRecentClaims(
   params: PaginationParams = {},
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<PaginatedResponse<ClaimRecord>> {
-  return apiRequest(`/claims/recent${buildPaginationQuery(params)}`, { signal }).then(
-    normalizeClaimsResponse,
-  );
+  return apiRequest<RawClaimsResponse>(`/claims/recent${buildPaginationQuery(params)}`, {
+    signal,
+  }).then(normalizeClaimsResponse);
 }
 
 /** Types are generated from openapi/refract-api.yaml, which mirrors ClaimService.getStats()'s response in refract-backend. */

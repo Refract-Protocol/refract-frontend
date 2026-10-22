@@ -1,4 +1,6 @@
-import { HORIZON_URL } from "../network";
+import { ACTIVE_NETWORK } from "../network";
+
+const HORIZON_URL = ACTIVE_NETWORK.horizonUrl;
 
 export type TxKind = "buy" | "provide" | "withdraw";
 

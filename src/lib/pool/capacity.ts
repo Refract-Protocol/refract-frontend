@@ -52,8 +52,10 @@ export function computeCapacity(input: CapacityInput): CapacityResult {
   }
 
   const maxUtilizationBps = poolStats.maxUtilizationBps;
-  const maxUtilizedUsdc = (poolStats.availableUsdc + poolStats.lockedUsdc) * (maxUtilizationBps / 10_000);
-  const remainingCapacity = Math.max(0, Math.floor(maxUtilizedUsdc - poolStats.lockedUsdc));
+  const lockedUsdc = Number(poolStats.lockedUsdc);
+  const maxUtilizedUsdc =
+    (Number(poolStats.availableUsdc) + lockedUsdc) * (maxUtilizationBps / 10_000);
+  const remainingCapacity = Math.max(0, Math.floor(maxUtilizedUsdc - lockedUsdc));
 
   const coverageUnavailable = remainingCapacity <= 0;
   const poolIsBinding = remainingCapacity < boundsMax;

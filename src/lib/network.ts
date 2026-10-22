@@ -62,3 +62,33 @@ export function resolveNetwork(raw: string | undefined): StellarNetworkConfig {
 }
 
 export const ACTIVE_NETWORK = resolveNetwork(process.env.NEXT_PUBLIC_STELLAR_NETWORK);
+
+/** Back-compat aliases used by display surfaces (e.g. the transparency page). */
+export const STELLAR_NETWORK: StellarNetworkId = ACTIVE_NETWORK.id;
+export const NETWORK_LABEL: Record<StellarNetworkId, string> = {
+  testnet: NETWORKS.testnet.label,
+  futurenet: NETWORKS.futurenet.label,
+  mainnet: NETWORKS.mainnet.label,
+};
+
+export interface RefractContract {
+  name: string;
+  description: string;
+  /** Contract id, or null when not configured for this environment. */
+  address: string | null;
+}
+
+/** The Soroban contracts the app talks to, configured per deployment via env. */
+export const CONTRACTS: RefractContract[] = [
+  {
+    name: "Liquidity Pool",
+    description:
+      "Holds provider capital, locks collateral for active policies and pays out claims.",
+    address: process.env.NEXT_PUBLIC_POOL_CONTRACT_ID || null,
+  },
+  {
+    name: "Policy",
+    description: "Issues parametric coverage policies and records their terms.",
+    address: process.env.NEXT_PUBLIC_POLICY_CONTRACT_ID || null,
+  },
+];

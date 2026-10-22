@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchUsdcBalance, type UsdcBalanceResponse } from "@/lib/api/account";
+import { fetchUsdcBalance, type UsdcBalance as UsdcBalanceResponse } from "@/lib/api/pool";
 
 /**
  * Fetch the connected wallet's USDC balance.
