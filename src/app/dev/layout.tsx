@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { env } from "@/lib/env";
 
 /**
  * Dev-only layout for the component gallery.
@@ -10,7 +11,7 @@ import type { ReactNode } from "react";
  * app without pulling in any page-level state or providers.
  */
 export default function DevLayout({ children }: { children: ReactNode }) {
-  if (process.env.NEXT_PUBLIC_ENABLE_UI_GALLERY !== "true") {
+  if (env.NEXT_PUBLIC_ENABLE_UI_GALLERY !== "true") {
     notFound();
   }
 

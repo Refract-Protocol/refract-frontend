@@ -249,7 +249,11 @@ export default function Home() {
                   )}
                 </div>
                 <div className="mt-0.5 text-[11px] text-pm-text/40">
-                  {oracleStatus.isStale ? "Saved readings — refreshing live data…" : oracleStatus.isFixture ? "Example data — Refract API unreachable" : "Oracles auto-refreshed every 60 seconds"}
+                  {oracleStatus.isFixture
+                    ? "Example data — Refract API unreachable"
+                    : oracleStatus.isStale
+                      ? "Live feed interrupted — showing last known data, refreshing every 60 seconds"
+                      : "Oracles auto-refreshed every 60 seconds"}
                 </div>
               </div>
             </Card></RealtimeProfiler>

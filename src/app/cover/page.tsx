@@ -15,6 +15,7 @@ import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useLiveQuote } from "@/hooks/useLiveQuote";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
 import { useTxReview } from "@/components/wallet/TxReview";
 import {
@@ -150,12 +151,34 @@ export default function CoverPage() {
 
   const ct = coverageTypes?.[selectedType];
 
+  const [submittingQuote, setSubmittingQuote] = useState(false);
+  const liveQuote = useLiveQuote(ct?.id, durationDays, submittingQuote);
+  const ratePct = liveQuote.quote?.baseRatePct ?? ct?.baseRatePct;
+
   const premium = useMemo(() => {
-    if (!ct) return 0;
+    if (!ct || ratePct === undefined) return 0;
     const amount = parseFloat(coverageAmount) || 0;
-    const annualRate = ct.baseRatePct / 100;
+    const annualRate = ratePct / 100;
     return amount * annualRate * (durationDays / 365);
-  }, [coverageAmount, durationDays, ct]);
+  }, [coverageAmount, durationDays, ct, ratePct]);
+
+  // Premium moved after the user opened the confirm step: close it so they must re-confirm the new price.
+  useEffect(() => {
+    if (submission.status === "idle" || submission.status === "error" || submission.status === "success") setSubmittingQuote(false);
+  }, [submission.status]);
+  const confirmedPremium = useRef<number | null>(null);
+  const [premiumChanged, setPremiumChanged] = useState(false);
+  useEffect(() => {
+    if (!confirmOpen) {
+      confirmedPremium.current = null;
+      return;
+    }
+    if (confirmedPremium.current === null) confirmedPremium.current = premium;
+    else if (confirmedPremium.current !== premium) {
+      setConfirmOpen(false);
+      setPremiumChanged(true);
+    }
+  }, [confirmOpen, premium]);
 
   const expiryMs = Date.now() + durationDays * 86400000;
   const expiryDate = <RelativeDate target={expiryMs} />;
@@ -245,12 +268,14 @@ export default function CoverPage() {
       holder = connected.address;
       networkPassphrase = connected.networkPassphrase;
     }
+    setPremiumChanged(false);
     setConfirmOpen(true);
   }
 
   async function submitBuy() {
     setConfirmOpen(false);
     if (!ct || !wallet.address) return;
+    setSubmittingQuote(true);
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
@@ -806,6 +831,15 @@ export default function CoverPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] text-pm-text/60">Total premium</span>
                       <span className="font-display text-2xl font-extrabold text-pm-violet">{formatUsd(premium)}</span>
+                      {(liveQuote.justUpdated || liveQuote.stale || premiumChanged) && (
+                        <span role="status" className="ml-2 text-[11px] text-pm-text/50">
+                          {premiumChanged
+                            ? "Premium changed — review and confirm again"
+                            : liveQuote.justUpdated
+                              ? "Updated just now"
+                              : "Live quote unavailable — showing last known rate"}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-right text-[11px] text-pm-text/30">One-time payment · USDC</div>
                     {networkFee && (
