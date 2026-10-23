@@ -6,6 +6,7 @@ export interface FlagsDocument {
 export const DEFAULT_FLAGS: Record<string, boolean> = {
   "realtime-oracle": false,
   "horizon-stream": false,
+  "realtime-quotes": false,
 };
 
 export const FLAGS_ENDPOINT = "/flags.json";

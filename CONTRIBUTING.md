@@ -1,37 +1,27 @@
 # Contributing
 
-## Styling
+Thanks for contributing to Refract!
 
-- Use Tailwind utility classes.
-- Prefer composition over custom CSS.
+## Development
 
-## TypeScript
+Install dependencies and start the dev server as usual. The app talks to
+`refract-backend` over `NEXT_PUBLIC_API_URL` for REST; the realtime layer is
+optional and off by default.
 
-- Keep types explicit at module boundaries.
-- Avoid `any`; prefer `unknown` and narrow.
+## Developing against the realtime mock server
 
-## State
+The realtime layer is documented in [`docs/realtime/architecture.md`](docs/realtime/architecture.md)
+and operated per [`docs/realtime/runbook.md`](docs/realtime/runbook.md). Because
+the backend contract is documented but not yet implemented upstream in
+`refract-backend`, develop against the local mock server:
 
-All shared state uses the SSR-safe store conventions in `src/lib/store`.
+1. Start the mock server locally (see the runbook).
+2. Enable the flags you need in `public/flags.json` — `realtime.enabled: true`
+   and the per-topic flag `realtime.topics.<topic>: true`. Both default to
+   `false`.
+3. Use `realtime.shadow: true` to observe realtime traffic without serving it
+   while validating the pipeline.
 
-- Create stores with `createAppStore<T>(initializer, name)` from
-  `@/lib/store`. It wires `zustand/middleware` devtools in development only,
-  so the middleware is tree-shaken from production builds.
-- Module-scope stores are only allowed for state that is identical for every
-  request. Anything derived from the session, wallet, cache or form state must
-  be request-scoped and provided through `StoreProvider`.
-- Components must select individual fields, never whole store objects:
-
-```ts
-import { useStoreSelector } from '@/lib/store';
-
-// Good — only re-renders when `address` changes.
-const address = useStoreSelector(walletStore, (s) => s.address);
-
-// Bad — subscribes to the whole store and re-renders on any change.
-const wallet = useStoreSelector(walletStore, (s) => s);
-```
-
-- Never read `localStorage` during render. Apply persisted state after mount
-  to avoid hydration mismatches.
-- Review checklist: reject any PR that subscribes to a whole store object.
+When you change the topic/message contract, update the schema module and
+`docs/realtime/architecture.md` together — the contract section is authoritative
+and must stay cross-checked against the schema.

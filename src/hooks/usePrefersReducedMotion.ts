@@ -2,41 +2,40 @@
 
 import { useEffect, useState } from "react";
 
-import { usePreferencesStore } from "@/lib/store/preferencesStore";
+const QUERY = "(prefers-reduced-motion: reduce)";
 
 /**
- * Tracks the user's prefers-reduced-motion setting, including live changes.
+ * Tracks the user's reduced-motion preference.
  *
- * Kept as the OS-only primitive: it reflects the reactive `matchMedia` query
- * and updates when the operating-system setting changes.
+ * Returns `false` during SSR and the first client render to avoid a
+ * hydration mismatch, then syncs to the real media-query value on mount.
  */
 export function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(QUERY);
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    // Safari < 14 fallback
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
   }, []);
 
-  return reduced;
+  return prefersReducedMotion;
 }
 
-/**
- * Resolves whether motion should be reduced by composing the OS query with the
- * stored user override:
- *
- * - `system` (default): defer to the OS `prefers-reduced-motion` setting.
- * - `reduced`: always reduce motion, regardless of the OS setting.
- * - `full`: never reduce motion, regardless of the OS setting.
- */
-export function useReducedMotion(): boolean {
-  const systemReduced = usePrefersReducedMotion();
-  const motion = usePreferencesStore((s) => s.motion);
-
-  if (motion === "reduced") return true;
-  if (motion === "full") return false;
-  return systemReduced;
-}
+export default usePrefersReducedMotion;
