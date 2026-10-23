@@ -1,6 +1,6 @@
 import { fromStroops, formatUsd } from "@/lib/format";
 import type { Policy } from "@/lib/api/policies";
-import type { ClaimRecord } from "@/lib/api/claims";
+import type { ClaimRecord } from "@/lib/domain/realtime";
 
 export interface ExportDataset {
   address: string;

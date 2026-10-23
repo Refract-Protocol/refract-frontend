@@ -37,6 +37,8 @@ module.exports = {
         'categories:accessibility': ['error', { minScore: 0.8 }],
         'categories:best-practices': ['error', { minScore: 0.8 }],
         'categories:seo': ['error', { minScore: 0.8 }],
+        'interaction-to-next-paint': ['warn', { maxNumericValue: 200 }],
+        'total-blocking-time': ['warn', { maxNumericValue: 200 }],
       },
     },
     upload: {

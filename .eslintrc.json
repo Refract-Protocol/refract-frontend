@@ -1,6 +1,17 @@
 {
   "extends": "next/core-web-vitals",
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/lib/realtime/*", "**/realtime/**"],
+            "message": "Import realtime APIs from @/lib/realtime."
+          }
+        ]
+      }
+    ],
     "no-restricted-syntax": [
       "error",
       {
@@ -46,6 +57,16 @@
   "overrides": [
     {
       "files": [
+        "src/lib/realtime/**",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
         "src/lib/coverage/metadata.ts",
         "src/lib/coverage/colors.ts",
         "src/app/global-error.tsx",
@@ -57,12 +78,23 @@
     },
     {
       "files": [
-        "src/lib/realtime/**",
-        "**/*.test.ts",
-        "**/*.test.tsx"
+      "files": ["src/lib/realtime/**"],
+      "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "files": [
+        "src/lib/coverage/metadata.ts",
+        "src/lib/coverage/colors.ts",
+        "src/app/global-error.tsx",
+        "src/lib/format.ts"
       ],
       "rules": {
-        "no-restricted-imports": "off"
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+
       }
     }
   ]

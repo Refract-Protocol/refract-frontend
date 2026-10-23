@@ -1,4 +1,5 @@
-import type { ClaimRecord } from "@/lib/api/claims";
+import type { ClaimRecord } from "@/lib/domain/realtime";
+import { USDC_BASE_UNIT } from "@/lib/format";
 
 /**
  * FIXTURE — not live data.
@@ -18,7 +19,7 @@ export const FIXTURE_RECENT_CLAIMS: ClaimRecord[] = [
     holder: "GDEMOHOLDERADDRESSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     coverageType: 0,
     triggered: true,
-    payout: (48_200 * 1e7).toString(),
+    payout: (48_200 * USDC_BASE_UNIT).toString(),
     reason: "USDC price: $0.9412 (-5.88% from peg)",
     processedAt: Date.now() - 3 * 86_400_000,
   },
@@ -27,7 +28,7 @@ export const FIXTURE_RECENT_CLAIMS: ClaimRecord[] = [
     holder: "GDEMOHOLDERADDRESSBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
     coverageType: 1,
     triggered: true,
-    payout: (120_000 * 1e7).toString(),
+    payout: (120_000 * USDC_BASE_UNIT).toString(),
     reason: "XLM 24h change: -34.20% (trigger at -30%)",
     processedAt: Date.now() - 11 * 86_400_000,
   },
@@ -36,7 +37,7 @@ export const FIXTURE_RECENT_CLAIMS: ClaimRecord[] = [
     holder: "GDEMOHOLDERADDRESSCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
     coverageType: 4,
     triggered: true,
-    payout: (1_400 * 1e7).toString(),
+    payout: (1_400 * USDC_BASE_UNIT).toString(),
     reason: "Flight BA249: 145m delay (trigger at 120m)",
     processedAt: Date.now() - 14 * 86_400_000,
   },

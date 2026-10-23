@@ -2,6 +2,12 @@
 
 How the frontend talks to the Refract backend's push channel, and the guardrails around it. Code lives in `src/lib/realtime/`.
 
+> **Status:** the realtime backend contract is *documented, not yet implemented
+> upstream*. The client code in `src/lib/realtime/` is written against the
+> contract below, but `refract-backend` does not yet serve it. Until it does,
+> the layer stays behind feature flags (see the flag matrix) and every
+> consumer falls back to REST.
+
 ## Modules
 
 | Module | Role | Loaded |
@@ -87,3 +93,87 @@ The estimator has no transport dependency. SSE and long-poll transports feed it 
   - anything from `src/lib/realtime/dev` appears in `.next/static` (detected by the `__REFRACT_REALTIME_DEV_ONLY__` marker), or
   - the client appears in any chunk a route loads up front (per Next's build manifests).
 - Gzip sizes are deterministic for a given build, so the budgets don't flake. Leave at least ~25% headroom when adjusting a limit.
+
+## Feature flag matrix
+
+Flags live in `public/flags.json`. **Realtime is off by default** — do not
+assume it is on.
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `realtime.enabled` | `false` | Master switch for the realtime layer |
+| `realtime.shadow` | `false` | Shadow mode: observe messages, do not apply |
+| `realtime.topics.<topic>` | `false` | Per-topic enable |
+
+A topic is live only when `realtime.enabled` **and** its per-topic flag are
+true. Shadow mode requires `realtime.enabled` but applies nothing.
+
+## Fallback-to-REST semantics
+
+Realtime is **optional**. When any of the following is true, the client uses
+REST only and never blocks the UI:
+
+- the realtime feature flag for the topic is off (the default),
+- capability negotiation fails or the backend does not advertise realtime,
+- the connection enters `fallback` after backoff is exhausted.
+
+Fallback is silent to the user: data still loads over REST. Realtime, when
+available, only *augments* the REST snapshot via `merge.ts`.
+
+## Cross-repo dependency: `refract-backend`
+
+The realtime contract above must be implemented in `refract-backend`. Until
+that lands, treat this document as the spec the backend is built against.
+Changes to the contract require a coordinated change in both repos.
+
+## Testing
+
+Use the fake transport from `@/lib/realtime/dev` (tests only — never import
+it from production code):
+
+```ts
+const fake = installFakeRealtime();
+realtimeClient.subscribe("oracle_update", handler);
+fake.current.open();
+fake.current.emit("oracle_update", { severity: "triggered", value: 9 }); // typed from the contract
+fake.current.drop(); // force close; advance fake timers for reconnect
+afterEach(() => fake.teardown());
+```
+
+## Operational runbook
+
+### "Data stopped updating"
+
+1. Check the topic's flags in `public/flags.json` — is `realtime.enabled` and
+   the per-topic flag on? If off, REST is the expected path; realtime is not
+   the cause.
+2. Inspect connection health (below). A connection stuck in `reconnecting` or
+   `fallback` means updates arrive over REST only.
+3. Confirm `refract-backend` is serving the realtime contract; if not, this is
+   expected and not a regression.
+4. If shadow mode is on, messages are observed but not applied — that is by
+   design.
+
+### Reading connection health metrics
+
+- **state**: current state machine state (`idle`/`connecting`/`open`/
+  `reconnecting`/`fallback`).
+- **lastMessageAt**: timestamp of the last applied message; a stale value with
+  state `open` suggests a heartbeat problem.
+- **seq gap**: a jump in `seq` indicates dropped messages; `merge.ts` will
+  reconcile on the next REST refresh.
+- **reconnect count**: rising counts point at network or backend instability.
+
+### Disabling a topic via flags
+
+Set the per-topic flag (e.g. `realtime.topics.<topic>`) to `false` in
+`public/flags.json`, or set `realtime.enabled` to `false` to disable the whole
+layer. Consumers fall back to REST automatically.
+
+### Running the local mock server
+
+The mock server lets you develop against the contract before the backend
+implements it. Start it locally and point the client at it; the client then
+negotiates capabilities and streams messages per the contract above. See
+`CONTRIBUTING.md` for the development workflow against the mock server.
+
