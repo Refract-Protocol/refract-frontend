@@ -30,6 +30,7 @@ import {
 } from "@/lib/cover/batchCheckout";
 import { PreSignConfirmModal } from "@/components/PreSignConfirmModal";
 import { useCoverQueryParams } from "@/hooks/useCoverQueryParams";
+import { useOptimisticReconciliation } from "@/hooks/useOptimisticReconciliation";
 import { parseCoverQueryParams } from "@/lib/coverQueryParams";
 import { PolicyCertificateModal } from "@/components/PolicyCertificate";
 import { validateBuyCoverage } from "@/lib/validation/coverage";
@@ -84,6 +85,7 @@ export default function CoverPage() {
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
   const { minCoverage: chainMinCoverage, maxCoverage: chainMaxCoverage } = useCoverageBounds();
   const networkFee = useEstimatedFee("buy");
+  const reconciliation = useOptimisticReconciliation();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [selectedType, setSelectedType] = useState<number>(0);
@@ -182,6 +184,7 @@ export default function CoverPage() {
 
   const expiryMs = Date.now() + durationDays * 86400000;
   const expiryDate = <RelativeDate target={expiryMs} />;
+  const expiryLabel = new Date(expiryMs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   const effectiveMin = Math.max(100, chainMinCoverage ?? 0);
   const effectiveMax = ct ? Math.min(ct.maxCoverage, chainMaxCoverage ?? ct.maxCoverage) : 0;
@@ -212,9 +215,9 @@ export default function CoverPage() {
         id: crypto.randomUUID(),
         params: {
           coverageType: ct.id,
-          coverageAmount: toStroops(parseFloat(coverageAmount)),
+          coverageAmount: toStroops(parseFloat(coverageAmount)).toString(),
           durationDays,
-          ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
+          ...(isFlightDelay ? { triggerParams: { coverageType: 4 as const, params: { flightNumber: flightNumber.trim(), departureDate: new Date().toISOString().slice(0, 10) } } } : {}),
         },
         typeName: ct.name,
         icon: ct.icon,
@@ -229,11 +232,19 @@ export default function CoverPage() {
   }
 
   async function purchaseCartItem(item: CartItem, holder: string, networkPassphrase: string): Promise<PurchaseResult> {
+    const correlationId = crypto.randomUUID();
+    let rejected = false;
+    const release = reconciliation.register({ correlationId, kind: "buy",
+      onConfirm: (authoritative) => updateCartItem(item.id, { status: "confirmed", ...(typeof authoritative?.policyId === "string" ? { policyId: authoritative.policyId } : {}), ...(typeof authoritative?.txHash === "string" ? { txHash: authoritative.txHash } : {}) }),
+      onRollback: (reason) => { rejected = true; updateCartItem(item.id, { status: "failed", error: reason }); },
+    });
     try {
-      const result = await buyPolicy({ ...item.params, holder });
+      const result = await buyPolicy({ ...item.params, holder }, correlationId);
       const txHash = await signAndSubmit(result.txXdr, holder, networkPassphrase);
+      if (rejected) throw new Error("The transaction was rejected by the server.");
       return { policyId: result.policy.id, txHash, demo: false };
     } catch (err) {
+      release?.();
       // Same clearly-labeled demo fallback as the single-purchase flow.
       if (err instanceof ApiUnreachableError) return { policyId: `demo-${crypto.randomUUID()}`, demo: true };
       throw err;
@@ -265,8 +276,8 @@ export default function CoverPage() {
       // A declined/failed connect resolves null and stops here.
       const connected = await wallet.connect();
       if (!connected) return;
-      holder = connected.address;
-      networkPassphrase = connected.networkPassphrase;
+      holder = connected;
+      networkPassphrase = wallet.networkPassphrase;
     }
     setPremiumChanged(false);
     setConfirmOpen(true);
@@ -274,19 +285,36 @@ export default function CoverPage() {
 
   async function submitBuy() {
     setConfirmOpen(false);
-    if (!ct || !wallet.address) return;
+    const holder = wallet.address;
+    if (!ct || !holder) return;
     setSubmittingQuote(true);
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
+    let rejected = false;
+    let policyCorrection: Partial<BuyPolicyResponse["policy"]> | undefined;
+    const releaseReconciliation = reconciliation.register({
+      correlationId: txId, kind: "buy",
+      onConfirm: (authoritative) => {
+        if (authoritative?.policy && typeof authoritative.policy === "object") {
+          policyCorrection = authoritative.policy as Partial<BuyPolicyResponse["policy"]>;
+          setSubmission((current) => current.status === "success" ? { ...current, result: { ...current.result, policy: { ...current.result.policy, ...policyCorrection } } } : current);
+        }
+        updateTransaction(txId, { status: "confirmed", authoritative,
+          ...(typeof authoritative?.amount === "number" ? { amount: authoritative.amount } : {}),
+          ...(typeof authoritative?.txHash === "string" ? { txHash: authoritative.txHash } : {}),
+        });
+      },
+      onRollback: (reason) => { rejected = true; updateTransaction(txId, { status: "failed", error: reason }); setSubmission({ status: "error", message: `${reason} The purchase details were reverted.` }); },
+    });
     try {
       const result = await buyPolicy({
         holder,
         coverageType: ct.id,
-        coverageAmount: toStroops(parseFloat(coverageAmount)),
+        coverageAmount: toStroops(parseFloat(coverageAmount)).toString(),
         durationDays,
-        ...(isFlightDelay ? { triggerParams: { flightNumber: flightNumber.trim() } } : {}),
-      });
+        ...(isFlightDelay ? { triggerParams: { coverageType: 4 as const, params: { flightNumber: flightNumber.trim(), departureDate: new Date().toISOString().slice(0, 10) } } } : {}),
+      }, txId);
 
       setSubmission({ status: "signing" });
       updateTransaction(txId, { status: "signing" });
@@ -302,26 +330,31 @@ export default function CoverPage() {
           { label: "Coverage amount", value: formatUsd(parseFloat(coverageAmount)) },
           { label: "Duration", value: `${durationDays} days` },
         ],
-        expectedStroops: toStroops(parseFloat(coverageAmount)),
+        expectedStroops: toStroops(parseFloat(coverageAmount)).toString(),
       });
       if (!approved) {
+        releaseReconciliation();
         setSubmission({ status: "idle" });
         return;
       }
-      const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
+      const networkPassphrase = wallet.networkPassphrase;
+      if (!networkPassphrase) throw new Error("Wallet network isn't available — reconnect and try again");
+      const txHash = await signAndSubmit(result.txXdr, holder, networkPassphrase, { hardware: wallet.hardwareWallet });
+      if (rejected) throw new Error("The transaction was rejected by the server.");
       publishAccountBalanceDelta(wallet.address, "USDC", -fromStroops(result.policy.premium));
-      setSubmission({ status: "success", result, demo: false, txHash });
+      setSubmission({ status: "success", result: policyCorrection ? { ...result, policy: { ...result.policy, ...policyCorrection } } : result, demo: false, txHash });
       updateTransaction(txId, { status: "confirmed", txHash });
     } catch (err) {
       if (err instanceof ApiUnreachableError) {
+        releaseReconciliation();
         const demoResult: BuyPolicyResponse = {
           policy: {
             id: `demo-${crypto.randomUUID()}`,
             holder,
             coverageType: ct.id,
             coverageTypeName: ct.name,
-            coverageAmount: toStroops(parseFloat(coverageAmount)),
-            premium: toStroops(premium),
+            coverageAmount: toStroops(parseFloat(coverageAmount)).toString(),
+            premium: toStroops(premium).toString(),
             durationDays,
             expiresAt: Math.floor(Date.now() / 1000) + durationDays * 86400,
             isActive: true,
@@ -334,6 +367,7 @@ export default function CoverPage() {
         updateTransaction(txId, { status: "confirmed", demo: true });
         return;
       }
+      releaseReconciliation();
       const message = err instanceof Error ? err.message : "Something went wrong buying coverage";
       setSubmission({ status: "error", message });
       updateTransaction(txId, { status: "failed", error: message });
@@ -344,6 +378,11 @@ export default function CoverPage() {
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
       {reviewDialog}
+      {reconciliation.notices.map((notice) => (
+        <div key={notice.id} role="status" aria-live="polite" className="mx-auto mt-3 flex max-w-5xl items-start justify-between gap-3 rounded-lg border border-pm-red/30 bg-pm-red/10 px-4 py-3 text-sm text-pm-text">
+          <span>{notice.message}</span><button type="button" onClick={() => reconciliation.dismiss(notice.id)} aria-label="Dismiss update">×</button>
+        </div>
+      ))}
 
       <main id="main-content">
         <Container className="py-9 sm:py-10">
@@ -429,19 +468,15 @@ export default function CoverPage() {
                     Step 1 of 4: Select Coverage Type
                   </div>
 
-                  {typesError && (
+                  <AsyncState loading={typesLoading} error={typesError} data={coverageTypes}
+                    loadingRender={<div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
+                      {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={72} rounded="md" />)}
+                    </div>}
+                    errorRender={(err: string) => (
                     <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {typesError}</p>
+                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {err}</p>
                     </Card>
-                  )}
-
-                  {typesLoading && !coverageTypes && (
-                    <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} height={72} rounded="md" />
-                      ))}
-                    </div>
-                  )}
+                  )}>
                   {coverageTypes && (
                     <div
                       className="flex flex-col gap-2.5"
@@ -520,6 +555,8 @@ export default function CoverPage() {
                       })}
                     </div>
                   )}
+                </AsyncState>
+
                   <div className="mt-6 flex justify-end">
                     <Button
                       type="button"
@@ -700,15 +737,19 @@ export default function CoverPage() {
                         {durationDays} days · Expires {expiryDate}
                       </span>
                     </div>
-                    <input
-                      id="duration"
-                      type="range"
-                      min={1}
-                      max={365}
-                      value={durationDays}
-                      onChange={(event) => setDurationDays(Number(event.target.value))}
-                      className="w-full accent-violet-500"
-                    />
+                    <input id="duration" type="range" min={1} max={365} value={durationDays}
+                      onChange={(e) => setDurationDays(Number(e.target.value))}
+                      className="w-full accent-pm-violet" aria-label="Coverage duration in days" />
+                    <div className="mt-2 flex justify-between text-[10px] text-pm-text/35"><span>1 day</span><span>365 days</span></div>
+                  </div>
+                  <div className="mt-6 flex items-center justify-between border-t border-pm-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>← Back</Button>
+                    <Button type="button" variant="primary" onClick={() => setCurrentStep(4)} disabled={amountInvalid}>Review & Confirm →</Button>
+                  </div>
+                </Card>
+              )}
+            </div>
+   />
                   </div>
                   <div className="mt-6 flex items-center justify-between border-t border-pm-border pt-4">
                     <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>← Back</Button>

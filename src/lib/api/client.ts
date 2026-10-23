@@ -11,7 +11,11 @@ import { env } from "@/lib/env";
 export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public details?: unknown) {
+  constructor(
+    message: string,
+    public status: number,
+    public details?: unknown
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -29,6 +33,7 @@ interface RequestOptions {
   method?: "GET" | "POST";
   body?: unknown;
   signal?: AbortSignal;
+  idempotencyKey?: string;
 }
 
 export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
@@ -36,7 +41,10 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       method: opts.method ?? "GET",
-      headers: opts.body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(opts.body ? { "Content-Type": "application/json" } : {}),
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+      },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
     });
