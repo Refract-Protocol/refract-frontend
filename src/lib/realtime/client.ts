@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/api/client";
 import { applyFrame, isRejection, isTopicFrame, type TopicState } from "./patch";
+import { LastValueCache, normalizeTopic, type CachedValue } from "./lastValueCache";
 
 type Handler = (payload: unknown) => void;
 
@@ -22,6 +23,7 @@ class RealtimeClient {
   private closedByUser = false;
   private topicState = new Map<string, TopicState>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cache = new LastValueCache();
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -68,20 +70,21 @@ class RealtimeClient {
    * unchanged so topics can opt in to deltas independently.
    */
   private dispatch(topic: string, payload: unknown): void {
+    const key = normalizeTopic(topic);
     let out = payload;
     if (isTopicFrame(payload)) {
-      const result = applyFrame(this.topicState.get(topic) ?? null, payload);
+      const result = applyFrame(this.topicState.get(key) ?? null, payload);
       if (isRejection(result)) {
         if (result.resync && this.socket?.readyState === WebSocket.OPEN) {
-          this.topicState.delete(topic);
-          this.socket.send(JSON.stringify({ type: "resync", topic }));
+          this.topicState.delete(key);
+          this.socket.send(JSON.stringify({ type: "resync", topic: key }));
         }
         return;
       }
-      this.topicState.set(topic, result);
+      this.topicState.set(key, result);
       out = result.data;
     }
-    this.handlers.get(topic)?.forEach((handler) => handler(out));
+    this.publish(key, out);
   }
 
   private scheduleReconnect(): void {
@@ -94,13 +97,35 @@ class RealtimeClient {
     }, delay);
   }
 
+  /**
+   * Single dispatch path for every source (WebSocket, Soroban events, mocks):
+   * the last-value cache is written before subscribers are notified so a
+   * subscriber mounting from inside a handler never reads an older value.
+   */
+  publish(topic: string, payload: unknown, source = "ws", sequence?: number): void {
+    const key = normalizeTopic(topic);
+    this.cache.set(key, payload, source, sequence);
+    this.handlers.get(key)?.forEach((handler) => handler(payload));
+  }
+
+  /** Synchronous read of the latest pushed value for a topic, if still fresh. */
+  getLastValue<T = unknown>(topic: string): CachedValue<T> | undefined {
+    return this.cache.get<T>(topic);
+  }
+
+  /** Call on account switch or network switch. */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
   subscribe(topic: string, handler: Handler): () => void {
-    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
-    this.handlers.get(topic)!.add(handler);
+    const key = normalizeTopic(topic);
+    if (!this.handlers.has(key)) this.handlers.set(key, new Set());
+    this.handlers.get(key)!.add(handler);
     this.connect();
 
     return () => {
-      this.handlers.get(topic)?.delete(handler);
+      this.handlers.get(key)?.delete(handler);
     };
   }
 
@@ -109,6 +134,7 @@ class RealtimeClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
+    this.cache.clear();
   }
 }
 

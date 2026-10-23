@@ -1,77 +1,77 @@
 "use client";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  realtimeClient,
-  type EventMeta,
-  type GapInfo,
-  type RealtimeClient,
-  type RealtimeStatus,
-} from "@/lib/realtime/client";
-import { descriptor, type Interest, type Topic } from "@/lib/realtime/contract";
 
-export interface UseRealtimeTopicOptions<T> {
-  enabled?: boolean;
-  /** Defaults to the app-wide singleton; inject for tests. */
-  client?: RealtimeClient;
-  /** Narrow the untyped payload; return null to ignore it. */
-  select?: (payload: unknown) => T | null;
-  /** Called once per de-duplicated event, in order. */
-  onEvent?: (value: T, meta: EventMeta) => void;
-  /**
-   * Called when events may have been missed (resume gap or sequence jump).
-   * Refetch the REST snapshot here.
-   */
-  onGap?: (gap: GapInfo) => void;
-}
+import { useEffect, useRef, useState } from "react";
+import { realtimeClient } from "@/lib/realtime/client";
+import type { Interest, Topic } from "@/lib/realtime/contract";
 
-export interface UseRealtimeTopicResult<T> {
-  /** Most recent event value, or null before the first event. */
+export interface RealtimeTopicState<T> {
+  value: T | undefined;
+  /** Alias for `value ?? null` for callers expecting `latest`. */
   latest: T | null;
-  status: RealtimeStatus;
-  /** True when realtime is unavailable and callers should poll REST. */
+  /** True while showing a cached value that no live event has replaced yet. */
+  stale: boolean;
+  receivedAt: number | undefined;
+  source: string | undefined;
+  sequence: number | undefined;
+  status: string;
   degraded: boolean;
 }
 
-/**
- * Subscribes a component to one realtime topic. The client has already
- * decoded, validated and de-duplicated every event before it reaches here,
- * so `onEvent` fires exactly once per event id.
- */
+export interface UseRealtimeTopicOptions<T> {
+  enabled?: boolean;
+  select?: (payload: unknown) => T | null;
+  onEvent?: (value: T, meta?: unknown) => void;
+}
+
+/** Seeds from the last-value cache at mount, then follows the live stream. */
 export function useRealtimeTopic<T = unknown>(
   topic: string,
   options: UseRealtimeTopicOptions<T> = {}
-): UseRealtimeTopicResult<T> {
-  const { enabled = true, client = realtimeClient } = options;
-  const [latest, setLatest] = useState<T | null>(null);
+): RealtimeTopicState<T> {
+  const { enabled = true } = options;
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const status = useSyncExternalStore(
-    (onChange) => client.onStatusChange(onChange),
-    () => client.status,
-    () => "idle" as RealtimeStatus
-  );
+  const [state, setState] = useState<RealtimeTopicState<T>>(() => {
+    const cached = realtimeClient.getLastValue<T>(topic);
+    return {
+      value: cached?.value,
+      latest: cached?.value ?? null,
+      stale: !!cached,
+      receivedAt: cached?.receivedAt,
+      source: cached?.source,
+      sequence: cached?.sequence,
+      status: "idle",
+      degraded: false,
+    };
+  });
 
   useEffect(() => {
     if (!enabled) return;
-    return client.subscribe(
-      topic,
-      (payload, meta) => {
-        const { select, onEvent } = optionsRef.current;
-        const value = select ? select(payload) : (payload as T);
-        if (value === null || value === undefined) return;
-        setLatest(value);
-        onEvent?.(value, meta);
-      },
-      (gap) => optionsRef.current.onGap?.(gap)
-    );
-  }, [client, topic, enabled]);
+    return realtimeClient.subscribe(topic, (payload) => {
+      const { select, onEvent } = optionsRef.current;
+      const value = select ? select(payload) : (payload as T);
+      if (value === null || value === undefined) return;
+      const cached = realtimeClient.getLastValue<T>(topic);
+      setState({
+        value,
+        latest: value,
+        stale: false,
+        receivedAt: cached?.receivedAt ?? Date.now(),
+        source: cached?.source,
+        sequence: cached?.sequence,
+        status: "connected",
+        degraded: false,
+      });
+      onEvent?.(value);
+    });
+  }, [topic, enabled]);
 
-  return { latest, status, degraded: status === "degraded" };
+  return state;
 }
 
 /** Fixed refresh window: continuous traffic cannot postpone REST refresh forever. */
-export function useRealtimeRevision(topic: Topic, interest: Interest | null) {
+export function useRealtimeRevision(topic: Topic, _interest: Interest | null) {
   const [revision, setRevision] = useState(0);
   const pending = useRef<ReturnType<typeof setTimeout>>();
   useRealtimeTopic(topic, {
@@ -85,5 +85,4 @@ export function useRealtimeRevision(topic: Topic, interest: Interest | null) {
   });
   useEffect(() => () => clearTimeout(pending.current), []);
   return revision;
-}
 }

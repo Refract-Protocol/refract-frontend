@@ -27,7 +27,8 @@
     "tokens:check": "node scripts/check-tokens.mjs",
     "gen:realtime-types": "node scripts/gen-realtime-types.mjs",
     "check:realtime-types": "node scripts/gen-realtime-types.mjs --check",
-    "realtime:benchmark": "node scripts/realtime-benchmark.mjs"
+    "realtime:benchmark": "node scripts/realtime-benchmark.mjs",
+    "canary:realtime": "tsx scripts/realtime-canary.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

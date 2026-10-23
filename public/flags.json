@@ -2,6 +2,7 @@
   "flags": {
     "realtime-enabled": false,
     "realtime-oracle": false,
+    "realtime-soroban-events": false,
     "realtime-claims": false,
     "realtime-claims-settlement": false,
     "realtime-pool": false,
