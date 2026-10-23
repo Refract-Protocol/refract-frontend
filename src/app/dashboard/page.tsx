@@ -17,6 +17,8 @@ import {
 import type { Policy } from "@/lib/api/policies";
 import type { ClaimRecord } from "@/lib/domain/realtime";
 import { normalizePolicies, normalizeClaims, selectPolicyStatus, type PolicyStatus } from "@/lib/entities/policies";
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
 
 const COVERAGE_ICONS = ["🪙", "📉", "🛡️", "🔐", "✈️"];
 const COVERAGE_COLORS = ["#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#06b6d4"];
@@ -31,7 +33,8 @@ export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture, isStale } = useHolderPolicies(address);
-  const claims = useClaims(address, policies);
+  const claimsResource = useClaims(address, policies);
+  const claims = claimsResource.data;
   const policiesById = normalizePolicies(policies ?? []);
   const claimsByPolicyId = normalizeClaims(claims);
   const [exporting, setExporting] = useState(false);
@@ -74,7 +77,8 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
 
-      <main id="main-content">
+      <RealtimeBoundary topic="claim_settlement" route="/dashboard" fallback={() => <main id="main-content"><Container className="py-16"><p role="status">Live claim updates are temporarily unavailable. Reconnect to retry; cached policy data remains available.</p></Container></main>}>
+      <RealtimeProfiler topic="claim_settlement"><main id="main-content">
         <Container className="py-9 sm:py-10">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -93,6 +97,9 @@ export default function DashboardPage() {
             </div>
             {canExport && (
               <div className="flex shrink-0 items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => void claimsResource.refresh()} disabled={claimsResource.isRefreshing}>
+                  {claimsResource.isRefreshing ? "Refreshing claims…" : "Refresh claims"}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -230,7 +237,8 @@ export default function DashboardPage() {
             </>
           )}
         </Container>
-      </main>
+      </main></RealtimeProfiler>
+      </RealtimeBoundary>
 
       <Footer />
     </div>

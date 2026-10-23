@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RealtimeRouteProvider } from "@/lib/realtime/RouteProvider";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
 import { ToastProvider, useToast } from "@/components/ui/ToastProvider";
 import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
-import { realtimeClient } from "@/lib/realtime/client";
+import { bindRealtimeLifecycle, realtimeClient } from "@/lib/realtime";
 import { isRealtimeAllowed } from "@/lib/realtime/preferences";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -15,11 +16,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
   );
 
+  useEffect(() => bindRealtimeLifecycle(realtimeClient), []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <RealtimeLifecycle />
-        <WalletProvider>{children}</WalletProvider>
+        <WalletProvider>
+          <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
+        </WalletProvider>
       </ToastProvider>
     </QueryClientProvider>
   );
