@@ -1,6 +1,17 @@
 {
   "extends": "next/core-web-vitals",
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/lib/realtime/*", "**/realtime/**"],
+            "message": "Import realtime APIs from @/lib/realtime."
+          }
+        ]
+      }
+    ],
     "no-restricted-syntax": [
       "error",
       {
@@ -22,6 +33,10 @@
     ]
   },
   "overrides": [
+    {
+      "files": ["src/lib/realtime/**"],
+      "rules": { "no-restricted-imports": "off" }
+    },
     {
       "files": [
         "src/lib/coverage/metadata.ts",

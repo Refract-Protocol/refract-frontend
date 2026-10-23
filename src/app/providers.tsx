@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
+import { bindRealtimeLifecycle, realtimeClient } from "@/lib/realtime";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // One client per browser session. Query functions already fold failures
@@ -10,6 +11,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
   );
+
+  useEffect(() => bindRealtimeLifecycle(realtimeClient), []);
 
   return (
     <QueryClientProvider client={queryClient}>
