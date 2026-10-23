@@ -34,6 +34,9 @@ import { parseCoverQueryParams } from "@/lib/coverQueryParams";
 import { PolicyCertificateModal } from "@/components/PolicyCertificate";
 import { validateBuyCoverage } from "@/lib/validation/coverage";
 import { searchFlights, POPULAR_FLIGHTS, type FlightInfo } from "@/lib/flights";
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
+import { publishAccountBalanceDelta } from "@/hooks/useAccountBalance";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -306,6 +309,7 @@ export default function CoverPage() {
         return;
       }
       const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, { hardware: wallet.hardwareWallet });
+      publishAccountBalanceDelta(wallet.address, "USDC", -fromStroops(result.policy.premium));
       setSubmission({ status: "success", result, demo: false, txHash });
       updateTransaction(txId, { status: "confirmed", txHash });
     } catch (err) {
@@ -419,7 +423,8 @@ export default function CoverPage() {
             <div className="flex flex-col gap-5">
               {/* STEP 1: Select Type */}
               {currentStep === 1 && (
-                <div data-tour-id="cover-type">
+                <RealtimeBoundary topic="coverage_types" route="/cover" fallback={() => <div role="status" className="rounded-lg border border-pm-border p-5 text-sm text-pm-text/60">Coverage types are temporarily unavailable. Try again later or open the Dashboard.</div>}>
+                <RealtimeProfiler topic="coverage_types"><div data-tour-id="cover-type">
                   <div className="mb-3 text-[11px] uppercase tracking-wide text-pm-text/40">
                     Step 1 of 4: Select Coverage Type
                   </div>
@@ -430,30 +435,13 @@ export default function CoverPage() {
                     </Card>
                   )}
 
-                  {typesLoading && (
-                    <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
-                      {Array.from({ length: 5 }).map((_, i
-                  </div>
-
-                  {typesError && (
-                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {typesError}</p>
-                    </Card>
-                  )}
-
-                  {typesLoading && (
+                  {typesLoading && !coverageTypes && (
                     <div className="flex flex-col gap-2.5" role="status" aria-label="Loading coverage types">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Skeleton key={i} height={72} rounded="md" />
                       ))}
                     </div>
-                  }
-                  errorRender={(err) => (
-                    <Card className="border-pm-red/30 !bg-pm-red/[0.04]">
-                      <p className="text-sm text-pm-red">Couldn&apos;t load coverage types: {err}</p>
-                    </Card>
                   )}
-                >
                   {coverageTypes && (
                     <div
                       className="flex flex-col gap-2.5"
@@ -532,9 +520,6 @@ export default function CoverPage() {
                       })}
                     </div>
                   )}
-                </AsyncState>
-              </div>
-
                   <div className="mt-6 flex justify-end">
                     <Button
                       type="button"
@@ -545,7 +530,8 @@ export default function CoverPage() {
                       Next: Trigger Parameters →
                     </Button>
                   </div>
-                </div>
+                </div></RealtimeProfiler>
+                </RealtimeBoundary>
               )}
 
               {/* STEP 2: Trigger Parameters */}
@@ -715,6 +701,22 @@ export default function CoverPage() {
                       </span>
                     </div>
                     <input
+                      id="duration"
+                      type="range"
+                      min={1}
+                      max={365}
+                      value={durationDays}
+                      onChange={(event) => setDurationDays(Number(event.target.value))}
+                      className="w-full accent-violet-500"
+                    />
+                  </div>
+                  <div className="mt-6 flex items-center justify-between border-t border-pm-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>← Back</Button>
+                    <Button type="button" variant="primary" onClick={() => setCurrentStep(4)} disabled={amountInvalid}>Review Purchase →</Button>
+                  </div>
+                </Card>
+              )}
+            </div>
 
             {/* Right: Quote panel */}
             <div className="flex flex-col gap-5 lg:sticky lg:top-20">
