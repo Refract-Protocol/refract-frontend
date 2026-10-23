@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Button } from "@/components/ui";
 
@@ -8,6 +9,10 @@ export default function ErrorBoundary({ error, reset }: { error: Error & { diges
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.error("Refract UI error boundary caught:", error);
+  }, [error]);
+
+  useEffect(() => {
+    Sentry.captureException(error, { tags: { boundary: "app-error" } });
   }, [error]);
 
   return (
