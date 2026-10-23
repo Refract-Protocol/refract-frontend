@@ -1,5 +1,6 @@
 {
   "flags": {
-    "realtime-oracle": false
+    "realtime-oracle": false,
+    "realtime-shadow-mode": false
   }
 }

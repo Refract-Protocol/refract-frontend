@@ -37,8 +37,15 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
-The app talks to `refract-backend` (default `http://localhost:4001`). Point it at
-your backend with `NEXT_PUBLIC_API_URL` if needed.
+Data is fetched from `refract-backend` over REST (default `http://localhost:4001`,
+configurable via `NEXT_PUBLIC_API_URL`). On top of that REST path the app has an
+**optional realtime layer** (`src/lib/realtime/`) that can push updates over a
+WebSocket instead of polling. Realtime is **off by default** and gated behind
+feature flags (`public/flags.json`); when it is disabled, unavailable, or the
+connection drops, the app transparently falls back to the REST path — so the
+REST API remains the source of truth. See
+[`docs/realtime/`](./docs/realtime/) for the topic contract, connection
+lifecycle, fallback semantics, flag matrix, and the operational runbook.
 
 Other environment variables:
 

@@ -1,4 +1,5 @@
 import type { RealtimeEvent } from './client';
+import { ShadowMode, type ShadowTopic } from './shadow';
 
 export interface TopicState<T> {
   snapshot: T;
@@ -6,11 +7,22 @@ export interface TopicState<T> {
   appliedIds: Set<string>;
 }
 
+export interface MergeState<T> {
+  polled: T | null;
+  realtime: T | null;
+}
+
 export interface MergeOptions {
   /** Maximum number of event ids retained for idempotency checks. */
   maxAppliedIds?: number;
   /** Maximum cursor gap tolerated before falling back to a fresh snapshot. */
   maxReplayWindow?: number;
+  /** Shadow mode recorder; disabled by default. */
+  shadow?: ShadowMode | null;
+  /** Topic used for shadow comparisons. */
+  topic?: ShadowTopic;
+  /** Stable key for discrepancy reports. */
+  key?: string;
 }
 
 const DEFAULT_MAX_APPLIED_IDS = 512;
@@ -120,4 +132,28 @@ export function resumeFromSnapshot<T>(
     return createTopicState(snapshot, snapshotCursor);
   }
   return createTopicState(snapshot, snapshotCursor);
+}
+
+/**
+ * Merge polled REST and realtime values, preferring REST. Shadow comparisons
+ * are recorded as a side effect but never influence the returned value.
+ */
+export function mergeValues<T extends Record<string, unknown>>(
+  state: MergeState<T>,
+  options: MergeOptions = {},
+): T | null {
+  const { shadow, topic, key } = options;
+
+  if (shadow && topic && state.realtime) {
+    shadow.record(
+      topic,
+      key ?? topic,
+      state.realtime,
+      state.polled ?? null,
+    );
+  }
+
+  // REST is the known-good source of truth; realtime is only a fallback.
+  return state.polled ?? state.realtime ?? null;
+}
 }
