@@ -10,7 +10,8 @@ export const metadata: Metadata = {
   description: "Parametric insurance for digital assets and real-world events.",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+/** App shell. Realtime startup is owned by the hydrated Providers tree. */
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
       <body>

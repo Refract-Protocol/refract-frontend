@@ -15,7 +15,7 @@ import {
   downloadExport,
 } from "@/lib/export/exportPolicyHistory";
 import type { Policy } from "@/lib/api/policies";
-import type { ClaimRecord } from "@/lib/api/claims";
+import type { ClaimRecord } from "@/lib/domain/realtime";
 import { normalizePolicies, normalizeClaims, selectPolicyStatus, type PolicyStatus } from "@/lib/entities/policies";
 import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
 import { RealtimeProfiler } from "@/lib/realtime/devProfiler";

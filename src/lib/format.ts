@@ -6,6 +6,7 @@ import { usePreferencesStore } from "@/lib/store/preferencesStore";
  * Number of decimal places USDC supports (7-decimal base units / stroops).
  */
 export const USDC_DECIMALS = 7;
+export const USDC_BASE_UNIT = 10 ** USDC_DECIMALS;
 
 /**
  * Parse a user-entered amount string into a finite number.
@@ -32,7 +33,7 @@ export function toStroops(amount: number): bigint {
   if (!Number.isFinite(amount)) {
     throw new TypeError(`toStroops: expected a finite number, received ${amount}`);
   }
-  return BigInt(Math.round(amount * 10 ** USDC_DECIMALS));
+  return BigInt(Math.round(amount * USDC_BASE_UNIT));
 }
 
 /**
@@ -45,7 +46,7 @@ export const MIN_DEPOSIT_USDC = 1;
 
 /** Converts a base-unit string (1e7 per USDC) back to a human float. */
 export function fromStroops(value: string | number): number {
-  return Number(value) / 10 ** USDC_DECIMALS;
+  return Number(value) / USDC_BASE_UNIT;
 }
 
 /**

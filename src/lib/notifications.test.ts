@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { deriveNotifications, ONE_DAY_MS, SEVEN_DAYS_MS } from "./notifications";
 import type { Policy } from "./api/policies";
-import type { ClaimRecord } from "./api/claims";
+import type { ClaimRecord } from "./domain/realtime";
 import type { OracleReading } from "./api/oracle";
 
 describe("deriveNotifications", () => {
@@ -51,7 +51,7 @@ describe("deriveNotifications", () => {
         triggered: true,
         payout: "50000000000",
         reason: "USDC depegged below $0.98",
-        processedAt: Math.floor((now - 3600000) / 1000),
+        processedAt: now - 3600000,
       },
     ];
 
@@ -89,11 +89,11 @@ describe("deriveNotifications", () => {
         triggered: true,
         payout: "50000000000",
         reason: "USDC depegged",
-        processedAt: Math.floor(now / 1000),
+        processedAt: now,
       },
     ];
 
-    const readIds = new Set([`claim-pol-1-${Math.floor(now / 1000)}`]);
+    const readIds = new Set([`claim-pol-1-${now}`]);
     const notifs = deriveNotifications({ claims: mockClaims, now, readIds });
     expect(notifs[0].read).toBe(true);
   });
