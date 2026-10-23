@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@/lib/wallet/WalletProvider";
 import { useHolderPolicies } from "./useHolderPolicies";
 import { useClaims } from "./useClaims";
+import { useAttentionCue } from "./useAttentionCue";
 import { useLockupStatus } from "./useLockupStatus";
 import { useOracleStatus } from "./useOracleStatus";
 import {
@@ -53,6 +54,8 @@ export function useNotifications() {
       readIds,
     });
   }, [policies, claims, lockupExpiresAt, oracleReadings, readIds]);
+
+  useAttentionCue(notifications);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.read).length;

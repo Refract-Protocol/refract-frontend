@@ -5,6 +5,12 @@ export type BadgeTone = "safe" | "risk" | "danger" | "violet" | "neutral";
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   tone?: BadgeTone;
   dot?: boolean;
+  /**
+   * When set, the dot pulses via the documented motion system
+   * (`.pm-pulse` in `globals.css`), which is suppressed under
+   * `prefers-reduced-motion`. Use for live/streaming indicators only.
+   */
+  pulse?: boolean;
 }
 
 const toneClass: Record<BadgeTone, string> = {
@@ -29,12 +35,13 @@ const dotVar: Record<BadgeTone, string> = {
 };
 
 /** Status pill built on `.pm-tag`. Use `dot` for a live-status indicator. */
-export function Badge({ tone = "neutral", dot, className, children, ...rest }: BadgeProps) {
+export function Badge({ tone = "neutral", dot, pulse, className, children, ...rest }: BadgeProps) {
   return (
     <span className={cn("pm-tag", toneClass[tone], className)} {...rest}>
       {dot && (
         <span
           aria-hidden="true"
+          className={cn(pulse && "pm-pulse")}
           style={{ width: 6, height: 6, borderRadius: "50%", background: dotVar[tone] }}
         />
       )}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { criticalStyles as t } from "@/lib/criticalStyles";
 
 // Root-level error boundary — only fires if the root layout itself throws.
@@ -12,6 +14,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    Sentry.captureException(error, { tags: { boundary: "global-error" } });
+  }, [error]);
+
   return (
     <html lang="en">
       <head>

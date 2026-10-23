@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sanitizeFlags } from "../realtime/flags";
 import { DEFAULT_FLAGS, FLAGS_CACHE_TTL_MS, FLAGS_ENDPOINT, readLocalOverride, type FlagsDocument } from "./flagsConfig";
 
 let cache: { flags: Record<string, boolean>; fetchedAt: number } | null = null;
@@ -16,7 +17,7 @@ async function loadFlags(): Promise<Record<string, boolean>> {
   inflight = fetch(FLAGS_ENDPOINT)
     .then((res) => (res.ok ? (res.json() as Promise<FlagsDocument>) : Promise.reject(new Error("flags fetch failed"))))
     .then((doc) => {
-      const flags = { ...DEFAULT_FLAGS, ...doc.flags };
+      const flags = { ...DEFAULT_FLAGS, ...sanitizeFlags(doc?.flags) };
       cache = { flags, fetchedAt: Date.now() };
       return flags;
     })
