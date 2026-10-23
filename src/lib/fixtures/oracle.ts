@@ -1,4 +1,4 @@
-import type { OracleReading } from "@/lib/api/oracle";
+import type { OracleReading } from "@/lib/domain/realtime";
 
 /**
  * FIXTURE — not live data.

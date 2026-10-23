@@ -1,180 +1,179 @@
 # Realtime layer
 
-`src/lib/realtime/` delivers push updates (oracle readings, claim settlements,
-pool stats) to React components. Realtime is **best-effort**: every consumer
-keeps a REST fetch as its source of truth and uses realtime to stay fresh.
+How the frontend talks to the Refract backend's push channel, and the guardrails around it. Code lives in `src/lib/realtime/`.
 
-```
-transport (WS │ SSE │ long-poll)
-   → FrameDecoder      main thread or Web Worker, order preserved     (#242)
-   → contract check    zod schemas in topics.ts
-   → DedupeCache       drop repeated event ids                        (#244)
-   → resume cursor     per-topic seq, used on reconnect
-   → handlers          useRealtimeTopic(topic, { onEvent, onGap })
-```
+> **Status:** the realtime backend contract is *documented, not yet implemented
+> upstream*. The client code in `src/lib/realtime/` is written against the
+> contract below, but `refract-backend` does not yet serve it. Until it does,
+> the layer stays behind feature flags (see the flag matrix) and every
+> consumer falls back to REST.
 
-| File | Role |
-| --- | --- |
-| `topics.ts` | Message contract: event/control schemas, cursor encoding |
-| `decode.ts` | Pure `decodeFrame()`: parse + validate + normalize, typed failures |
-| `frameDecoder.ts`, `decoder.worker.ts` | Worker offload with main-thread fallback |
-| `dedupe.ts` | Per-topic LRU + TTL window of seen event ids |
-| `transports/*` | `WebSocketTransport`, `SseTransport`, `LongPollTransport` |
-| `capabilities.ts` | Capability detection and the default transport tiers |
-| `client.ts` | `RealtimeClient`: negotiation, reconnect, resume, dedupe, fan-out |
-| `testing/mockServer.ts` | Scenario-driven mock backend + in-memory WebSocket |
-| `src/hooks/useRealtimeTopic.ts` | React hook (fan-out boundary) |
-| `src/app/dev/realtime/page.tsx` | Dev panel: status, transport, counters, live events |
+## Modules
 
-## Message contract
+| Module | Role | Loaded |
+| --- | --- | --- |
+| `load.ts` | `loadRealtime()`: the only way UI code reaches the client | eagerly (tiny) |
+| `entry.ts` | Lazy entry: `getRealtimeClient()`, `parsePolicyEvent()` | lazily, `realtime` chunk |
+| `client.ts` | Reconnecting WebSocket client, heartbeat, diagnostics | lazily, via `entry.ts` |
+| `codec.ts` | Frame decoding + size guard shared by all transports | lazily, via `client.ts` |
+| `clockOffset.ts` | Server/client clock-offset estimator, `normalizeServerTs` | eagerly (small, no deps) |
+| `topics.ts` | Topic names | eagerly |
+| `policyEvents.ts` | zod schemas for `policy.<address>` payloads | lazily, via `entry.ts` |
+| `pendingPolicies.ts` | Pending-purchase state machine + persisted store | eagerly (used by /cover) |
+| `dev/` | Test/dev tooling (fake socket). **Never shipped.** | tests only |
 
-Server → client data event:
+## Wire contract
 
-```json
-{ "topic": "oracle_update", "id": "evt_01H…", "seq": 42, "payload": { … } }
-```
+Every frame is JSON: `{ "topic": string, "payload": unknown, "ts"?: number }`. `ts` is the server clock in ms since epoch.
 
-- `id`: stable, unique per event. Used for de-duplication.
-- `seq`: monotonic per topic. Used as the resume cursor and for gap detection.
-- An event **without `id`** is still delivered, but it is not de-duplicated and
-  it bumps the `missingId` counter. An event without `seq` doesn't move the cursor.
+### Control topics
 
-Server → client control frames:
+| Topic | Direction | Payload |
+| --- | --- | --- |
+| `refract.ping` | client → server | `{ t0 }`: client clock when sent |
+| `refract.pong` | server → client | `{ t0, serverTs }`: echo of `t0` plus the server clock |
+| `refract.wire_stats` | server → client | `{ compressedBytes, uncompressedBytes }`, cumulative for the connection (optional) |
 
-| Frame | Meaning |
-| --- | --- |
-| `{ "type": "subscribed", "topics": [...], "gap"?: [...] }` | Subscribe acknowledged. `gap` lists topics whose cursor fell outside the server's replay window |
-| `{ "type": "error", "code": "auth_failed" }` | Auth rejected. The client stops reconnecting |
-| `{ "type": "ping" }` | Heartbeat. The client replies with `{ "type": "pong" }`. Send at least every 30s |
+The client pings on connect and every 25 s (`HEARTBEAT_INTERVAL_MS`). Control topics are never delivered to `subscribe()` handlers.
 
-Client → server (WebSocket): `{ "type": "subscribe", "topics": [...], "cursors": { "oracle_update": 41 } }`,
-`{ "type": "unsubscribe", "topics": [...] }`. On reconnect the server replays events with `seq > cursor`.
+### `policy.<address>` (#246)
 
-### Long-poll endpoint (#245)
+One topic per wallet. Payloads are discriminated by `type`. All of them carry `holder` and `ts`.
 
-```
-GET {API}/realtime/poll?topics=oracle_update,pool_stats&after=oracle_update:41,pool_stats:7
-```
+| `type` | Meaning | Ids |
+| --- | --- | --- |
+| `accepted` | Backend saw the purchase transaction | `txHash` (+ `policyId?`) |
+| `issued` | Policy is on-chain and active | `txHash`, `policyId` (+ `coverageTypeName?`, `coverageAmount?`, `premium?`, `expiresAt?`) |
+| `premium_charged` | A premium charge was recorded | `policyId`, `amount` |
+| `cancelled` | Policy cancelled after issuance | `policyId`, `reason` ∈ `holder_requested \| pool_insufficient \| expired \| oracle_triggered` |
+| `failed` | Purchase failed before issuance | `txHash`, `reason` |
 
-- **200** `{ "events": [...], "timeoutMs": 25000, "gap"?: [...], "cursors"?: {...} }`
-- **204**: no events before the hold timeout. Poll again.
-- **401/403**: auth rejected. **404/405/501**: endpoint isn't offered, so the client falls back to the next tier.
-- **429/5xx**: retry later. `Retry-After` is honoured.
+Amounts are base-unit USDC strings, as in the REST API.
 
-The server holds the request until it has events or `timeoutMs` passes. If a
-topic is sent without a cursor, the server answers right away with
-`cursors: { topic: currentSeq }`. That reply is the handshake and the
-subscribe acknowledgement.
+## Cover purchase flow (#246)
 
-Requests use the same API base URL as REST, with `credentials: "include"`, so
-whatever auth the API or proxy applies to REST applies here too.
+1. `/cover` calls the REST purchase endpoint, the wallet signs, and the transaction is submitted. **The tx hash from that call is the source of truth.**
+2. The page adds an optimistic entry, keyed by tx hash, to `usePendingPolicyStore`. The store is persisted to `localStorage`.
+3. While the wallet has an unsettled entry, `usePolicyStream(address)` subscribes to `policy.<address>`. Events move the entry `submitted → accepted → active`, or roll it back to `failed`. They never move it backwards, so duplicate and out-of-order events are harmless.
+4. If no event settles an entry within 90 s (`PENDING_WAIT_MS`), the REST result stands: the entry becomes `active` with `confirmedBy: "rest"`. A later `issued` event upgrades it to `confirmedBy: "realtime"`.
 
-SSE uses `GET {API}/realtime/sse?topics=…&after=…`. Each `message` event
-carries one frame in the format above.
+Edge cases:
 
-## Transport negotiation
+- **Navigating away:** the entry is persisted. On return, the hook re-subscribes and the existing row updates in place. Nothing is duplicated, because rows are keyed by tx hash.
+- **Multiple tabs:** a `storage` listener rehydrates the store. Adding the same tx hash twice merges into one row. `findInFlightDuplicate` blocks buying an identical policy while one is still settling.
+- **Policies bought elsewhere:** an `issued` (or `accepted`) event for an unknown tx hash creates a row marked `external`.
 
-The client tries **WebSocket → SSE → long-poll** and then falls back to **REST polling**:
+## Clock skew (#247)
 
-1. Tiers the browser can't run (no `WebSocket`, no `EventSource`, no `fetch`) are skipped.
-2. A tier that fails to open twice in a row (and has never opened) is marked
-   failed, and the client tries the next tier straight away.
-3. Once a tier has opened, later drops reconnect on that same tier with
-   exponential backoff (1s → 30s).
-4. If nothing works, the status becomes `degraded` (`no_transport`). Callers keep
-   polling REST, and the client tries the full tier list again after 60s.
+Never compute `Date.now() - event.ts`. Use:
 
-`client.getStats().transport` and `.negotiation` record which tier won and why.
+- `normalizeServerTs(ts)` to convert server time to client time
+- `serverEventAgeMs(ts)` and `isServerTsStale(ts, maxAgeMs)` for freshness decisions
+- `useServerRelativeTime(ts)` or `formatServerRelativeTime(ts)` for "4 minutes ago" text. The hook re-renders only when the text changes.
 
-## Failure handling
+The estimator (`ClockOffsetEstimator`) takes NTP-style mid-point samples from each ping/pong. It uses the median offset of the lowest-RTT samples in an 8-sample window, so a single slow or wild sample doesn't move it. `uncertaintyMs` is half the best RTT. If the wall clock and the monotonic clock drift apart by more than 2 s (sleep/resume, manual clock change), all samples are discarded. Offsets over 30 s set `skewed: true` as a diagnostic, not an error. `getClockSync()` exposes a read-only snapshot.
 
-| Situation | Client behaviour |
-| --- | --- |
-| Abrupt close (1006/1011/1001/1012) | Reconnect with backoff and resubscribe with cursors. Replayed events are de-duplicated |
-| Half-open socket (no frames or pings for 45s) | Treat as dead, reconnect (`idleTimeouts`) |
-| Subscribe not acknowledged in 10s | Resend up to 3 times, then go `degraded` (`subscribe_timeout`) and retry later |
-| Auth rejected (`error` frame, close 4401/4403, HTTP 401/403) | Go `degraded` (`auth`) with **no retry loop** until `resetSession()` |
-| Resume cursor outside the replay window | `onGap({ reason: "resume" })`. Refetch REST |
-| `seq` jumps mid-stream | `onGap({ reason: "sequence" })`. Refetch REST |
-| Malformed or oversized frame | Dropped and counted in `decodeErrors`. The connection stays up |
+The estimator has no transport dependency. SSE and long-poll transports feed it with `addSample(t0, serverTs, t3)`.
 
-`realtimeClient.resetSession()` runs when the wallet account or network changes
-(see `WalletProvider`). It clears the dedupe ids and cursors, which belong to
-the previous identity, and reconnects.
+## Compression and payload limits (#249)
 
-## De-duplication (#244)
+- **`permessage-deflate`:** browsers offer it during the WebSocket handshake automatically, and script cannot change that offer. The backend should accept it with `client_no_context_takeover; server_no_context_takeover`. Non-browser WebSocket implementations (e.g. `ws`) receive `PERMESSAGE_DEFLATE_OPTIONS` as a constructor argument. If the server declines, nothing changes except the diagnostics.
+- **Size guard:** `decodeFrame()` rejects frames over `MAX_MESSAGE_BYTES` (256 KiB, measured in UTF-8 bytes) **before** `JSON.parse`. Steady-state pushes are under 4 KiB. The budget is sized for the largest legitimate frame, an initial topic snapshot of up to 200 rows (about 150 KiB). If snapshots need to grow, raise the cap and the snapshot limit together.
+- **Error path:** a rejected frame (`oversize`, `malformed`, `unsupported_frame`) is dropped and counted (`oversizeDrops` / `malformedDrops`). It is recorded as `lastError`, warned about in development, and passed to `client.onProtocolError` listeners. The connection stays open: closing it would only make the server resend the same frame.
+- **Diagnostics:** `client.getDiagnostics()` returns:
+  - `negotiatedExtensions` and `compressionActive` (from `WebSocket.extensions`)
+  - `framesReceived` and `bytesReceived` (decoded bytes)
+  - `wireStats`: compressed vs uncompressed bytes as reported by the server. Browsers don't expose compressed sizes to script.
 
-`DedupeCache` keeps a per-topic window of recently seen ids:
+## Bundle budget (#248)
 
-- **Size** (default 2,000 per topic): peak events/sec × the longest replay window.
-  The default covers about 50/s over 40s.
-- **TTL** (default 5 min): after this, an id can be processed again.
-- It lives in memory only, so a page reload starts clean and never hides
-  events that are legitimately sent again.
+- UI code must load the client through `loadRealtime()`. The dynamic import is named, so it builds to `.next/static/chunks/realtime.<hash>.js`. ESLint (`no-restricted-imports`) rejects static imports of `@/lib/realtime/client`, `@/lib/realtime/entry` and `@/lib/realtime/dev/*` outside `src/lib/realtime` and tests.
+- **Budget: 8 kB gzipped** for the `realtime` chunk (`.size-limit.json`). The client, codec and policy validators measure about 3.1 kB gzipped on their own. zod is not counted, because `/cover` already loads it for form validation and webpack shares it. The remaining headroom is reserved for the SSE and long-poll transports. **Revisit this number once the transport matrix is final.** The shared-bundle budget excludes the lazy chunk, so it still measures what every visitor downloads.
+- `npm run size:realtime` (`scripts/check-realtime-bundle.mjs`) runs in CI after `next build`. It fails if:
+  - anything from `src/lib/realtime/dev` appears in `.next/static` (detected by the `__REFRACT_REALTIME_DEV_ONLY__` marker), or
+  - the client appears in any chunk a route loads up front (per Next's build manifests).
+- Gzip sizes are deterministic for a given build, so the budgets don't flake. Leave at least ~25% headroom when adjusting a limit.
 
-Counters (`duplicatesDropped`, `missingId`, per topic) are available from
-`client.getStats().dedupe`, in the dev panel, and as `window.__refractRealtime`
-outside production.
+## Feature flag matrix
 
-## Off-main-thread decoding (#242)
+Flags live in `public/flags.json`. **Realtime is off by default** — do not
+assume it is on.
 
-`FrameDecoder` decides per frame where to decode:
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `realtime.enabled` | `false` | Master switch for the realtime layer |
+| `realtime.shadow` | `false` | Shadow mode: observe messages, do not apply |
+| `realtime.topics.<topic>` | `false` | Per-topic enable |
 
-- Frames under 512 chars always decode on the main thread. Copying them to a
-  worker costs more than parsing them.
-- Frames of 16 KB or more always go to the worker.
-- Frames in between go to the worker only while the rate is at least 50 frames/sec.
-- Results are delivered **in arrival order**, whichever path decoded them.
-- If the worker can't start (no `Worker`, CSP), throws, or doesn't answer within
-  2s, the decoder switches to the main thread **for the rest of the session**
-  and re-decodes any frames that were in flight.
+A topic is live only when `realtime.enabled` **and** its per-topic flag are
+true. Shadow mode requires `realtime.enabled` but applies nothing.
 
-The worker (`decoder.worker.ts`) is stateless and only calls the same pure
-`decodeFrame()`. A parity test runs every fixture, including invalid frames,
-through both paths. Next.js (webpack 5) bundles the
-`new Worker(new URL("./decoder.worker.ts", import.meta.url))` pattern natively,
-so `next.config.js` needs no change.
+## Fallback-to-REST semantics
 
-### Measurements
+Realtime is **optional**. When any of the following is true, the client uses
+REST only and never blocks the UI:
 
-`npm run bench:realtime -- --seconds 3` (Node 24, Codespaces 2-vCPU). Frames arrive in 50 bursts/sec:
+- the realtime feature flag for the topic is off (the default),
+- capability negotiation fails or the backend does not advertise realtime,
+- the connection enters `fallback` after backoff is exhausted.
 
-| Profile | Path | Main-thread busy % | p95 burst (ms) |
-| --- | --- | --- | --- |
-| oracle tick, ~0.3 KB @ 500/s | main | 1.6 | 0.202 |
-| | worker | 1.7 | 0.087 |
-| oracle batch, ~8 KB @ 200/s | main | 1.9 | 0.261 |
-| | worker | 2.4 | 0.070 |
-| pool snapshot, ~50 KB @ 40/s | main | 1.7 | 0.387 |
-| | worker | 2.5 | 0.059 |
+Fallback is silent to the user: data still loads over REST. Realtime, when
+available, only *augments* the REST snapshot via `merge.ts`.
 
-With the worker, the longest single main-thread block is **2–6.5× shorter**.
-That block is what competes with a frame paint. **Total** main-thread work stays
-about the same, or slightly higher, because results are structured-cloned back.
-This is why small frames stay on the main thread and the thresholds are
-tunable. Browsers clone faster than Node `worker_threads`, but the trade-off
-works the same way. Re-run the bench on the target hardware before changing the
-thresholds.
+## Cross-repo dependency: `refract-backend`
+
+The realtime contract above must be implemented in `refract-backend`. Until
+that lands, treat this document as the spec the backend is built against.
+Changes to the contract require a coordinated change in both repos.
 
 ## Testing
 
-| Command | What it runs |
-| --- | --- |
-| `npm test` | All unit tests, including `src/lib/realtime/__tests__` |
-| `npm run test:chaos` | Fault-injection scenarios plus the WS/long-poll parity contract test. Fake timers, deterministic |
-| `npm run mock:realtime -- --scenario flaky --rate 250` | Local mock backend on `:4010` |
-| `npm run test:chaos:e2e` | Playwright smoke against the mock backend and `/dev/realtime` |
-
-Mock-server presets: `none`, `flaky`, `half-open`, `slow`, `drop-subscribe`,
-`auth-reject`, `at-least-once`. Tests describe faults declaratively:
+Use the fake transport from `@/lib/realtime/dev` (tests only — never import
+it from production code):
 
 ```ts
-const server = new MockRealtimeServer({
-  connections: { 2: { ignoreSubscribe: true } }, // backend lost state after restart
-  resumeOverlap: 2,                              // at-least-once replay on resume
-});
+const fake = installFakeRealtime();
+realtimeClient.subscribe("oracle_update", handler);
+fake.current.open();
+fake.current.emit("oracle_update", { severity: "triggered", value: 9 }); // typed from the contract
+fake.current.drop(); // force close; advance fake timers for reconnect
+afterEach(() => fake.teardown());
 ```
 
-To watch the client in a browser, start the mock backend, run the app with
-`NEXT_PUBLIC_ENABLE_UI_GALLERY=true`, and open
-`/dev/realtime?api=http://127.0.0.1:4010/api/v1`.
+## Operational runbook
+
+### "Data stopped updating"
+
+1. Check the topic's flags in `public/flags.json` — is `realtime.enabled` and
+   the per-topic flag on? If off, REST is the expected path; realtime is not
+   the cause.
+2. Inspect connection health (below). A connection stuck in `reconnecting` or
+   `fallback` means updates arrive over REST only.
+3. Confirm `refract-backend` is serving the realtime contract; if not, this is
+   expected and not a regression.
+4. If shadow mode is on, messages are observed but not applied — that is by
+   design.
+
+### Reading connection health metrics
+
+- **state**: current state machine state (`idle`/`connecting`/`open`/
+  `reconnecting`/`fallback`).
+- **lastMessageAt**: timestamp of the last applied message; a stale value with
+  state `open` suggests a heartbeat problem.
+- **seq gap**: a jump in `seq` indicates dropped messages; `merge.ts` will
+  reconcile on the next REST refresh.
+- **reconnect count**: rising counts point at network or backend instability.
+
+### Disabling a topic via flags
+
+Set the per-topic flag (e.g. `realtime.topics.<topic>`) to `false` in
+`public/flags.json`, or set `realtime.enabled` to `false` to disable the whole
+layer. Consumers fall back to REST automatically.
+
+### Running the local mock server
+
+The mock server lets you develop against the contract before the backend
+implements it. Start it locally and point the client at it; the client then
+negotiates capabilities and streams messages per the contract above. See
+`CONTRIBUTING.md` for the development workflow against the mock server.
+

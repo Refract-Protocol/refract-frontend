@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { cachedRequest } from "./requestCache";
 import type { ApiSchemas } from "./generated";
 
 /** Types are generated from openapi/refract-api.yaml, which mirrors refract-backend/src/routes/pool.ts response shapes. */
@@ -11,8 +12,9 @@ export type ProvideCapitalResponse = ApiSchemas["ProvideCapitalResponse"];
 
 export type WithdrawCapitalResponse = ApiSchemas["WithdrawCapitalResponse"];
 
-export function fetchPoolStats(signal?: AbortSignal): Promise<PoolStats> {
-  return apiRequest("/pool/stats", { signal });
+/** Deduplicated across components/pages (landing + /provide) for a short window; the shared request is not tied to one caller's signal. */
+export function fetchPoolStats(): Promise<PoolStats> {
+  return cachedRequest("pool:stats", () => apiRequest<PoolStats>("/pool/stats"));
 }
 
 export function fetchUserPoolPosition(address: string, signal?: AbortSignal): Promise<UserPoolPosition> {
@@ -71,10 +73,10 @@ export function fetchPoolAllocation(signal?: AbortSignal): Promise<PoolAllocatio
   return apiRequest("/pool/allocation", { signal });
 }
 
-export function provideCapital(provider: string, amount: string): Promise<ProvideCapitalResponse> {
-  return apiRequest("/pool/provide", { method: "POST", body: { provider, amount } });
+export function provideCapital(provider: string, amount: string, correlationId?: string): Promise<ProvideCapitalResponse> {
+  return apiRequest("/pool/provide", { method: "POST", body: { provider, amount }, idempotencyKey: correlationId });
 }
 
-export function withdrawCapital(provider: string, shares: string): Promise<WithdrawCapitalResponse> {
-  return apiRequest("/pool/withdraw", { method: "POST", body: { provider, shares } });
+export function withdrawCapital(provider: string, shares: string, correlationId?: string): Promise<WithdrawCapitalResponse> {
+  return apiRequest("/pool/withdraw", { method: "POST", body: { provider, shares }, idempotencyKey: correlationId });
 }

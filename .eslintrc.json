@@ -1,6 +1,17 @@
 {
   "extends": "next/core-web-vitals",
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/lib/realtime/*", "**/realtime/**"],
+            "message": "Import realtime APIs from @/lib/realtime."
+          }
+        ]
+      }
+    ],
     "no-restricted-syntax": [
       "error",
       {
@@ -19,13 +30,71 @@
         "selector": "BinaryExpression[operator='**'][right.value=7]",
         "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of 10 ** 7."
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@/lib/realtime/dev",
+              "@/lib/realtime/dev/*",
+              "**/realtime/dev/*"
+            ],
+            "message": "src/lib/realtime/dev is test/dev tooling and must never reach production bundles (see docs/realtime.md)."
+          },
+          {
+            "group": [
+              "@/lib/realtime/client",
+              "@/lib/realtime/entry"
+            ],
+            "message": "Load the realtime client lazily with loadRealtime() from @/lib/realtime/load (bundle budget, see docs/realtime.md)."
+          }
+        ]
+      }
     ]
   },
   "overrides": [
     {
-      "files": ["src/lib/coverage/metadata.ts", "src/lib/coverage/colors.ts", "src/app/global-error.tsx", "src/lib/format.ts"],
+      "files": [
+        "src/lib/realtime/**",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "src/lib/coverage/metadata.ts",
+        "src/lib/coverage/colors.ts",
+        "src/app/global-error.tsx",
+        "src/lib/format.ts"
+      ],
       "rules": {
         "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+      "files": ["src/lib/realtime/**"],
+      "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "files": [
+        "src/lib/coverage/metadata.ts",
+        "src/lib/coverage/colors.ts",
+        "src/app/global-error.tsx",
+        "src/lib/format.ts"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+
       }
     }
   ]

@@ -1,5 +1,7 @@
 "use client";
 
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { defaultEndpoints, defaultTransportFactories } from "@/lib/realtime/capabilities";
@@ -181,5 +183,8 @@ function Field({ label, value, testId }: { label: string; value: string; testId:
         {value}
       </dd>
     </div>
+  );
+}
+
   );
 }

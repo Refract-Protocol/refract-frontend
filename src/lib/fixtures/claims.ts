@@ -1,4 +1,4 @@
-import type { ClaimRecord } from "@/lib/api/claims";
+import type { ClaimRecord } from "@/lib/domain/realtime";
 import type { Policy } from "@/lib/api/policies";
 
 /**

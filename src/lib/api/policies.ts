@@ -106,6 +106,6 @@ export async function fetchHolderPolicies(
   return toPaginated<Policy>(raw, "policies");
 }
 
-export function buyPolicy(params: BuyPolicyParams): Promise<BuyPolicyResponse> {
-  return apiRequest("/policies/buy", { method: "POST", body: params });
+export function buyPolicy(params: BuyPolicyParams, correlationId?: string): Promise<BuyPolicyResponse> {
+  return apiRequest("/policies/buy", { method: "POST", body: params, idempotencyKey: correlationId });
 }
