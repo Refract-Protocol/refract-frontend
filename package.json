@@ -43,7 +43,7 @@
   "devDependencies": {
     "@next/bundle-analyzer": "^14.2.5",
     "@playwright/test": "^1.45.0",
-    "@size-limit/file": "^11.1.4",
+    "@size-limit/file": "^14.2.0",
     "@testing-library/jest-dom": "^6.4.6",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
