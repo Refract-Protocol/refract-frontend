@@ -1,0 +1,356 @@
+@import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Refract Design Tokens ─────────────────────────────────────────────────── */
+  --pm-text:    237 233 248;
+  --pm-muted:   123 111 168;
+  --pm-muted-2: 74 64 112;
+
+  /* Alph
+
+  /* Brand — violet */
+  --pm-violet:     139 92 246;
+  --pm-violet-2:   124 58 237;
+  --pm-violet-dim: 139 92 246;
+  --pm-violet-glow: 139 92 246;
+
+  /* Status */
+  --pm-safe:   16 185 129;   /* covered */
+  --pm-risk:   245 158 11;   /* at risk */
+  --pm-danger: 239 68 68;    /* triggered */
+
+  /* Text */
+  --pm-text:    237 233 248;
+  --pm-muted:   123 111 168;
+  --pm-muted-2: 74 64 112;
+
+  /* Alpha levels for tokens that are always used at a fixed opacity */
+  --pm-border-a:     0.15;
+  --pm-border-2-a:   0.3;
+  --pm-violet-dim-a: 0.12;
+  --pm-safe-bg-a:    0.1;
+  --pm-risk-bg-a:    0.1;
+  --pm-danger-bg-a:  0.1;
+
+  /* Radius */
+  --pm-r:    8px;
+  --pm-r-lg: 16px;
+  --pm-r-xl: 24px;
+
+  /* Motion tokens — named durations & easings (single source of truth).
+     All CSS animations/transitions should reference these instead of
+     scattering literal durations across files. */
+  --pm-duration-fast:   0.15s;
+  --pm-duration-base:   0.2s;
+  --pm-duration-slow:   0.4s;
+  --pm-duration-slower: 0.5s;
+  --pm-duration-spin:   0.6s;
+  --pm-duration-pulse:  2s;
+  --pm-ease-standard:   ease;
+  --pm-ease-out:        ease-out;
+  --pm-ease-linear:     linear;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { background: rgb(var(--pm-bg)); color: rgb(var(--pm-text)); }
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.font-display { font-family: "Syne", sans-serif; }
+.font-mono    { font-family: "JetBrains Mono", monospace; }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: rgb(var(--pm-surface)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--pm-surface-3)); border-radius: 2px; }
+
+/* ── Layout utilities ────────────────────────────────────────────────────── */
+.pm-panel {
+  background: rgb(var(--pm-surface));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
+  border-radius: var(--pm-r-lg);
+}
+
+.pm-divider { border: none; border-top: 1px solid rgb(var(--pm-border) / var(--pm-border-a)); }
+
+/* ── Status tags ─────────────────────────────────────────────────────────── */
+.pm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.pm-tag-safe   { background: rgb(var(--pm-safe) / var(--pm-safe-bg-a));       color: rgb(var(--pm-safe)); }
+.pm-tag-risk   { background: rgb(var(--pm-risk) / var(--pm-risk-bg-a));       color: rgb(var(--pm-risk)); }
+.pm-tag-danger { background: rgb(var(--pm-danger) / var(--pm-danger-bg-a));   color: rgb(var(--pm-danger)); }
+.pm-tag-violet { background: rgb(var(--pm-violet) / var(--pm-violet-dim-a));  color: rgb(var(--pm-violet)); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.pm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--pm-r);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all var(--pm-duration-base);
+  white-space: nowrap;
+}
+
+.pm-btn-primary {
+  background: rgb(var(--pm-violet));
+  color: white;
+}
+.pm-btn-primary:hover { background: rgb(var(--pm-violet-2)); transform: translateY(-1px); }
+
+.pm-btn-outline {
+  background: transparent;
+  color: rgb(var(--pm-violet));
+  border: 1px solid rgb(var(--pm-border-2) / var(--pm-border-2-a));
+}
+.pm-btn-outline:hover { background: rgb(var(--pm-violet) / var(--pm-violet-dim-a)); }
+
+.pm-btn-ghost {
+  background: transparent;
+  color: rgb(var(--pm-muted));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
+}
+.pm-btn-ghost:hover { color: rgb(var(--pm-text)); border-color: rgb(var(--pm-border-2) / var(--pm-border-2-a)); }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.pm-input {
+  width: 100%;
+  background: rgb(var(--pm-surface-2));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
+  border-radius: var(--pm-r);
+  color: rgb(var(--pm-text));
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--pm-duration-base);
+}
+.pm-input:focus { border-color: rgb(var(--pm-violet)); }
+.pm-input::placeholder { color: rgb(var(--pm-muted-2)); }
+
+/* ── Slider ──────────────────────────────────────────────────────────────── */
+.pm-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    rgb(var(--pm-violet)) var(--pct, 50%),
+    rgb(var(--pm-surface-3)) var(--pct, 50%)
+  );
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+}
+.pm-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: rgb(var(--pm-violet));
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 4px rgb(var(--pm-violet) / 0.2);
+}
+
+/* ── Risk heat gradient (signature element) ──────────────────────────────── */
+.risk-heat-low    { background: linear-gradient(135deg, rgb(var(--pm-safe) / 0.08), transparent 70%); }
+.risk-heat-medium { background: linear-gradient(135deg, rgb(var(--pm-risk) / 0.08), transparent 70%); }
+.risk-heat-high   { background: linear-gradient(135deg, rgb(var(--pm-danger) / 0.08),  transparent 70%); }
+
+/* ── Motion ────────────────────────────────────────────────────────────────
+   Documented motion policy for Refract.
+
+   Decision (issue #37): framer-motion is NOT adopted. It was a declared
+   production dependency with zero imports, so it has been removed from
+   package.json and the README stack. All motion is expressed with the CSS
+   keyframes/transitions below, driven by the named tokens in :root.
+
+   Reduced-motion policy (single documented rule):
+   - JS side: `usePrefersReducedMotion` (src/hooks/usePrefersReducedMotion.ts)
+     is the single source of truth for components that need to branch in JS.
+   - CSS side: the `@media (prefers-reduced-motion: reduce)` override at the
+     bottom of this file is the belt-and-braces fallback that neutralises
+     every animation/transition declared here.
+   No component may animate without going through one of these two paths.
+   Motion is never required to convey state (e.g. the Counter value is
+   readable instantly under reduced motion).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+/* `fadeUp` is defined once here (issue #39); tailwind.config.ts references
+ * this keyframe via `animation.fade-up` instead of redeclaring it, so this
+ * file is the single source of truth for the animation. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fadeUp var(--pm-duration-slow) var(--pm-ease-standard) forwards; }
+
+@keyframes shieldPulse {
+  0%   { box-shadow: 0 0 0 0 rgb(var(--pm-violet) / 0.4); }
+  70%  { box-shadow: 0 0 0 16px rgb(var(--pm-violet) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--pm-violet) / 0); }
+}
+.pm-glow { animation: shieldPulse var(--pm-duration-pulse) infinite; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.pm-spin { animation: spin var(--pm-duration-spin) var(--pm-ease-linear) infinite; }
+
+/* pmShimmer supersedes the old `shimmer` keyframes that used to live in
+   tailwind.config.ts (issue #39) — one shimmer source only. */
+@keyframes pmShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.pm-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--pm-surface-2) 25%,
+    var(--pm-surface-3) 50%,
+    var(--pm-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: pmShimmer 1.4s var(--pm-ease-linear) infinite;
+}
+
+/* ── Coverage card ───────────────────────────────────────────────────────── */
+.coverage-card {
+  background: rgb(var(--pm-surface));
+  border: 1px solid rgb(var(--pm-border) / var(--pm-border-a));
+  border-radius: var(--pm-r-xl);
+  padding: 28px;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.coverage-card:hover {
+  border-color: rgb(var(--pm-border-2) / var(--pm-border-2-a));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgb(var(--pm-violet) / 0.12);
+}
+.coverage-card.selected {
+  border-color: rgb(var(--pm-violet));
+  background: rgb(var(--pm-surface-2));
+}
+
+/* ── Pool gauge ──────────────────────────────────────────────────────────── */
+.pool-gauge-track {
+  width: 100%;
+  height: 6px;
+  background: rgb(var(--pm-surface-3));
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pool-gauge-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgb(var(--pm-violet)), rgb(var(--pm-safe)));
+  transition: width 0.5s ease;
+}
+
+/* ── Noise overlay (subtle texture) ─────────────────────────────────────── */
+.pm-noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ── Accessibility: focus states ────────────────────────────────────────── */
+a, button, input, [tabindex] {
+  outline: none;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgb(var(--pm-violet));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.pm-skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  z-index: 100;
+  background: rgb(var(--pm-violet));
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: var(--pm-r);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.pm-skip-link:focus {
+  top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Loading skeleton ────────────────────────────────────────────────────── */
+
+x 18px;
+  border-radius: var(--pm-r);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.pm-skip-link:focus {
+  top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Loading skeleton ────────────────────────────────────────────────────── */
+
+.pm-skeleton {
+  background: linear-gradient(90deg, var(--pm-surface-2) 25%, var(--pm-surface-3) 50%, var(--pm-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: pmShimmer 1.4s var(--pm-ease-linear) infinite;
+}

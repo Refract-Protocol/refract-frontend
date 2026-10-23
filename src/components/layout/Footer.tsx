@@ -5,6 +5,7 @@ const FOOTER_LINKS = [
   { label: "Provide Capital", href: "/provide" },
   { label: "Dashboard", href: "/dashboard" },
   { label: "Contracts", href: "/transparency" },
+  { label: "Status", href: "/status" },
   { label: "GitHub", href: "https://github.com/Refract-Protocol" },
 ];
 

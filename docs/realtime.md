@@ -1,138 +1,170 @@
-# Realtime v1 transport contract
+# Realtime Layer: Architecture & Operational Runbook
 
-The REST API remains the initial source of truth. The backend currently has no
-implemented realtime contract; it must implement this version before streaming
-is enabled. An old/unsigned feed fails closed rather than updating financial UI.
+This document describes the optional realtime layer that sits alongside the
+REST path. It is written for maintainers and for the `refract-backend` team.
 
-## Authentication and resume
+> **Status:** the realtime backend contract is *documented, not yet implemented
+> upstream*. The client code in `src/lib/realtime/client.ts` is written against
+> the contract below, but `refract-backend` does not yet serve it. Until it
+> does, the layer stays behind feature flags (see the flag matrix) and every
+> consumer falls back to REST.
 
-Use a TLS WebSocket at `/ws`. The client sends
-`{type:"auth",version:1,challenge,credential}` first. `credential` is the latest
-application authentication intent (null for anonymous public feeds); never use a
-wallet signing key here. The server authenticates credentials and responds:
+## Module layout
 
-```json
+The docs mirror the actual module layout so every path below is verifiable:
+
+| Path | Responsibility |
+| --- | --- |
+| `src/lib/realtime/client.ts` | Connection lifecycle, subscribe/unsubscribe, reconnect |
+| `src/lib/realtime/capabilities.ts` | Capability negotiation with the backend |
+| `src/lib/realtime/merge.ts` | Merging realtime payloads into cached REST data |
+| `src/lib/realtime/shadow.ts` | Shadow mode: observe realtime without applying it |
+| `src/lib/realtime/contract.ts` | Topics, validators, fixtures, frames |
+| `src/lib/realtime/testing.ts` | Fake transport for tests (never import from production) |
+| `public/flags.json` | Per-topic feature flag defaults |
+
+## Topic / message contract
+
+The contract is authoritative here and is cross-checked against the schema
+module. A client subscribes to a **topic** (a string key, e.g. a resource
+collection). The backend pushes **messages** on that topic.
+
+A message has the shape:
+
+```jsonc
 {
-  "type": "authenticated",
-  "version": 1,
-  "challenge": "echo-client-nonce",
-  "session": "fresh-unpredictable-session-id",
-  "wildcards": false,
-  "topics": []
+  "topic": "<topic key>",        // must match the subscribed topic
+  "type": "update" | "delete",  // mutation kind
+  "payload": { /* resource */ }, // full resource for update, id for delete
+  "seq": 12345                   // monotonic per-topic sequence number
 }
 ```
 
-The session must be unique to this authenticated connection, at least 16
-characters. `topics` is the complete post-resume interest set, not a delta. An
-invalid handshake is counted; an unauthenticated socket times out after 10s.
-No topic mutations precede authentication. A credential change opens a fresh
-connection; a newer credential supersedes an earlier one.
+- `seq` is monotonic per topic and is used to detect gaps and stale messages.
+- Messages are applied through `merge.ts`, which reconciles them with the
+  cached REST snapshot rather than replacing it wholesale.
+- Unknown `type` values are ignored (forward compatibility).
 
-Outbound frames are `{type:"subscribe",topic}` and
-`{type:"unsubscribe",topic}`. These operations MUST be idempotent. On each
-handshake the client reconciles the server's resume set against its desired
-registry. Surviving queued mutations preserve their first intent order. Unknown resumed
-interests are removed after queued work, before any remaining additions. Repeated toggles collapse to the final state; no ordering is
-promised for intermediate intents which cancel each other. Shared registrations
-retain one wire interest. There is one reconciliation owner, so resync never
-independently re-subscribes topics. A transport failure stops the flush and retries
-only after reconnect/authentication, using the next authoritative resume set.
+## Request/response
 
-The registry is the outbound desired-state queue, bounded to 256 distinct
-patterns (configurable at construction). Overflow of the desired registry rejects a new subscription with a clear
-exception. The ordering queue is separately bounded to the same capacity; if it
-overflows, it is compacted and the complete desired registry is reconciled (so no
-final intent is lost, though intermediate ordering is no longer guaranteed). Both
-cases increment `diagnostics.overflow`; existing interests are retained. Removed offline interests occupy no queue space. Reconciliation
-removes any no-longer-desired resumed topics. `disconnect()` and wallet logout
-clear handlers, desired state, credentials, timers and resume state. Old release
-callbacks cannot affect a subsequent session. Nothing persists across reloads.
+`realtimeClient.request(topic, payload, { timeoutMs, signal })` multiplexes a
+one-shot query over the open WebSocket.
 
-## Ingress authentication and threat model
+- Client frame: `{ id, topic, request }`; server replies `{ id, response }` or
+  `{ id, error: { code, message } }`. Frames with an `id` never reach topic
+  subscribers.
+- Rejects with `RealtimeRequestError` (`timeout | aborted | disconnected |
+  overflow | server`). Pending requests reject on disconnect/reconnect and are
+  never replayed; at most 100 may be in flight. Payloads are never logged.
+- SSE/long-poll fallbacks do not support requests; use REST.
 
-This implementation uses the authenticated-session option, not application-layer
-signatures. TLS authenticates the configured endpoint and protects bytes in
-transit. The fresh challenge authenticates the handshake's connection binding;
-every event carries that session binding, a strictly increasing safe-integer
-`sequence`, and a millisecond Unix `timestamp`. Example:
+## Connection state machine
 
-```json
-{
-  "session": "fresh-unpredictable-session-id",
-  "sequence": 1,
-  "timestamp": 1790000000000,
-  "topic": "oracle_update",
-  "payload": { "readings": [] }
-}
+`client.ts` drives a small state machine:
+
+```
+idle ──connect──▶ connecting ──open──▶ open
+                     │                  │
+                     │ error            │ error / close
+                     ▼                  ▼
+                 reconnecting ◀─────────┘
+                     │
+                     │ (backoff exhausted)
+                     ▼
+                 fallback (REST only)
 ```
 
-All topics, including oracle and claim events, pass the same synchronous ingress
-filter before payload dispatch. Wrong/missing session bindings, duplicate or
-out-of-order sequence numbers, and timestamps outside ±60 seconds are rejected.
-No unsigned legacy envelopes are accepted. Sequence gaps are permitted; inbound
-buffering is outside this contract. Payloads remain `unknown`; consumers must
-validate topic-specific payload schemas before rendering.
+- **idle**: no socket, no intent to connect.
+- **connecting**: socket opening; capability negotiation runs here.
+- **open**: subscribed and receiving messages; heartbeat keeps it alive.
+- **reconnecting**: transient failure; exponential backoff with jitter.
+- **fallback**: realtime disabled for this session; REST polling resumes.
 
-Production requires `wss:` and exact page scheme/host/port matching, or an explicit
-build-time `NEXT_PUBLIC_REALTIME_ALLOWED_ORIGINS` list of WebSocket origins
-(comma separated, including scheme and nondefault ports). URL credentials,
-queries, and fragments are rejected. Development permits `ws:` only when both
-page and endpoint are loopback hosts. No runtime flag disables ingress checks,
-even in mock mode. Configure the backend to validate browser Origin headers,
-authenticate cookies/tokens and authorize every topic; browser code cannot enforce
-those server responsibilities.
+Heartbeat: the client expects periodic pings; a missed heartbeat window
+moves the connection to `reconnecting`.
 
-This protects against accidentally configured untrusted endpoints, network
-injection under TLS, unsigned envelopes, stale cross-session events and replay
-within one connection. The binding is NOT a cryptographic signature and provides
-no independent protection against a compromised trusted backend, TLS terminator,
-XSS, compromised browser, or attacker who controls allowed-origin configuration.
-Server-side signing/key management and wallet transaction signing are out of
-scope. If independently signed data is required, the backend must first publish
-an asymmetric signing and rotation contract; do not ship a shared MAC secret in
-the frontend.
+## Fallback-to-REST semantics
 
-`client.diagnostics` exposes rejection, overflow and transport counters plus the
-last 20 reason-only breadcrumbs. No payload, credential or session is logged;
-failures do not trigger user-facing toasts. Consumers may export these counters
-to existing telemetry. REST fallback continues during failures.
+Realtime is **optional**. When any of the following is true, the client uses
+REST only and never blocks the UI:
 
-## Topic grammar and delivery
+- the realtime feature flag for the topic is off (the default),
+- capability negotiation fails or the backend does not advertise realtime,
+- the connection enters `fallback` after backoff is exhausted.
 
-Segments contain ASCII letters, digits, `_` or `-`, separated by `.`. A pattern
-is at most 200 characters. `*` matches exactly one segment. Terminal `**` matches
-zero or more segments. Examples: `pool.abc.*` matches `pool.abc.price` but not
-`pool.abc.claim.settled`; `pool.abc.**` matches both and also `pool.abc`.
-`pool..price`, `po*`, and `pool.**.price` are invalid and throw at subscribe time.
-The existing flat names `oracle_update`, `pool_update`, `claim_update` remain
-valid. Inbound topics must be concrete.
+Fallback is silent to the user: data still loads over REST. Realtime, when
+available, only *augments* the REST snapshot via `merge.ts`.
 
-When the server advertises `wildcards:true`, patterns are sent directly.
-Otherwise the client enumerates its concrete `topics` catalog (defaults in
-`topics.ts`) and deduplicates the resulting wire interests. Configure a complete
-catalog for per-pool/per-policy variants; unknown future topics cannot be
-invented client-side and require catalog refresh or server wildcard capability.
-Each registration receives an event once even if several wire interests overlap.
-Two separate registrations, including exact and wildcard registrations using the
-same callback function, each receive one call. Patterns compile once; dispatch
-is O(registrations × segments), with 256 distinct patterns maximum. Run
-`npx vitest run --config vitest.config.mts src/lib/realtime/topics.benchmark.test.ts` to measure that bound.
+## Feature flag matrix
 
-## Routes
+Flags live in `public/flags.json`. **Realtime is off by default** — do not
+assume it is on.
 
-`src/app/realtime-topics.ts` declares public route costs. `/` owns oracle, pool
-and claim topics; `/cover` owns oracle and pool; `/provide` owns pool and claims.
-Nested routes inherit their closest mapped segment. Unmapped routes release
-route-owned interests while hook-owned registrations continue independently.
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `realtime.enabled` | `false` | Master switch for the realtime layer |
+| `realtime.shadow` | `false` | Shadow mode: observe messages, do not apply |
+| `realtime.topics.<topic>` | `false` | Per-topic enable |
 
-`RealtimeRouteProvider` resolves pathname changes without blocking first paint,
-fetches a bounded REST snapshot before acquiring new interests, and batches
-navigation over 40ms. Shared topics retain their registration across navigation.
-Stale asynchronous snapshot completions cannot subscribe a previous route.
-Snapshot failures retain normal REST fallback and permit streaming recovery.
-`useRealtimeTopic` allows additional hook-owned interests and typed unknown
-payloads. Set `prefetchOnIntent` on the provider to warm subscriptions on same-origin link
-hover/focus without rendering data. Prefetch snapshots precede subscriptions;
-interests are shared through the same registry and expire after five seconds.
-Repeated intents for the same route topic set are deduplicated, and teardown
-cancels in-flight prefetch. Prefetch is disabled by default.
+A topic is live only when `realtime.enabled` **and** its per-topic flag are
+true. Shadow mode requires `realtime.enabled` but applies nothing.
+
+## Cross-repo dependency: `refract-backend`
+
+The realtime contract above must be implemented in `refract-backend`. Until
+that lands, treat this document as the spec the backend is built against.
+Changes to the contract require a coordinated change in both repos.
+
+## Testing
+
+Use the fake transport from `@/lib/realtime/testing` (tests only — never import
+it from production code):
+
+```ts
+const fake = installFakeRealtime();
+realtimeClient.subscribe("oracle_update", handler);
+fake.current.open();
+fake.current.emit("oracle_update", { severity: "triggered", value: 9 }); // typed from the contract
+fake.current.drop(); // force close; advance fake timers for reconnect
+afterEach(() => fake.teardown());
+```
+
+`src/lib/realtime/__tests__/topicCoverage.test.ts` fails when a contract topic
+lacks a mock producer, a consumer, or valid fixtures (see its allowlist).
+
+## Operational runbook
+
+### "Data stopped updating"
+
+1. Check the topic's flags in `public/flags.json` — is `realtime.enabled` and
+   the per-topic flag on? If off, REST is the expected path; realtime is not
+   the cause.
+2. Inspect connection health (below). A connection stuck in `reconnecting` or
+   `fallback` means updates arrive over REST only.
+3. Confirm `refract-backend` is serving the realtime contract; if not, this is
+   expected and not a regression.
+4. If shadow mode is on, messages are observed but not applied — that is by
+   design.
+
+### Reading connection health metrics
+
+- **state**: current state machine state (`idle`/`connecting`/`open`/
+  `reconnecting`/`fallback`).
+- **lastMessageAt**: timestamp of the last applied message; a stale value with
+  state `open` suggests a heartbeat problem.
+- **seq gap**: a jump in `seq` indicates dropped messages; `merge.ts` will
+  reconcile on the next REST refresh.
+- **reconnect count**: rising counts point at network or backend instability.
+
+### Disabling a topic via flags
+
+Set the per-topic flag (e.g. `realtime.topics.<topic>`) to `false` in
+`public/flags.json`, or set `realtime.enabled` to `false` to disable the whole
+layer. Consumers fall back to REST automatically.
+
+### Running the local mock server
+
+The mock server lets you develop against the contract before the backend
+implements it. Start it locally and point the client at it; the client then
+negotiates capabilities and streams messages per the contract above. See
+`CONTRIBUTING.md` for the development workflow against the mock server.

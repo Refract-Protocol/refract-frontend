@@ -1,4 +1,11 @@
-import { API_BASE_URL } from "@/lib/api/client";
+import { API_BASE_URL } from "../api/client";
+import { isAllowedRealtimeUrl, resolveRealtimeEndpoint } from "./allowlist";
+import {
+  checkRemoteKillSwitch,
+  isRealtimeDisabled,
+  startKillSwitchPolling,
+  subscribeKillSwitch,
+} from "./killSwitch";
 import { compilePattern, TOPICS } from "./topics";
 import { SessionIngress, validateEndpoint } from "./security";
 
@@ -12,6 +19,26 @@ export interface RealtimeOptions {
   topics?: readonly string[];
   socket?: (url: string) => WebSocket;
 }
+export class RealtimeEndpointError extends Error {
+  readonly code = "REALTIME_ENDPOINT_NOT_ALLOWED";
+  constructor(url: string) {
+    super(`Realtime endpoint is not allowlisted: ${url}`);
+    this.name = "RealtimeEndpointError";
+  }
+}
+
+const MAX_BACKOFF_MS = 30_000;
+const BASE_BACKOFF_MS = 1_000;
+
+/**
+ * A small reconnecting WebSocket wrapper exposing a subscribe-by-topic API.
+ * The backend contract this assumes (documented, not yet implemented
+ * upstream): connect to `${wsUrl}`, receive JSON messages shaped
+ * `{ topic: string, payload: unknown }`, one topic per push-based update
+ * type (e.g. "oracle_update"). Callers must treat this connection as
+ * best-effort — always keep an independent REST fetch as the source of
+ * truth for initial state.
+ */
 export class RealtimeClient {
   private socket: WebSocket | null = null;
   private entries = new Map<string, Entry>();
@@ -24,6 +51,11 @@ export class RealtimeClient {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
+  private closedByUser = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private removeKillSwitchListener: (() => void) | null = null;
+  private suspended = false;
+  private opening = false;
   get teardownVersion(): number {
     return this.generation;
   }
@@ -48,8 +80,34 @@ export class RealtimeClient {
     if (this.diagnostics.breadcrumbs.length > 20) this.diagnostics.breadcrumbs.shift();
   }
   connect(): void {
-    if (this.socket || this.timer || (typeof WebSocket === "undefined" && !this.options.socket))
+    if (
+      typeof WebSocket === "undefined" ||
+      this.socket ||
+      this.opening ||
+      isRealtimeDisabled() ||
+      this.suspended
+    )
       return;
+    startKillSwitchPolling();
+    if (!this.removeKillSwitchListener)
+      this.removeKillSwitchListener = subscribeKillSwitch(({ disabled }) => {
+        if (disabled) {
+          this.handlers.clear();
+          this.stopSocket();
+        }
+      });
+    this.closedByUser = false;
+    this.open();
+  }
+
+  private async open(): Promise<void> {
+    if (this.opening || isRealtimeDisabled() || this.suspended) return;
+    this.opening = true;
+    await checkRemoteKillSwitch();
+    this.opening = false;
+    if (isRealtimeDisabled() || this.suspended || this.closedByUser || this.socket) return;
+    const wsUrl = resolveRealtimeEndpoint(API_BASE_URL).url;
+    if (!isAllowedRealtimeUrl(wsUrl)) throw new RealtimeEndpointError(wsUrl);
     let url: URL;
     try {
       url = validateEndpoint(
@@ -136,7 +194,7 @@ export class RealtimeClient {
       this.socket = null;
       this.ingress = null;
       if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
-      this.retry(generation);
+      if (!this.closedByUser && !isRealtimeDisabled() && !this.suspended) this.scheduleReconnect();
     });
     socket.addEventListener("error", () => socket.close());
   }
@@ -169,6 +227,36 @@ export class RealtimeClient {
     this.socket = null;
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     socket?.close();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
+    const delay = Math.min(BASE_BACKOFF_MS * 2 ** this.attempt, MAX_BACKOFF_MS);
+    this.attempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.closedByUser && !isRealtimeDisabled() && !this.suspended) this.open();
+    }, delay);
+  }
+
+  subscribe(topic: string, handler: Handler): () => void {
+    if (isRealtimeDisabled()) return () => undefined;
+    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
+    this.handlers.get(topic)!.add(handler);
+
+    this.connect();
+  }
+  private record(pattern: string, matches: (topic: string) => boolean): void {
+    if (!this.pending.has(pattern) && this.pending.size >= (this.options.capacity ?? 256)) {
+      // Preserve desired state; overflow falls back to a full reconciliation.
+      this.diagnostic("overflow");
+      this.pending.clear();
+    }
+    this.pending.set(pattern, matches);
+  }
+  subscribe(pattern: string, handler: Handler): () => void {
+    const matches = compilePattern(pattern);
+    l
     this.connect();
   }
   private record(pattern: string, matches: (topic: string) => boolean): void {
@@ -244,11 +332,30 @@ export class RealtimeClient {
     this.pending.clear();
   }
   disconnect(): void {
+    this.closedByUser = true;
+    this.stopSocket();
+  }
+
+  /** Page lifecycle adapter commands; handlers remain registered for resync. */
+  suspend(): void {
+    this.suspended = true;
+    this.stopSocket();
+  }
+  resume(): void {
+    this.suspended = false;
+    this.closedByUser = false;
+    this.connect();
+  }
+
+  private stopSocket(): void {
     this.generation++;
     if (this.timer) clearTimeout(this.timer);
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     this.timer = null;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     const socket = this.socket;
+    this.socket?.close();
     this.socket = null;
     this.ingress = null;
     this.credential = null;

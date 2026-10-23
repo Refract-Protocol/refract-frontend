@@ -14,7 +14,11 @@ import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { PoolActivityFeed } from "@/components/pool/PoolActivityFeed";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
+import { publishAccountBalanceDelta } from "@/hooks/useAccountBalance";
 
 // Illustrative allocation breakdown by coverage category — the backend
 // doesn't currently expose a per-category pool split, so this is presented
@@ -125,6 +129,7 @@ export default function ProvidePage() {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "provide");
+        publishAccountBalanceDelta(wallet.address, "USDC", -parsed);
         setSubmission({ status: "success", kind: "deposit", result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       } else {
@@ -135,6 +140,7 @@ export default function ProvidePage() {
           throw new Error("Wallet network isn't available — reconnect and try again");
         }
         const txHash = await signAndSubmit(result.txXdr, wallet.address, wallet.networkPassphrase, "withdraw");
+        publishAccountBalanceDelta(wallet.address, "USDC", parsed);
         setSubmission({ status: "success", kind: "withdraw", result, demo: false, txHash });
         updateTransaction(txId, { status: "confirmed", txHash });
       }
@@ -175,7 +181,8 @@ export default function ProvidePage() {
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
 
-      <main id="main-content">
+      <RealtimeBoundary topic="pool_stats" route="/provide" fallback={() => <main id="main-content"><Container className="py-16"><p role="status">Pool data is temporarily unavailable. You can still browse other Refract pages.</p></Container></main>}>
+      <RealtimeProfiler topic="pool_stats"><main id="main-content">
         <Container className="py-9 sm:py-10">
           <div className="mb-8">
             <h1 className="mb-2 font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
@@ -226,6 +233,8 @@ export default function ProvidePage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
             {/* Left: Pool info */}
             <div className="flex flex-col gap-5">
+              <PoolActivityFeed />
+
               <Card padding="md">
                 <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">Capital Allocation</h3>
                 <div className="grid grid-cols-1 items-center gap-8 xs:grid-cols-[160px_1fr]">
@@ -478,7 +487,8 @@ export default function ProvidePage() {
             </div>
           </div>
         </Container>
-      </main>
+      </main></RealtimeProfiler>
+      </RealtimeBoundary>
 
       <Footer />
     </div>
