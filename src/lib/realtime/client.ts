@@ -1,18 +1,21 @@
 import { API_BASE_URL } from "@/lib/api/client";
-import { TopicRegistry } from "./ringBuffer";
+import { RingBuffer, TopicRegistry } from "./ringBuffer";
 import { realtimeTracer } from "./telemetry";
 import { frameRecorder } from "./recorder";
 import { applyFrame, isRejection, isTopicFrame, type TopicState } from "./patch";
 import { LastValueCache, normalizeTopic, type CachedValue } from "./lastValueCache";
+import { REALTIME_TOPICS, TOPIC_BUFFER_CAPS, type RealtimeTopic } from "./topics";
 
 type Handler = (payload: unknown) => void;
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
+const DEFAULT_BUFFER_CAP = 50;
 
 class RealtimeClient {
   private socket: WebSocket | null = null;
   private handlers = new Map<string, Set<Handler>>();
+  private buffers = new Map<string, RingBuffer<unknown>>();
   private attempt = 0;
   private closedByUser = false;
   private topicState = new Map<string, TopicState>();
@@ -21,6 +24,16 @@ class RealtimeClient {
 
   /** Bounded per-topic ring-buffer registry (closes #253). */
   readonly registry = new TopicRegistry();
+
+  private getBuffer(topic: string): RingBuffer<unknown> {
+    let buf = this.buffers.get(topic);
+    if (!buf) {
+      const cap = (TOPIC_BUFFER_CAPS as Record<string, number>)[topic] ?? DEFAULT_BUFFER_CAP;
+      buf = new RingBuffer<unknown>(cap);
+      this.buffers.set(topic, buf);
+    }
+    return buf;
+  }
 
   connect(): void {
     if (typeof WebSocket === "undefined" || this.socket) return;
@@ -56,6 +69,7 @@ class RealtimeClient {
           payload: unknown;
         };
 
+        this.getBuffer(topic).push(payload);
         const frame = this.registry.record(topic, payload);
         if (frame) frameRecorder.recordFrame(frame);
         realtimeTracer.onMessage(topic);
@@ -140,6 +154,14 @@ class RealtimeClient {
     };
   }
 
+  getEvents(topic: RealtimeTopic): unknown[] {
+    return this.getBuffer(topic).toArray();
+  }
+
+  getLatest(topic: RealtimeTopic): unknown | undefined {
+    return this.getBuffer(topic).latest();
+  }
+
   disconnect(): void {
     this.closedByUser = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -157,3 +179,4 @@ class RealtimeClient {
 }
 
 export const realtimeClient = new RealtimeClient();
+export { REALTIME_TOPICS, type RealtimeTopic };

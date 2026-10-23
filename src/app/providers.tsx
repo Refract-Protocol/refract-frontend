@@ -5,13 +5,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeRouteProvider } from "@/lib/realtime/RouteProvider";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
 import { ToastProvider, useToast } from "@/components/ui/ToastProvider";
+import { AriaLiveProvider } from "@/components/ui/AriaLiveProvider";
+import { RealtimeSyncProvider } from "@/lib/realtime/RealtimeSyncProvider";
 import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
 import { bindRealtimeLifecycle, realtimeClient } from "@/lib/realtime";
 import { isRealtimeAllowed } from "@/lib/realtime/preferences";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  // One client per browser session. Query functions already fold failures
-  // into fixture/error results, so automatic retries would only delay them.
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
   );
@@ -20,11 +20,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <WalletProvider>
-          <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
-        </WalletProvider>
-      </ToastProvider>
+      <AriaLiveProvider>
+        <RealtimeSyncProvider>
+          <ToastProvider>
+            <WalletProvider>
+              <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
+            </WalletProvider>
+          </ToastProvider>
+        </RealtimeSyncProvider>
+      </AriaLiveProvider>
     </QueryClientProvider>
   );
 }
@@ -45,7 +49,6 @@ function RealtimeLifecycle() {
   useEffect(() => {
     if (!enabled || !isRealtimeAllowed()) return;
 
-    // This runs after hydration, so it cannot delay server rendering or first paint.
     realtimeClient.warm();
     const onControl = realtimeClient.subscribeControl((control) => {
       if (control.type === "revocation") {
@@ -67,8 +70,6 @@ function RealtimeLifecycle() {
       }
     });
 
-    // Warming is delegated so navigation links in the shell and route content
-    // both trigger it without each link taking ownership of the socket.
     const warmOnIntent = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;

@@ -8,6 +8,13 @@ import { env } from "@/lib/env";
  * see src/lib/network.ts). SDF's public Horizon is rate-limited per IP
  * (~3600 req/hour), so requests are paged with Horizon's own `cursor` rather
  * than fetched all at once, and 429/5xx responses are retried with backoff.
+ *
+ * In addition to the REST paged path, Horizon supports Server-Sent Events
+ * (SSE) streaming on the same `/operations` resource: when the `Accept`
+ * header is `text/event-stream`, Horizon keeps the connection open and
+ * pushes new operations as they land. We use the browser-native
+ * `EventSource` API to consume this stream, keeping the existing REST
+ * `fetchHistoryPage` for the initial page and `loadMore` pagination.
  */
 
 /** Refract contract IDs (C…) to filter on. When none are configured every Soroban invocation is shown. */
@@ -198,5 +205,79 @@ export async function fetchHistoryPage(
     entries: parseOperations(records),
     nextCursor: records.length < limit ? null : records[records.length - 1].paging_token,
     latestCursor: records[0]?.paging_token ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SSE streaming
+// ---------------------------------------------------------------------------
+
+/**
+ * Callbacks for the SSE operation stream.
+ */
+export interface StreamCallbacks {
+  /** Called for each new operation that passes the Refract contract filter. */
+  onEntry: (entry: HistoryEntry) => void;
+  /** Called when the underlying EventSource reports an error (connection lost). */
+  onError?: (error: Event) => void;
+}
+
+/**
+ * Opens a Server-Sent Events stream on Horizon's
+ * `/accounts/{address}/operations` endpoint and invokes `onEntry` for each
+ * new Refract contract invocation.
+ *
+ * Horizon's SSE format sends one JSON operation record per `data:` event.
+ * We set `cursor` to `"now"` so only operations *after* stream open are
+ * delivered — the initial page is fetched separately via `fetchHistoryPage`.
+ *
+ * The browser-native `EventSource` automatically reconnects on transient
+ * failures; we surface persistent errors via `onError` and expose a
+ * `close()` method for cleanup on unmount.
+ *
+ * @returns a `close()` function that tears down the EventSource.
+ */
+export function streamOperations(
+  address: string,
+  callbacks: StreamCallbacks,
+): () => void {
+  // EventSource is only available in the browser; no-op in SSR/build.
+  if (typeof EventSource === "undefined") {
+    return () => {};
+  }
+
+  const params = new URLSearchParams({ cursor: "now", join: "transactions" });
+  const url = `${ACTIVE_NETWORK.horizonUrl}/accounts/${address}/operations?${params}`;
+
+  let source: EventSource;
+  try {
+    source = new EventSource(url);
+  } catch {
+    // If EventSource construction throws (e.g. unsupported URL scheme),
+    // surface via the error callback if provided.
+    callbacks.onError?.(new Event("error"));
+    return () => {};
+  }
+
+  source.onmessage = (event) => {
+    try {
+      const raw = JSON.parse(event.data) as HorizonOperation;
+      // parseOperations expects an array and returns filtered entries.
+      const entries = parseOperations([raw]);
+      for (const entry of entries) {
+        callbacks.onEntry(entry);
+      }
+    } catch {
+      // Malformed SSE data — ignore, don't crash the stream.
+    }
+  };
+
+  source.onerror = (event) => {
+    // EventSource auto-reconnects; notify the caller for UI feedback.
+    callbacks.onError?.(event);
+  };
+
+  return () => {
+    source.close();
   };
 }

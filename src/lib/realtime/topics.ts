@@ -1,23 +1,19 @@
 import { z } from "zod";
 
-/**
- * Realtime topic/message contract shared by every transport (WebSocket, SSE,
- * long-poll). The backend is expected to implement exactly this shape; the
- * client validates every inbound frame against it before fan-out.
- *
- * Server → client frames are one of:
- *   - a data event:  { topic, id, seq, payload }
- *   - a control frame: { type: "subscribed" | "error" | "ping", ... }
- *
- * `id` is a stable, globally unique event id used for de-duplication.
- * `seq` is a per-topic monotonic sequence number used as the resume cursor.
- * Both are required by the contract, but a frame missing `id` is tolerated
- * (passed through without de-duplication and counted) so a misbehaving
- * producer degrades observability rather than dropping data.
- */
+/** Realtime topic string identifiers pushed by the backend. */
+export const REALTIME_TOPICS = {
+  /** Oracle price/threshold update for a coverage type. */
+  oracleUpdate: "oracle_update",
+  /** A claim was settled (payout disbursed). */
+  claimSettled: "claim_settled",
+  /** Pool stats changed (TVL, utilization, APY). */
+  poolStatsUpdate: "pool_stats_update",
+  /** A new policy was issued. */
+  policyIssued: "policy_issued",
+} as const;
 
-export const REALTIME_TOPICS = ["oracle_update", "claim_settled", "pool_stats"] as const;
-export type KnownTopic = (typeof REALTIME_TOPICS)[number];
+export type RealtimeTopic = (typeof REALTIME_TOPICS)[keyof typeof REALTIME_TOPICS];
+export type KnownTopic = RealtimeTopic | "pool_stats";
 
 /** Frames larger than this are rejected without parsing. */
 export const MAX_FRAME_BYTES = 256 * 1024;
@@ -90,3 +86,37 @@ export function decodeCursors(raw: string | null | undefined): Cursors {
   }
   return out;
 }
+
+/**
+ * Per-topic ring-buffer capacity. These caps bound memory usage during long
+ * sessions — see `RealtimeClient` which creates one `RingBuffer` per topic.
+ */
+export const TOPIC_BUFFER_CAPS: Record<RealtimeTopic, number> = {
+  [REALTIME_TOPICS.oracleUpdate]: 100,
+  [REALTIME_TOPICS.claimSettled]: 50,
+  [REALTIME_TOPICS.poolStatsUpdate]: 50,
+  [REALTIME_TOPICS.policyIssued]: 50,
+} as const;
+
+export const TOPIC_TO_QUERY_KEYS: Record<RealtimeTopic, readonly (readonly string[])[]> = {
+  [REALTIME_TOPICS.oracleUpdate]: [["oracle"]] as const,
+  [REALTIME_TOPICS.claimSettled]: [
+    ["claims"],
+    ["claimStats"],
+  ] as const,
+  [REALTIME_TOPICS.poolStatsUpdate]: [
+    ["poolStats"],
+    ["poolAllocation"],
+  ] as const,
+  [REALTIME_TOPICS.policyIssued]: [
+    ["policies"],
+    ["holderPolicies"],
+  ] as const,
+} as const;
+
+export const TOPIC_ANNOUNCEMENTS: Record<RealtimeTopic, string> = {
+  [REALTIME_TOPICS.oracleUpdate]: "Oracle reading updated",
+  [REALTIME_TOPICS.claimSettled]: "Claim settled",
+  [REALTIME_TOPICS.poolStatsUpdate]: "Pool statistics updated",
+  [REALTIME_TOPICS.policyIssued]: "Policy issued",
+} as const;

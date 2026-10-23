@@ -1,25 +1,12 @@
-/**
- * Unit tests for the bounded ring-buffer and topic registry.
- * Closes #253.
- */
-
 import { describe, it, expect, beforeEach } from "vitest";
 import { RingBuffer, TopicRegistry, DEFAULT_CAPACITY, MAX_GLOBAL_TOPICS } from "./ringBuffer";
 import type { RealtimeFrame } from "./ringBuffer";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeFrame(topic: string, seq: number, payload?: unknown): RealtimeFrame {
   return { topic, payload: payload ?? { seq }, receivedAt: Date.now(), seq };
 }
 
-// ---------------------------------------------------------------------------
-// RingBuffer
-// ---------------------------------------------------------------------------
-
-describe("RingBuffer", () => {
+describe("RingBuffer (frames)", () => {
   it("rejects capacity < 1", () => {
     expect(() => new RingBuffer({ capacity: 0 })).toThrow(RangeError);
   });
@@ -35,7 +22,6 @@ describe("RingBuffer", () => {
     const buf = new RingBuffer({ capacity: 3 });
     for (let i = 0; i < 5; i++) buf.push(makeFrame("t", i));
     const frames = buf.snapshot();
-    // Only the last 3 frames should be retained.
     expect(frames.map((f) => (f.payload as { seq: number }).seq)).toEqual([2, 3, 4]);
   });
 
@@ -89,7 +75,7 @@ describe("RingBuffer", () => {
     buf.push(makeFrame("t", 1));
     expect(buf.size).toBe(1);
     const frames = buf.snapshot();
-    expect((frames[0].payload as { seq: number }).seq).toBe(1);
+    expect((frames[0]!.payload as { seq: number }).seq).toBe(1);
   });
 
   it("respects the default capacity", () => {
@@ -100,7 +86,6 @@ describe("RingBuffer", () => {
   it("preserves insertion order after wrapping the internal pointer multiple times", () => {
     const cap = 8;
     const buf = new RingBuffer({ capacity: cap });
-    // Push 3 * capacity frames — the buffer should always hold the last `cap` frames.
     const total = cap * 3;
     for (let i = 0; i < total; i++) buf.push(makeFrame("t", i));
     const frames = buf.snapshot();
@@ -109,10 +94,6 @@ describe("RingBuffer", () => {
     expect(frames.map((f) => (f.payload as { seq: number }).seq)).toEqual(expected);
   });
 });
-
-// ---------------------------------------------------------------------------
-// TopicRegistry
-// ---------------------------------------------------------------------------
 
 describe("TopicRegistry", () => {
   let registry: TopicRegistry;
@@ -126,7 +107,7 @@ describe("TopicRegistry", () => {
     registry.record("oracle_update", { value: 2 });
     const frames = registry.snapshot("oracle_update");
     expect(frames).toHaveLength(2);
-    expect((frames[1].payload as { value: number }).value).toBe(2);
+    expect((frames[1]!.payload as { value: number }).value).toBe(2);
   });
 
   it("assigns monotonically increasing seq numbers across topics", () => {
@@ -157,15 +138,13 @@ describe("TopicRegistry", () => {
     const reg = new TopicRegistry({ maxTopics: 2 });
     reg.record("t1", {});
     reg.record("t2", {});
-    const result = reg.record("t3", {}); // should be dropped
+    const result = reg.record("t3", {});
     expect(result).toBeUndefined();
     expect(reg.droppedTopics).toBe(1);
     expect(reg.topics).not.toContain("t3");
   });
 
   it("defaults to MAX_GLOBAL_TOPICS when maxTopics not specified", () => {
-    const reg = new TopicRegistry();
-    // We can't easily push 64 topics in a unit test; just verify the cap constant.
     expect(MAX_GLOBAL_TOPICS).toBe(64);
   });
 
@@ -175,7 +154,6 @@ describe("TopicRegistry", () => {
       topicCapacities: { slow_topic: 2 },
     });
     for (let i = 0; i < 6; i++) reg.record("slow_topic", { i });
-    // Only the last 2 should be retained for slow_topic.
     expect(reg.snapshot("slow_topic")).toHaveLength(2);
   });
 
@@ -207,10 +185,112 @@ describe("TopicRegistry", () => {
     for (let i = 0; i < total; i++) {
       reg.record("oracle_update", { seq: i });
     }
-    // Buffer should hold the last `cap` frames only.
     const frames = reg.snapshot("oracle_update");
     expect(frames).toHaveLength(cap);
-    expect((frames[0].payload as { seq: number }).seq).toBe(total - cap);
-    expect((frames[cap - 1].payload as { seq: number }).seq).toBe(total - 1);
+    expect((frames[0]!.payload as { seq: number }).seq).toBe(total - cap);
+    expect((frames[cap - 1]!.payload as { seq: number }).seq).toBe(total - 1);
+  });
+});
+
+describe("RingBuffer (items)", () => {
+  it("stores items up to capacity", () => {
+    const buf = new RingBuffer<number>(3);
+    buf.push(1);
+    buf.push(2);
+    buf.push(3);
+    expect(buf.length).toBe(3);
+    expect(buf.toArray()).toEqual([1, 2, 3]);
+  });
+
+  it("evicts oldest when at capacity", () => {
+    const buf = new RingBuffer<number>(3);
+    buf.push(1);
+    buf.push(2);
+    buf.push(3);
+    const evicted = buf.push(4);
+    expect(evicted).toBe(1);
+    expect(buf.length).toBe(3);
+    expect(buf.toArray()).toEqual([2, 3, 4]);
+  });
+
+  it("returns the most recent item via latest()", () => {
+    const buf = new RingBuffer<string>(5);
+    expect(buf.latest()).toBeUndefined();
+    buf.push("a");
+    buf.push("b");
+    buf.push("c");
+    expect(buf.latest()).toBe("c");
+  });
+
+  it("toArray returns a shallow copy that doesn't affect internal state", () => {
+    const buf = new RingBuffer<number>(5);
+    buf.push(1);
+    buf.push(2);
+    const copy = buf.toArray();
+    copy.push(99);
+    expect(buf.length).toBe(2);
+    expect(buf.toArray()).toEqual([1, 2]);
+  });
+
+  it("clear removes all items", () => {
+    const buf = new RingBuffer<number>(5);
+    buf.push(1);
+    buf.push(2);
+    buf.clear();
+    expect(buf.isEmpty).toBe(true);
+    expect(buf.length).toBe(0);
+    expect(buf.toArray()).toEqual([]);
+  });
+
+  it("isEmpty is true for a new buffer", () => {
+    const buf = new RingBuffer<number>(10);
+    expect(buf.isEmpty).toBe(true);
+  });
+
+  it("maxCapacity returns the configured capacity", () => {
+    const buf = new RingBuffer<number>(42);
+    expect(buf.maxCapacity).toBe(42);
+  });
+
+  it("handles capacity of 1", () => {
+    const buf = new RingBuffer<number>(1);
+    buf.push(1);
+    expect(buf.toArray()).toEqual([1]);
+    const evicted = buf.push(2);
+    expect(evicted).toBe(1);
+    expect(buf.toArray()).toEqual([2]);
+    expect(buf.length).toBe(1);
+  });
+
+  it("throws on zero or negative capacity", () => {
+    expect(() => new RingBuffer(0)).toThrow();
+    expect(() => new RingBuffer(-1)).toThrow();
+  });
+
+  it("throws on non-finite capacity", () => {
+    expect(() => new RingBuffer(Infinity)).toThrow();
+    expect(() => new RingBuffer(NaN)).toThrow();
+  });
+
+  it("floors fractional capacity to integer", () => {
+    const buf = new RingBuffer<number>(3.9);
+    expect(buf.maxCapacity).toBe(3);
+    buf.push(1);
+    buf.push(2);
+    buf.push(3);
+    buf.push(4);
+    expect(buf.length).toBe(3);
+  });
+
+  it("works with object items (shallow copy only)", () => {
+    interface Evt { id: number; msg: string }
+    const buf = new RingBuffer<Evt>(2);
+    buf.push({ id: 1, msg: "a" });
+    buf.push({ id: 2, msg: "b" });
+    buf.push({ id: 3, msg: "c" });
+    const items = buf.toArray();
+    expect(items.length).toBe(2);
+    expect(items[0]!.id).toBe(2);
+    expect(items[1]!.id).toBe(3);
   });
 });
