@@ -1,5 +1,11 @@
 {
   "flags": {
-    "realtime-oracle": false
+    "realtime-oracle": false,
+    "horizon-stream": false,
+    "realtime-quotes": false,
+    "realtime-heartbeat": true,
+    "realtime-heartbeat-interval-ms": 30000,
+    "realtime-heartbeat-pong-deadline-ms": 10000,
+    "realtime-shadow-mode": false
   }
 }

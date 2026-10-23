@@ -178,6 +178,8 @@ export interface HistoryPage {
   entries: HistoryEntry[];
   /** Cursor for the next (older) page, or null when history is exhausted. */
   nextCursor: string | null;
+  /** `paging_token` of the newest raw record (pre-filter), used as the SSE resume point. */
+  latestCursor: string | null;
 }
 
 /** Fetches one page (newest first) of the account's operations and filters to Refract activity. */
@@ -195,5 +197,6 @@ export async function fetchHistoryPage(
   return {
     entries: parseOperations(records),
     nextCursor: records.length < limit ? null : records[records.length - 1].paging_token,
+    latestCursor: records[0]?.paging_token ?? null,
   };
 }
