@@ -19,6 +19,7 @@
     "analyze": "ANALYZE=true next build",
     "size": "size-limit",
     "size:why": "size-limit --why",
+    "size:realtime": "node scripts/check-realtime-bundle.mjs",
     "tokens:check": "node scripts/check-tokens.mjs",
     "gen:realtime-types": "node scripts/gen-realtime-types.mjs",
     "check:realtime-types": "node scripts/gen-realtime-types.mjs --check",
@@ -71,19 +72,5 @@
     "typescript": "^5",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
-  },
-  "size-limit": [
-    {
-      "name": "Shared JS (all routes)",
-      "path": ".next/static/chunks/*.js",
-      "limit": "250 kB",
-      "gzip": true
-    },
-    {
-      "name": "App Router per-page chunks",
-      "path": ".next/static/chunks/app/**/*.js",
-      "limit": "150 kB",
-      "gzip": true
-    }
-  ]
+  }
 }

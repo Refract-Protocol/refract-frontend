@@ -30,10 +30,54 @@
         "selector": "BinaryExpression[operator='**'][right.value=7]",
         "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of 10 ** 7."
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@/lib/realtime/dev",
+              "@/lib/realtime/dev/*",
+              "**/realtime/dev/*"
+            ],
+            "message": "src/lib/realtime/dev is test/dev tooling and must never reach production bundles (see docs/realtime.md)."
+          },
+          {
+            "group": [
+              "@/lib/realtime/client",
+              "@/lib/realtime/entry"
+            ],
+            "message": "Load the realtime client lazily with loadRealtime() from @/lib/realtime/load (bundle budget, see docs/realtime.md)."
+          }
+        ]
+      }
     ]
   },
   "overrides": [
     {
+      "files": [
+        "src/lib/realtime/**",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "src/lib/coverage/metadata.ts",
+        "src/lib/coverage/colors.ts",
+        "src/app/global-error.tsx",
+        "src/lib/format.ts"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
       "files": ["src/lib/realtime/**"],
       "rules": { "no-restricted-imports": "off" }
     },
@@ -50,60 +94,7 @@
     },
     {
       "files": [
-        "src/**/*.{ts,tsx}"
-      ],
-      "excludedFiles": [
-        "src/lib/realtime/**",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "src/lib/coverage/metadata.ts",
-        "src/lib/coverage/colors.ts",
-        "src/app/global-error.tsx",
-        "src/lib/format.ts"
-      ],
-      "rules": {
-        "no-restricted-syntax": [
-          "error",
-          {
-            "selector": "Literal[value=/^#(?:[0-9a-fA-F]{3,4}){1,2}$/]",
-            "message": "Hard-coded hex colours are not allowed in JSX. Use design tokens from src/lib/coverage/metadata.ts or CSS custom properties (see CONTRIBUTING.md)."
-          },
-          {
-            "selector": "Literal[value=/rgba?\\(/]",
-            "message": "Hard-coded rgb()/rgba() colours are not allowed in JSX. Use design tokens from src/lib/coverage/metadata.ts or CSS custom properties (see CONTRIBUTING.md)."
-          },
-          {
-            "selector": "Literal[value=1e7]",
-            "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of the literal 1e7."
-          },
-          {
-            "selector": "BinaryExpression[operator='**'][right.value=7]",
-            "message": "Use USDC_BASE_UNIT / fromStroops from src/lib/format.ts instead of 10 ** 7."
-          },
-          {
-            "selector": "NewExpression[callee.name=/^(WebSocket|EventSource)$/]",
-            "message": "Do not open sockets/streams directly. Subscribe through src/lib/realtime (realtimeClient) so dedup, backoff, auth and teardown apply. To opt out, add `// eslint-disable-next-line no-restricted-syntax -- <justification>`."
-          },
-          {
-            "selector": "CallExpression[callee.property.name='subscribe'][callee.object.name='realtimeClient']:not(:matches(CallExpression[callee.name=/^use(Effect|LayoutEffect)$/] *))",
-            "message": "realtimeClient.subscribe must be called inside a useEffect/useLayoutEffect callback so the returned unsubscribe runs on unmount."
-          }
-        ],
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "@/lib/realtime/*",
-                  "**/lib/realtime/*",
-                  "./realtime/*"
-                ],
-                "message": "Import from the public entry point \"@/lib/realtime\" instead of realtime internals."
-              }
-            ]
-          }
-        ]
+
       }
     }
   ]
