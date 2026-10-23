@@ -74,7 +74,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies } = useHolderPolicies(address);
-  const claims = useClaims(address, policies);
+  const { data: claims } = useClaims(address, policies);
   const { data: coverageTypes } = useCoverageTypes();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);

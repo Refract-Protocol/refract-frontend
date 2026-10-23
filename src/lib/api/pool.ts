@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { cachedRequest } from "./requestCache";
 import type { ApiSchemas } from "./generated";
 
 /** Types are generated from openapi/refract-api.yaml, which mirrors refract-backend/src/routes/pool.ts response shapes. */
@@ -11,8 +12,9 @@ export type ProvideCapitalResponse = ApiSchemas["ProvideCapitalResponse"];
 
 export type WithdrawCapitalResponse = ApiSchemas["WithdrawCapitalResponse"];
 
-export function fetchPoolStats(signal?: AbortSignal): Promise<PoolStats> {
-  return apiRequest("/pool/stats", { signal });
+/** Deduplicated across components/pages (landing + /provide) for a short window; the shared request is not tied to one caller's signal. */
+export function fetchPoolStats(): Promise<PoolStats> {
+  return cachedRequest("pool:stats", () => apiRequest<PoolStats>("/pool/stats"));
 }
 
 export function fetchUserPoolPosition(address: string, signal?: AbortSignal): Promise<UserPoolPosition> {
