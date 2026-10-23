@@ -1,16 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
+import { fidelityController, realtimeBus, realtimeClient } from "@/lib/realtime";
+import type { ConnectionState } from "@/lib/realtime/client";
+import type { RealtimeTopic, RealtimeTopics, RealtimeViewStatus } from "@/lib/realtime";
 import {
   clearPersistedSubscriptions,
   persistSubscriptions,
   readPersistedSubscriptions,
   type PersistedSubscription,
-} from '../lib/realtime/persistence';
-import { mergeRealtimeEvent, mergeSnapshot, type MergeFn, type RealtimeEvent, type RealtimeState } from '../lib/realtime/merge';
-import { getRegistry, type SubscriptionRegistry } from '../lib/realtime/registry';
-import type { RealtimeClient } from '../lib/realtime/client';
+} from "../lib/realtime/persistence";
+import {
+  mergeRealtimeEvent,
+  mergeSnapshot,
+  type MergeFn,
+  type RealtimeEvent,
+  type RealtimeState,
+} from "../lib/realtime/merge";
+import { getRegistry, type SubscriptionRegistry } from "../lib/realtime/registry";
+import type { RealtimeClient } from "../lib/realtime/client";
 
-export type RealtimeStatus = 'idle' | 'loading' | 'live' | 'polling' | 'error';
+/** Maps data presence and transport state to the shared view-status enum. */
+export function deriveViewStatus(
+  hasData: boolean,
+  enabled: boolean,
+  conn: ConnectionState
+): RealtimeViewStatus {
+  if (!hasData) return "empty";
+  if (!enabled) return "polling";
+  if (conn === "connected") return "live";
+  if (conn === "reconnecting") return "reconnecting";
+  return "disconnected";
+}
+
+export type RealtimeStatus = "idle" | "loading" | "live" | "polling" | "error";
 
 export interface UseRealtimeTopicOptions<T> {
   /**
@@ -47,6 +72,10 @@ export interface UseRealtimeTopicOptions<T> {
   wallet?: string;
   /** Known topics used to validate persisted subscriptions. */
   knownTopics?: ReadonlySet<string>;
+  /** REST snapshot used for first paint and as the fallback when realtime is off. */
+  initial?: T;
+  /** Keep this topic subscribed even when the fidelity tier would drop it (e.g. claim settlement). */
+  critical?: boolean;
 }
 
 export interface UseRealtimeTopicResult<T> {
@@ -61,27 +90,27 @@ export interface UseRealtimeTopicResult<T> {
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 
 const isTestEnv = (): boolean => {
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+  if (typeof process !== "undefined" && process.env && process.env.NODE_ENV === "test") {
     return true;
   }
-  return typeof (globalThis as { __REALTIME_DISABLE_COALESCE__?: boolean }).__REALTIME_DISABLE_COALESCE__ === 'boolean'
+  return typeof (globalThis as { __REALTIME_DISABLE_COALESCE__?: boolean }).__REALTIME_DISABLE_COALESCE__ === "boolean"
     ? Boolean((globalThis as { __REALTIME_DISABLE_COALESCE__?: boolean }).__REALTIME_DISABLE_COALESCE__)
     : false;
 };
 
 const prefersReducedMotion = (): boolean => {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return false;
   }
   try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   } catch {
     return false;
   }
 };
 
 const scheduleFrame = (cb: () => void): (() => void) => {
-  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     const id = window.requestAnimationFrame(cb);
     return () => window.cancelAnimationFrame(id);
   }
@@ -107,10 +136,10 @@ const scheduleFrame = (cb: () => void): (() => void) => {
  * on mount so reloads and route navigations resume from the snapshot instead
  * of refetching from scratch.
  */
-export function useRealtimeTopic<T>(
-  topic: string,
-  options: UseRealtimeTopicOptions<T> = {},
-): UseRealtimeTopicResult<T> {
+export function useRealtimeTopic<T extends RealtimeTopic>(
+  topic: T,
+  options: UseRealtimeTopicOptions<RealtimeTopics[T]> = {}
+): UseRealtimeTopicResult<RealtimeTopics[T]> & { enabled: boolean } {
   const {
     replaceable = false,
     select,
@@ -123,13 +152,16 @@ export function useRealtimeTopic<T>(
     subscribe,
     client,
     registry,
-    scope = '',
-    wallet = '',
+    scope = "",
+    wallet = "",
     knownTopics,
+    initial,
+    critical = false,
   } = options;
 
-  const [data, setData] = useState<T | undefined>(undefined);
-  const [status, setStatus] = useState<RealtimeStatus>('idle');
+  const flagEnabled = useFeatureFlag("realtime-oracle");
+  const [data, setData] = useState<RealtimeTopics[T] | undefined>(initial);
+  const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [lastEventAt, setLastEventAt] = useState<number | null>(null);
   const [cursor, setCursorState] = useState<string | null>(null);
   const hydratedRef = useRef(false);
@@ -143,12 +175,12 @@ export function useRealtimeTopic<T>(
   const selectRef = useRef(select);
   selectRef.current = select;
 
-  const pendingEventsRef = useRef<T[]>([]);
+  const pendingEventsRef = useRef<RealtimeTopics[T][]>([]);
   const mountedRef = useRef(true);
 
   // Coalescing state for replaceable topics.
-  const stateRef = useRef<RealtimeState<T> | undefined>(undefined);
-  const pendingRef = useRef<RealtimeState<T> | null>(null);
+  const stateRef = useRef<RealtimeState<RealtimeTopics[T]> | undefined>(undefined);
+  const pendingRef = useRef<RealtimeState<RealtimeTopics[T]> | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
   const coalesce = replaceable && !isTestEnv() && !prefersReducedMotion();
@@ -164,15 +196,15 @@ export function useRealtimeTopic<T>(
     pendingRef.current = null;
     stateRef.current = next;
     if (mountedRef.current) {
-      setData(next as unknown as T);
+      setData(next as unknown as RealtimeTopics[T]);
     }
   }, []);
 
-  const apply = useCallback((next: RealtimeState<T>): void => {
+  const apply = useCallback((next: RealtimeState<RealtimeTopics[T]>): void => {
     if (!coalesceRef.current) {
       stateRef.current = next;
       if (mountedRef.current) {
-        setData(next as unknown as T);
+        setData(next as unknown as RealtimeTopics[T]);
       }
       return;
     }
@@ -182,12 +214,12 @@ export function useRealtimeTopic<T>(
     }
   }, [flush]);
 
-  const applyEvent = useCallback((event: T) => {
+  const applyEvent = useCallback((event: RealtimeTopics[T]) => {
     if (!mountedRef.current) return;
     const current = stateRef.current;
     const merged = current !== undefined
-      ? mergeRealtimeEvent(current, event as unknown as RealtimeEvent<T>)
-      : (event as unknown as RealtimeState<T>);
+      ? mergeRealtimeEvent(current, event as unknown as RealtimeEvent<RealtimeTopics[T]>)
+      : (event as unknown as RealtimeState<RealtimeTopics[T]>);
     const selected = selectRef.current ? selectRef.current(merged) : merged;
     apply(selected);
     setLastEventAt(Date.now());
@@ -202,10 +234,10 @@ export function useRealtimeTopic<T>(
       const pending = pendingEventsRef.current;
       pendingEventsRef.current = [];
       const merged = mergeSnapshot(snapshot, pending, mergeRef.current);
-      stateRef.current = merged as unknown as RealtimeState<T>;
+      stateRef.current = merged as unknown as RealtimeState<RealtimeTopics[T]>;
       setData(merged);
     } catch {
-      if (mountedRef.current) setStatus('error');
+      if (mountedRef.current) setStatus("error");
     }
   }, []);
 
@@ -213,7 +245,7 @@ export function useRealtimeTopic<T>(
   // the client. Falls back to a direct subscribe when neither is available.
   const resolvedRegistry = registry ?? (client ? getRegistry(client) : undefined);
   const subscribeFn = resolvedRegistry
-    ? (t: string, onEvent: (event: T) => void) => resolvedRegistry.subscribe<T>(t, onEvent)
+    ? (t: string, onEvent: (event: RealtimeTopics[T]) => void) => resolvedRegistry.subscribe<RealtimeTopics[T]>(t, onEvent)
     : subscribe;
 
   const realtimeActive = enabled && realtimeEnabled && connected && !!subscribeFn;
@@ -256,7 +288,7 @@ export function useRealtimeTopic<T>(
   // Snapshot fetch on mount / when the topic changes.
   useEffect(() => {
     mountedRef.current = true;
-    setStatus('loading');
+    setStatus("loading");
     void fetchSnapshot();
     return () => {
       mountedRef.current = false;
@@ -266,7 +298,7 @@ export function useRealtimeTopic<T>(
   // Realtime subscription lifecycle (routed through the registry).
   useEffect(() => {
     if (!realtimeActive || !subscribeFn) return;
-    setStatus('live');
+    setStatus("live");
     const unsubscribe = subscribeFn(topic, (event) => {
       if (pendingEventsRef.current.length > 0) {
         pendingEventsRef.current.push(event);
@@ -287,14 +319,36 @@ export function useRealtimeTopic<T>(
   // REST polling fallback when realtime is disabled or unavailable.
   useEffect(() => {
     if (!enabled || realtimeActive) return;
-    setStatus('polling');
+    setStatus("polling");
     const interval = setInterval(() => {
       void fetchSnapshot();
     }, pollIntervalMs);
     return () => clearInterval(interval);
   }, [enabled, realtimeActive, pollIntervalMs, fetchSnapshot]);
 
-  return { data, status, lastEventAt, cursor, setCursor, clear };
+  // Event-bus subscription (never the socket directly). Late mounts read the
+  // bus snapshot; `status` is the single enum views map to presentation, so
+  // components never inspect transport internals.
+  useEffect(() => {
+    if (!flagEnabled) return;
+    const snap = realtimeBus.getSnapshot(topic);
+    if (snap !== undefined) setData(snap as unknown as RealtimeTopics[T]);
+    const offBus = realtimeBus.subscribe(topic, (value) => {
+      setData(value as unknown as RealtimeTopics[T]);
+    });
+    const offConn = realtimeClient.onConnectionChange((conn: ConnectionState) => {
+      setStatus(deriveViewStatus(true, flagEnabled, conn) as unknown as RealtimeStatus);
+    });
+    const release = critical ? fidelityController.requireTopic(topic) : () => {};
+    realtimeClient.connect();
+    return () => {
+      offBus();
+      offConn();
+      release();
+    };
+  }, [flagEnabled, topic, critical]);
+
+  return { data, status, lastEventAt, cursor, setCursor, clear, enabled: flagEnabled };
 }
 
 /**
@@ -303,7 +357,7 @@ export function useRealtimeTopic<T>(
  */
 export function useRealtimeFlush(): () => void {
   return () => {
-    if (typeof (globalThis as { __REALTIME_FLUSH__?: () => void }).__REALTIME_FLUSH__ === 'function') {
+    if (typeof (globalThis as { __REALTIME_FLUSH__?: () => void }).__REALTIME_FLUSH__ === "function") {
       (globalThis as { __REALTIME_FLUSH__?: () => void }).__REALTIME_FLUSH__!();
     }
   };

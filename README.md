@@ -29,6 +29,7 @@ this policy.
 | `/` | Landing — live oracle status, recent payouts, protocol stats |
 | `/cover` | Policy purchase flow |
 | `/provide` | LP capital provision + pool allocation |
+| `/status` | Protocol status, maintenance windows and incidents (REST snapshot + realtime) |
 
 ## Quick start
 
