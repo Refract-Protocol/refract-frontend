@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { _resetClockForTests } from "@/lib/realtime/clock";
 import { useCountdown } from "./useCountdown";
 
 beforeEach(() => {
+  _resetClockForTests();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 });

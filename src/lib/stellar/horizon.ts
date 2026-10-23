@@ -1,4 +1,5 @@
 import { ACTIVE_NETWORK } from "@/lib/network";
+import { env } from "@/lib/env";
 
 /**
  * Minimal client-side Horizon reader for a wallet's Refract activity.
@@ -11,8 +12,8 @@ import { ACTIVE_NETWORK } from "@/lib/network";
 
 /** Refract contract IDs (C…) to filter on. When none are configured every Soroban invocation is shown. */
 export const REFRACT_CONTRACT_IDS = [
-  process.env.NEXT_PUBLIC_POOL_CONTRACT_ID,
-  process.env.NEXT_PUBLIC_POLICY_CONTRACT_ID,
+  env.NEXT_PUBLIC_POOL_CONTRACT_ID,
+  env.NEXT_PUBLIC_POLICY_CONTRACT_ID,
 ].filter((id): id is string => Boolean(id));
 
 export interface HorizonOperation {
@@ -177,6 +178,8 @@ export interface HistoryPage {
   entries: HistoryEntry[];
   /** Cursor for the next (older) page, or null when history is exhausted. */
   nextCursor: string | null;
+  /** `paging_token` of the newest raw record (pre-filter), used as the SSE resume point. */
+  latestCursor: string | null;
 }
 
 /** Fetches one page (newest first) of the account's operations and filters to Refract activity. */
@@ -194,5 +197,6 @@ export async function fetchHistoryPage(
   return {
     entries: parseOperations(records),
     nextCursor: records.length < limit ? null : records[records.length - 1].paging_token,
+    latestCursor: records[0]?.paging_token ?? null,
   };
 }
