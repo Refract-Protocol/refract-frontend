@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { Input } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { env } from "@/lib/env";
 
 /**
  * Dev-only component gallery for the design-system primitives in
@@ -153,7 +154,7 @@ function Swatch({ spec }: { spec: Spec }) {
 }
 
 export default function UiGalleryPage() {
-  if (process.env.NEXT_PUBLIC_ENABLE_UI_GALLERY !== "true") {
+  if (env.NEXT_PUBLIC_ENABLE_UI_GALLERY !== "true") {
     notFound();
   }
 
