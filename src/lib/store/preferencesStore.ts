@@ -28,10 +28,12 @@ export interface PreferencesState {
   locale: string;
   compactNumbers: boolean;
   explorerNetwork: ExplorerNetworkPreference;
+  attentionCues: boolean;
   setMotion: (motion: MotionPreference) => void;
   setLocale: (locale: string) => void;
   setCompactNumbers: (compactNumbers: boolean) => void;
   setExplorerNetwork: (explorerNetwork: ExplorerNetworkPreference) => void;
+  setAttentionCues: (attentionCues: boolean) => void;
   reset: () => void;
 }
 
@@ -43,6 +45,7 @@ export const DEFAULT_PREFERENCES = {
   locale: 'en-US',
   compactNumbers: false,
   explorerNetwork: 'auto' as ExplorerNetworkPreference,
+  attentionCues: false,
 };
 
 /**
@@ -54,7 +57,7 @@ interface PersistedEnvelope {
   version: number;
   state: Pick<
     PreferencesState,
-    'motion' | 'locale' | 'compactNumbers' | 'explorerNetwork'
+    'motion' | 'locale' | 'compactNumbers' | 'explorerNetwork' | 'attentionCues'
   >;
 }
 
@@ -78,6 +81,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       setLocale: (locale) => set({ locale }),
       setCompactNumbers: (compactNumbers) => set({ compactNumbers }),
       setExplorerNetwork: (explorerNetwork) => set({ explorerNetwork }),
+      setAttentionCues: (attentionCues) => set({ attentionCues }),
       reset: () => set({ ...DEFAULT_PREFERENCES }),
     }),
     {
@@ -92,6 +96,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           locale: state.locale,
           compactNumbers: state.compactNumbers,
           explorerNetwork: state.explorerNetwork,
+          attentionCues: state.attentionCues,
         },
       }),
       // Rehydrate from the versioned envelope, falling back to defaults for
@@ -108,6 +113,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           locale: stored.locale ?? current.locale,
           compactNumbers: stored.compactNumbers ?? current.compactNumbers,
           explorerNetwork: stored.explorerNetwork ?? current.explorerNetwork,
+          attentionCues: stored.attentionCues ?? current.attentionCues,
         };
       },
     },

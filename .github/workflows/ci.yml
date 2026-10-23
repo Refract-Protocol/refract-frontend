@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check realtime generated types
+        run: npm run check:realtime-types
+
       - name: Run ESLint
         run: npm run lint
 
@@ -68,10 +71,19 @@ jobs:
       - name: i18n check
         run: npx tsx scripts/i18n-check.ts
 
+      - name: Client boundary audit (informational)
+        run: npx tsx scripts/audit-client-boundaries.ts --out client-boundary-audit.md
+        continue-on-error: true
+
       - name: Build
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
+          NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'ci' }}
 
       - name: Bundle size budget
         run: npm run size
@@ -99,6 +111,15 @@ jobs:
         run: npx playwright test --grep-invert @visual
         env:
           CI: 'true'
+
+      - name: Upload client boundary audit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-boundary-audit
+          path: client-boundary-audit.md
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
@@ -167,6 +188,32 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+  realtime-benchmark:
+    name: Realtime render benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run dev &
+        env:
+          NEXT_PUBLIC_REALTIME_PROFILER: "1"
+      - run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:3000 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Next.js dev server did not become ready" >&2
+          exit 1
+      - run: npm run realtime:benchmark
+        env:
+          REALTIME_BENCHMARK_URL: http://127.0.0.1:3000
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -225,6 +272,11 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
+          NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'ci' }}
 
       - name: Start production server
         run: npm run start &

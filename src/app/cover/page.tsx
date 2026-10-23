@@ -15,6 +15,7 @@ import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useLiveQuote } from "@/hooks/useLiveQuote";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
 import { useTxReview } from "@/components/wallet/TxReview";
 import {
@@ -34,6 +35,9 @@ import { parseCoverQueryParams } from "@/lib/coverQueryParams";
 import { PolicyCertificateModal } from "@/components/PolicyCertificate";
 import { validateBuyCoverage } from "@/lib/validation/coverage";
 import { searchFlights, POPULAR_FLIGHTS, type FlightInfo } from "@/lib/flights";
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
+import { publishAccountBalanceDelta } from "@/hooks/useAccountBalance";
 
 const RISK_TAG_COLORS: Record<string, string> = {
   low: "#10b981",
@@ -149,12 +153,34 @@ export default function CoverPage() {
 
   const ct = coverageTypes?.[selectedType];
 
+  const [submittingQuote, setSubmittingQuote] = useState(false);
+  const liveQuote = useLiveQuote(ct?.id, durationDays, submittingQuote);
+  const ratePct = liveQuote.quote?.baseRatePct ?? ct?.baseRatePct;
+
   const premium = useMemo(() => {
-    if (!ct) return 0;
+    if (!ct || ratePct === undefined) return 0;
     const amount = parseFloat(coverageAmount) || 0;
-    const annualRate = ct.baseRatePct / 100;
+    const annualRate = ratePct / 100;
     return amount * annualRate * (durationDays / 365);
-  }, [coverageAmount, durationDays, ct]);
+  }, [coverageAmount, durationDays, ct, ratePct]);
+
+  // Premium moved after the user opened the confirm step: close it so they must re-confirm the new price.
+  useEffect(() => {
+    if (submission.status === "idle" || submission.status === "error" || submission.status === "success") setSubmittingQuote(false);
+  }, [submission.status]);
+  const confirmedPremium = useRef<number | null>(null);
+  const [premiumChanged, setPremiumChanged] = useState(false);
+  useEffect(() => {
+    if (!confirmOpen) {
+      confirmedPremium.current = null;
+      return;
+    }
+    if (confirmedPremium.current === null) confirmedPremium.current = premium;
+    else if (confirmedPremium.current !== premium) {
+      setConfirmOpen(false);
+      setPremiumChanged(true);
+    }
+  }, [confirmOpen, premium]);
 
   const expiryMs = Date.now() + durationDays * 86400000;
   const expiryDate = <RelativeDate target={expiryMs} />;
@@ -253,6 +279,7 @@ export default function CoverPage() {
       holder = connected;
       networkPassphrase = wallet.networkPassphrase;
     }
+    setPremiumChanged(false);
     setConfirmOpen(true);
   }
 
@@ -260,6 +287,7 @@ export default function CoverPage() {
     setConfirmOpen(false);
     const holder = wallet.address;
     if (!ct || !holder) return;
+    setSubmittingQuote(true);
 
     setSubmission({ status: "submitting" });
     const txId = addTransaction({ type: "buy", amount: parseFloat(coverageAmount) });
@@ -313,6 +341,7 @@ export default function CoverPage() {
       if (!networkPassphrase) throw new Error("Wallet network isn't available — reconnect and try again");
       const txHash = await signAndSubmit(result.txXdr, holder, networkPassphrase, { hardware: wallet.hardwareWallet });
       if (rejected) throw new Error("The transaction was rejected by the server.");
+      publishAccountBalanceDelta(wallet.address, "USDC", -fromStroops(result.policy.premium));
       setSubmission({ status: "success", result: policyCorrection ? { ...result, policy: { ...result.policy, ...policyCorrection } } : result, demo: false, txHash });
       updateTransaction(txId, { status: "confirmed", txHash });
     } catch (err) {
@@ -433,7 +462,8 @@ export default function CoverPage() {
             <div className="flex flex-col gap-5">
               {/* STEP 1: Select Type */}
               {currentStep === 1 && (
-                <div data-tour-id="cover-type">
+                <RealtimeBoundary topic="coverage_types" route="/cover" fallback={() => <div role="status" className="rounded-lg border border-pm-border p-5 text-sm text-pm-text/60">Coverage types are temporarily unavailable. Try again later or open the Dashboard.</div>}>
+                <RealtimeProfiler topic="coverage_types"><div data-tour-id="cover-type">
                   <div className="mb-3 text-[11px] uppercase tracking-wide text-pm-text/40">
                     Step 1 of 4: Select Coverage Type
                   </div>
@@ -537,7 +567,8 @@ export default function CoverPage() {
                       Next: Trigger Parameters →
                     </Button>
                   </div>
-                </div>
+                </div></RealtimeProfiler>
+                </RealtimeBoundary>
               )}
 
               {/* STEP 2: Trigger Parameters */}
@@ -718,6 +749,16 @@ export default function CoverPage() {
                 </Card>
               )}
             </div>
+   />
+                  </div>
+                  <div className="mt-6 flex items-center justify-between border-t border-pm-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>← Back</Button>
+                    <Button type="button" variant="primary" onClick={() => setCurrentStep(4)} disabled={amountInvalid}>Review Purchase →</Button>
+                  </div>
+                </Card>
+              )}
+            </div>
+
             {/* Right: Quote panel */}
             <div className="flex flex-col gap-5 lg:sticky lg:top-20">
               {!ct ? (
@@ -831,6 +872,15 @@ export default function CoverPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] text-pm-text/60">Total premium</span>
                       <span className="font-display text-2xl font-extrabold text-pm-violet">{formatUsd(premium)}</span>
+                      {(liveQuote.justUpdated || liveQuote.stale || premiumChanged) && (
+                        <span role="status" className="ml-2 text-[11px] text-pm-text/50">
+                          {premiumChanged
+                            ? "Premium changed — review and confirm again"
+                            : liveQuote.justUpdated
+                              ? "Updated just now"
+                              : "Live quote unavailable — showing last known rate"}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-right text-[11px] text-pm-text/30">One-time payment · USDC</div>
                     {networkFee && (
