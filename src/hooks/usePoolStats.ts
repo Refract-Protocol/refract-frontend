@@ -47,9 +47,32 @@ function agreesWithRest(pushed: PoolStats, rest: PoolStats | null): boolean {
   return Math.abs(Number(pushed.totalUsdc) - base) / base <= MAX_TVL_DRIFT;
 }
 
+async function loadPoolStats(signal: AbortSignal): Promise<PoolStatsResult> {
+  try {
+    return { data: await fetchPoolStats(signal), dataSource: "api", error: null };
+  } catch (err) {
+    if (signal.aborted) throw err;
+    if (!(err instanceof ApiUnreachableError)) {
+      return {
+        data: null,
+        dataSource: null,
+        error: err instanceof Error ? err.message : "Failed to load pool stats",
+      };
+    }
+  }
+  try {
+    return { data: await readPoolStats(signal), dataSource: "chain", error: null };
+  } catch {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    return { data: FIXTURE_POOL_STATS, dataSource: "fixture", error: null };
+  }
+}
+
 /**
  * Pool-wide stats: API → on-chain read → bundled fixture, optionally kept live
  * by the `pool.stats` realtime topic (behind the `realtime-pool-stats` flag).
+ * The query key is shared, so every component (landing, /provide) reuses one
+ * cached request within the QueryClient's staleTime.
  */
 export function usePoolStats(): PoolStatsState {
   const live = useFeatureFlag("realtime-pool-stats");
@@ -59,21 +82,7 @@ export function usePoolStats(): PoolStatsState {
 
   const { data: result, isLoading } = useQuery<PoolStatsResult>({
     queryKey: ["poolStats"],
-    queryFn: async ({ signal }) => {
-      try {
-        return { data: await fetchPoolStats(signal), dataSource: "api", error: null };
-      } catch (err) {
-        if (signal?.aborted) throw err;
-        if (!(err instanceof ApiUnreachableError)) {
-          return { data: null, dataSource: null, error: err instanceof Error ? err.message : "Failed to load pool stats" };
-        }
-        try {
-          return { data: await readPoolStats(signal), dataSource: "chain", error: null };
-        } catch {
-          return { data: FIXTURE_POOL_STATS, dataSource: "fixture", error: null };
-        }
-      }
-    },
+    queryFn: ({ signal }) => loadPoolStats(signal),
   });
 
   const rest = result?.data ?? null;
