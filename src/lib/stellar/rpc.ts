@@ -11,6 +11,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { ACTIVE_NETWORK } from "@/lib/network";
 import type { PoolStats } from "@/lib/api/pool";
+import { env } from "@/lib/env";
 
 /**
  * Client-side Soroban RPC reads of the pool contract's view functions: the
@@ -22,7 +23,7 @@ import type { PoolStats } from "@/lib/api/pool";
  * View-function names below are assumptions to verify against the pool
  * contract. No transaction is ever signed or sent: reads use `simulateTransaction`.
  */
-export const POOL_CONTRACT_ID = process.env.NEXT_PUBLIC_POOL_CONTRACT_ID ?? "";
+export const POOL_CONTRACT_ID = env.NEXT_PUBLIC_POOL_CONTRACT_ID ?? "";
 
 export const POOL_VIEW_FNS = {
   totalUsdc: "total_usdc",

@@ -13,6 +13,8 @@ export interface TransactionEntry {
   timestamp: number;
   txHash?: string;
   error?: string;
+  /** Authoritative fields returned by the backend/realtime confirmation. */
+  authoritative?: Record<string, unknown>;
   /** Simulated client-side because the API was unreachable. */
   demo?: boolean;
 }

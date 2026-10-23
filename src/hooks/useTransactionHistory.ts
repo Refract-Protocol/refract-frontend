@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
+import { openHorizonStream } from "@/lib/realtime/horizonStream";
 import { fetchHistoryPage, HorizonError, type HistoryEntry } from "@/lib/stellar/horizon";
 
 interface TransactionHistoryState {
@@ -23,6 +25,9 @@ export function useTransactionHistory(address: string | null): TransactionHistor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const streamEnabled = useFeatureFlag("horizon-stream");
+  /** Resume point for SSE; set once the initial REST hydration lands. "now" if the account has no records. */
+  const [streamCursor, setStreamCursor] = useState<string | null>(null);
 
   const load = useCallback(
     async (from: string | null, reset: boolean) => {
@@ -38,11 +43,13 @@ export function useTransactionHistory(address: string | null): TransactionHistor
         setEntries((prev) => (reset ? page.entries : [...prev, ...page.entries]));
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== null);
+        if (reset) setStreamCursor(page.latestCursor ?? "now");
       } catch (err) {
         if (controller.signal.aborted) return;
         if (err instanceof HorizonError && err.status === 404) {
           setEntries([]);
           setHasMore(false);
+          if (reset) setStreamCursor("now");
         } else {
           setError(err instanceof Error ? err.message : "Failed to load transaction history");
         }
@@ -57,9 +64,24 @@ export function useTransactionHistory(address: string | null): TransactionHistor
     setEntries([]);
     setCursor(null);
     setHasMore(false);
+    setStreamCursor(null);
     if (address) void load(null, true);
     return () => controllerRef.current?.abort();
   }, [address, load]);
+
+  // Live tail: SSE only appends beyond the hydrated cursor; ids dedupe against REST rows.
+  useEffect(() => {
+    if (!streamEnabled || !address || !streamCursor) return;
+    return openHorizonStream(address, streamCursor, (fresh) =>
+      setEntries((prev) => {
+        const known = new Set(prev.map((e) => e.id));
+        const added = fresh.filter((e) => !known.has(e.id)).reverse();
+        return added.length > 0 ? [...added, ...prev] : prev;
+      })
+    );
+    // streamCursor is the hydration snapshot; later changes must not reopen the stream.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamEnabled, address, streamCursor === null]);
 
   const loadMore = useCallback(() => {
     if (cursor && !loading) void load(cursor, false);

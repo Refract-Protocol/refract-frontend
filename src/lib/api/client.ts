@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 /**
  * Thin fetch wrapper for the Refract backend (see refract-backend/src/routes/*.ts
  * for the source of truth on these shapes). Defaults to a local dev server;
@@ -7,10 +8,14 @@
  * that uses this client is expected to catch `ApiUnreachableError` and fall
  * back to a clearly-labeled fixture — see src/lib/fixtures/.
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4001/api/v1";
+export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public details?: unknown) {
+  constructor(
+    message: string,
+    public status: number,
+    public details?: unknown
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -28,6 +33,7 @@ interface RequestOptions {
   method?: "GET" | "POST";
   body?: unknown;
   signal?: AbortSignal;
+  idempotencyKey?: string;
 }
 
 export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
@@ -35,7 +41,10 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       method: opts.method ?? "GET",
-      headers: opts.body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(opts.body ? { "Content-Type": "application/json" } : {}),
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+      },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
     });

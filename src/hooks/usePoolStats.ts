@@ -1,51 +1,76 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchPoolStats, type PoolStats } from "@/lib/api/pool";
+import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { readPoolStats } from "@/lib/stellar/rpc";
-import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
-import type { DataSource } from "@/lib/api/dataSource";
+import { realtimeClient } from "@/lib/realtime/client";
 import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
 import { useRealtimeRevision } from "./useRealtimeTopic";
 import { ACTIVE_NETWORK } from "@/lib/network";
-/** The current app views one protocol pool per network. */
+
 export function usePoolStats(poolId = `${ACTIVE_NETWORK.id}:protocol`) {
+  const client = useQueryClient();
   const enabled = useFeatureFlag("realtime-pool");
-  const [state, setState] = useState<{
-    data: PoolStats | null;
-    loading: boolean;
-    isFixture: boolean;
-    error: string | null;
-    dataSource: DataSource | null;
-  }>({ data: null, loading: true, isFixture: false, error: null, dataSource: null });
   const revision = useRealtimeRevision("pool_stats", enabled ? { entityIds: [poolId] } : null);
-  useEffect(() => {
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      let data: PoolStats | null = null;
-      let dataSource: DataSource | null = null;
-      let error: string | null = null;
+  const query = useQuery({
+    queryKey: ["poolStats", poolId, revision],
+    queryFn: async ({ signal }) => {
       try {
-        data = await fetchPoolStats(controller.signal);
-        dataSource = "api";
-      } catch (err) {
-        if (err instanceof ApiUnreachableError) {
-          try {
-            data = await readPoolStats();
-            dataSource = "chain";
-          } catch {
-            data = FIXTURE_POOL_STATS;
-            dataSource = "fixture";
-          }
-        } else error = err instanceof Error ? err.message : String(err);
+        return {
+          data: await fetchPoolStats(signal),
+          dataSource: "api" as const,
+          isFixture: false,
+          error: undefined,
+        };
+      } catch (apiError) {
+        if (!(apiError instanceof ApiUnreachableError))
+          return {
+            data: null,
+            dataSource: null,
+            isFixture: false,
+            error: apiError instanceof Error ? apiError.message : "Failed to load pool stats",
+          };
+        try {
+          return {
+            data: await readPoolStats(),
+            dataSource: "chain" as const,
+            isFixture: false,
+            error: undefined,
+          };
+        } catch {
+          return {
+            data: FIXTURE_POOL_STATS,
+            dataSource: "fixture" as const,
+            isFixture: true,
+            error: undefined,
+          };
+        }
       }
-      if (!controller.signal.aborted)
-        setState({ data, loading: false, isFixture: dataSource === "fixture", dataSource, error });
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [revision]);
-  return state;
+    },
+    refetchInterval: 60_000,
+  });
+  useEffect(
+    () =>
+      realtimeClient.subscribe("pool_update", (payload) => {
+        if (!payload || typeof payload !== "object") return;
+        client.setQueryData(["poolStats", poolId, revision], {
+          data: payload as PoolStats,
+          dataSource: "realtime",
+          isFixture: false,
+        });
+      }),
+    [client, poolId, revision]
+  );
+  const fixture = query.data?.isFixture ?? false;
+  return {
+    data: query.data?.data ?? null,
+    loading: query.isLoading,
+    isFixture: fixture,
+    dataSource: query.data?.dataSource ?? null,
+    lastUpdated: query.dataUpdatedAt ? new Date(query.dataUpdatedAt) : undefined,
+    error: query.error?.message,
+    refreshFromChain: readPoolStats,
+  };
 }
