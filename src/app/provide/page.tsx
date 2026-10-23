@@ -14,6 +14,7 @@ import { formatUsd, fromStroops, toStroops } from "@/lib/format";
 import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { PoolActivityFeed } from "@/components/pool/PoolActivityFeed";
 import { useTransactionStore } from "@/lib/store/useTransactionStore";
 
 // Illustrative allocation breakdown by coverage category — the backend
@@ -226,6 +227,8 @@ export default function ProvidePage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_360px]">
             {/* Left: Pool info */}
             <div className="flex flex-col gap-5">
+              <PoolActivityFeed />
+
               <Card padding="md">
                 <h3 className="mb-5 font-display text-base font-bold tracking-tight text-pm-text">Capital Allocation</h3>
                 <div className="grid grid-cols-1 items-center gap-8 xs:grid-cols-[160px_1fr]">

@@ -20,6 +20,7 @@ import {
 import { policiesFixture } from '../lib/fixtures/policies';
 import { oracleStatusFixture } from '../lib/fixtures/oracle';
 import { claimsFixture } from '../lib/fixtures/claims';
+import { env } from "@/lib/env";
 
 /**
  * Mock Service Worker request handlers.
@@ -33,7 +34,7 @@ import { claimsFixture } from '../lib/fixtures/claims';
  * can be applied per-test with `server.use(...)` in `src/mocks/server.ts`.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+const API_BASE = env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
 const url = (path: string) => `${API_BASE}${path}`;
 

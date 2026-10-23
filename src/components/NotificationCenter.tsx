@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useNotifications } from "@/hooks/useNotifications";
 import { usePreferencesStore } from "@/lib/store/preferencesStore";
 import type { RefractNotification } from "@/lib/notifications";
+import { VirtualList } from "@/components/ui/VirtualList";
+
+/** Above this many items the list is windowed; below it the original markup is unchanged. */
+const VIRTUALIZE_THRESHOLD = 50;
+const ROW_HEIGHT = 120;
 
 const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   info: "ℹ",
@@ -49,6 +54,59 @@ export function NotificationCenter() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
+
+  const renderItem = (item: RefractNotification) => {
+    const colors = SEVERITY_COLORS[item.severity];
+    const icon = SEVERITY_ICONS[item.severity];
+
+    return (
+      <div
+        key={item.id}
+        className={`relative flex flex-col gap-1 rounded-lg border p-3 transition-all ${
+          item.read
+            ? "border-white/5 bg-white/[0.02] opacity-70"
+            : `${colors.border} ${colors.bg} shadow-sm`
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold ${colors.bg} ${colors.text}`}
+              aria-hidden="true"
+            >
+              {icon}
+            </span>
+            <h4 className="text-xs font-bold text-pm-text">{item.title}</h4>
+          </div>
+          {!item.read && (
+            <button
+              type="button"
+              onClick={() => markAsRead(item.id)}
+              className="text-[10px] text-pm-text/40 hover:text-pm-text"
+              title="Mark as read"
+            >
+              Mark read
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] leading-relaxed text-pm-text/70">{item.message}</p>
+        {item.href && (
+          <div className="mt-1 flex justify-end">
+            <Link
+              href={item.href}
+              onClick={() => {
+                markAsRead(item.id);
+                setIsOpen(false);
+              }}
+              className="text-[11px] font-semibold text-pm-violet hover:underline"
+            >
+              View Details →
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="relative" ref={containerRef}>
@@ -124,58 +182,18 @@ export function NotificationCenter() {
                 No notifications right now. You&apos;re all caught up!
               </div>
             ) : (
-              notifications.map((item) => {
-                const colors = SEVERITY_COLORS[item.severity];
-                const icon = SEVERITY_ICONS[item.severity];
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`relative flex flex-col gap-1 rounded-lg border p-3 transition-all ${
-                      item.read
-                        ? "border-white/5 bg-white/[0.02] opacity-70"
-                        : `${colors.border} ${colors.bg} shadow-sm`
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold ${colors.bg} ${colors.text}`}
-                          aria-hidden="true"
-                        >
-                          {icon}
-                        </span>
-                        <h4 className="text-xs font-bold text-pm-text">{item.title}</h4>
-                      </div>
-                      {!item.read && (
-                        <button
-                          type="button"
-                          onClick={() => markAsRead(item.id)}
-                          className="text-[10px] text-pm-text/40 hover:text-pm-text"
-                          title="Mark as read"
-                        >
-                          Mark read
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-pm-text/70">{item.message}</p>
-                    {item.href && (
-                      <div className="mt-1 flex justify-end">
-                        <Link
-                          href={item.href}
-                          onClick={() => {
-                            markAsRead(item.id);
-                            setIsOpen(false);
-                          }}
-                          className="text-[11px] font-semibold text-pm-violet hover:underline"
-                        >
-                          View Details →
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+              notifications.length > VIRTUALIZE_THRESHOLD ? (
+                <VirtualList
+                  items={notifications}
+                  rowHeight={ROW_HEIGHT}
+                  height={340}
+                  getKey={(n) => n.id}
+                  renderRow={renderItem}
+                  label="Notifications"
+                />
+              ) : (
+                notifications.map(renderItem)
+              )
             )}
           </div>
         </div>

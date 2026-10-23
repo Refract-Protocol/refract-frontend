@@ -37,10 +37,27 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
-The app talks to `refract-backend` (default `http://localhost:4001`). Point it at
-your backend with `NEXT_PUBLIC_API_URL` if needed.
+Data is fetched from `refract-backend` over REST (default `http://localhost:4001`,
+configurable via `NEXT_PUBLIC_API_URL`). On top of that REST path the app has an
+**optional realtime layer** (`src/lib/realtime/`) that can push updates over a
+WebSocket instead of polling. Realtime is **off by default** and gated behind
+feature flags (`public/flags.json`); when it is disabled, unavailable, or the
+connection drops, the app transparently falls back to the REST path — so the
+REST API remains the source of truth. See
+[`docs/realtime/`](./docs/realtime/) for the topic contract, connection
+lifecycle, fallback semantics, flag matrix, and the operational runbook.
 
 Other environment variables:
+
+- `NEXT_PUBLIC_REALTIME_URL` — optional `ws://`/`wss://` URL. With the `realtime-oracle` flag on,
+  `useOracleStatus` streams the `oracle.readings` topic from it (REST remains the initial load and
+  the automatic fallback; the landing page shows a stale notice while the stream is down).
+- `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_FLAGS_OVERRIDE` (JSON object of booleans),
+  `NEXT_PUBLIC_ENABLE_UI_GALLERY` (`true`/`false`) — dev/mocking helpers.
+
+All `NEXT_PUBLIC_*` variables are validated once at startup by `src/lib/env.ts`; a malformed value
+fails fast with a message naming the variable and what was expected. Read env through `env`, not
+`process.env`. Copy `.env.example` to `.env.local` to get started.
 
 - `NEXT_PUBLIC_STELLAR_NETWORK` — `testnet` (default), `futurenet` or `mainnet`. Drives
   the Navbar network badge, explorer links and Horizon URL (`src/lib/network.ts`). An
@@ -60,6 +77,24 @@ Other environment variables:
 | `npm run lint` | `next lint` |
 | `npm run typecheck` | `tsc --noEmit` |
 
+## Monitoring
+
+Runtime errors are reported to Sentry when `NEXT_PUBLIC_SENTRY_DSN` is set. See
+[docs/monitoring.md](docs/monitoring.md) for configuration and the data-scrubbing policy.
+
 ## License
 
 [MIT](./LICENSE)
+
+## Realtime layer (dev)
+
+Realtime is off by default (`public/flags.json`; see `docs/realtime-protocol.md` and `docs/realtime-rollout.md`).
+Run the deterministic mock server with `npm run mock:realtime` (prints `MOCK_REALTIME_URL=…`; add `--port=4010`).
+Scenario flags: `--seed=N --count=N --dropAfter=N --latencyMs=N --duplicate --reorder --unknown --authFail`, or the same as query params on the WebSocket URL.
+Playwright starts it on port 4010 automatically; point the app at it with `NEXT_PUBLIC_API_URL=http://127.0.0.1:4010/api/v1`
+and `NEXT_PUBLIC_FLAGS_OVERRIDE='{"realtime-enabled":true,"realtime-oracle":true}'`.
+
+## Handsoff notes
+
+<!-- handsoff-issue-218 -->
+- #218: Stream On-Chain Transaction Confirmation Status for User-Submitted Actions

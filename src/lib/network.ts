@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 /**
  * Single source of truth for which Stellar network the app targets. Driven
  * by NEXT_PUBLIC_STELLAR_NETWORK (testnet | futurenet | mainnet), defaulting
@@ -61,4 +62,4 @@ export function resolveNetwork(raw: string | undefined): StellarNetworkConfig {
   );
 }
 
-export const ACTIVE_NETWORK = resolveNetwork(process.env.NEXT_PUBLIC_STELLAR_NETWORK);
+export const ACTIVE_NETWORK = resolveNetwork(env.NEXT_PUBLIC_STELLAR_NETWORK);
