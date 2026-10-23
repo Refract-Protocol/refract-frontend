@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --config vitest.config.mts --coverage",
     "test:chaos": "vitest run --config vitest.config.mts src/lib/realtime/__tests__/chaos.test.ts src/lib/realtime/__tests__/transportParity.test.ts",
     "test:chaos:e2e": "NEXT_PUBLIC_ENABLE_UI_GALLERY=true playwright test e2e/realtime-chaos.spec.ts --project=chromium",
-    "mock:realtime": "npx --yes tsx scripts/mock-realtime-server.ts",
+    "mock:realtime": "node scripts/mock-realtime-server.mjs",
     "bench:realtime": "npx --yes tsx scripts/realtime-decode-bench.mts",
     "test:visual": "playwright test --project=visual",
     "test:visual:update": "playwright test --project=visual --update-snapshots",
@@ -27,8 +27,7 @@
     "tokens:check": "node scripts/check-tokens.mjs",
     "gen:realtime-types": "node scripts/gen-realtime-types.mjs",
     "check:realtime-types": "node scripts/gen-realtime-types.mjs --check",
-    "realtime:benchmark": "node scripts/realtime-benchmark.mjs",
-    "mock:realtime": "node scripts/mock-realtime-server.mjs"
+    "realtime:benchmark": "node scripts/realtime-benchmark.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
