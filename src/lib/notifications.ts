@@ -14,6 +14,8 @@ export interface RefractNotification {
   timestamp: number;
   read: boolean;
   href?: string;
+  /** Groups related events (e.g. per policy or claim); defaults to type. */
+  groupKey?: string;
   severity: "info" | "warning" | "success" | "critical";
 }
 
@@ -51,6 +53,7 @@ export function deriveNotifications({
         const id = `policy-exp-${policy.id}`;
         notifications.push({
           id,
+          groupKey: `policy:${policy.id}`,
           type: "policy_expiring",
           title: `Policy Expiring Soon`,
           message: `Your ${policy.coverageTypeName} policy (${formatUsd(
@@ -73,6 +76,7 @@ export function deriveNotifications({
         const payoutFormatted = formatUsd(fromStroops(claim.payout));
         notifications.push({
           id,
+          groupKey: `claim:${claim.policyId}`,
           type: "claim_payout",
           title: `Claim Payout Disbursed`,
           message: `${payoutFormatted} was automatically disbursed for policy ${claim.policyId.slice(0, 8)}… (${claim.reason}).`,
