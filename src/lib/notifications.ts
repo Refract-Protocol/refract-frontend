@@ -1,14 +1,10 @@
 import type { Policy } from "./api/policies";
-import type { ClaimRecord } from "./api/claims";
-import type { OracleReading } from "./api/oracle";
+import type { ClaimRecord } from "./domain/realtime";
+import type { OracleReading } from "./domain/realtime";
 import { formatUsd, fromStroops } from "./format";
 
 export type NotificationType =
-  | "policy_expiring"
-  | "claim_payout"
-  | "lockup_expired"
-  | "lockup_soon"
-  | "oracle_trigger";
+  "policy_expiring" | "claim_payout" | "lockup_expired" | "lockup_soon" | "oracle_trigger";
 
 export interface RefractNotification {
   id: string;
@@ -84,7 +80,7 @@ export function deriveNotifications({
           type: "claim_payout",
           title: `Claim Payout Disbursed`,
           message: `${payoutFormatted} was automatically disbursed for policy ${claim.policyId.slice(0, 8)}… (${claim.reason}).`,
-          timestamp: claim.processedAt * 1000,
+          timestamp: claim.processedAt,
           read: readIds.has(id),
           href: "/dashboard",
           severity: "success",
@@ -102,7 +98,8 @@ export function deriveNotifications({
         id,
         type: "lockup_expired",
         title: "Capital Lockup Ended",
-        message: "Your liquidity pool deposit lockup has ended. Funds are now available for withdrawal.",
+        message:
+          "Your liquidity pool deposit lockup has ended. Funds are now available for withdrawal.",
         timestamp: lockupMs,
         read: readIds.has(id),
         href: "/provide",
@@ -131,7 +128,10 @@ export function deriveNotifications({
         notifications.push({
           id,
           type: "oracle_trigger",
-          title: reading.severity === "triggered" ? `Oracle Trigger Activated` : `Oracle Alert: Elevated Risk`,
+          title:
+            reading.severity === "triggered"
+              ? `Oracle Trigger Activated`
+              : `Oracle Alert: Elevated Risk`,
           message: `${reading.coverageType}: ${reading.message}`,
           timestamp: now,
           read: readIds.has(id),
