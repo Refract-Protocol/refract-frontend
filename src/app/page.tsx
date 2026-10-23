@@ -6,8 +6,7 @@ import { Container, Button, Badge, Card, Skeleton } from "@/components/ui";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOracleStatus } from "@/hooks/useOracleStatus";
 import { useRecentClaims } from "@/hooks/useRecentClaims";
-import { usePoolStats } from "@/hooks/usePoolStats";
-import { useClaimStats } from "@/hooks/useClaimStats";
+import { useProtocolStats } from "@/hooks/useProtocolStats";
 import type { OracleReading } from "@/lib/api/oracle";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
@@ -19,27 +18,25 @@ import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
-  const ref = useRef(false);
   const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    if (ref.current) return;
-    ref.current = true;
-
     if (reducedMotion) {
       setVal(to);
       return;
     }
-
     const duration = 2000;
     const start = performance.now();
+    const from = val;
+    let frame = 0;
     const tick = (now: number) => {
       const t = Math.min((now - start) / duration, 1);
       const ease = 1 - Math.pow(1 - t, 3);
-      setVal(ease * to);
-      if (t < 1) requestAnimationFrame(tick);
+      setVal(from + (to - from) * ease);
+      if (t < 1) frame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
   }, [to, reducedMotion]);
   return <>{prefix}{val.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</>;
 }
@@ -81,9 +78,8 @@ export default function Home() {
   const ct = COVERAGE_TYPES[activeType];
   const oracleStatus = useOracleStatus();
   const recentClaims = useRecentClaims();
-  const poolStats = usePoolStats();
-  const claimStats = useClaimStats();
-  const statsLoading = poolStats.loading || claimStats.loading;
+  const protocolStats = useProtocolStats();
+  const statsLoading = protocolStats.loading;
   const anyTriggered = oracleStatus.data?.some((r) => r.severity === "triggered") ?? false;
   const [secondsAgo, setSecondsAgo] = useState(0);
 
@@ -135,44 +131,51 @@ export default function Home() {
             </div>
 
             {/* Stats */}
-            <div className="mt-12 grid grid-cols-1 gap-8 border-t border-pm-border pt-8 xs:grid-cols-3">
-              {[
-                {
-                  val: poolStats.data ? fromStroops(poolStats.data.totalUsdc) : 0,
-                  prefix: "$",
-                  suffix: "",
-                  label: "Total Value Protected",
-                  dec: 0,
-                },
-                {
-                  val: poolStats.data ? poolStats.data.apyBps / 100 : 0,
-                  prefix: "",
-                  suffix: "% APY",
-                  label: "Capital Provider Returns",
-                  dec: 1,
-                },
-                {
-                  val: claimStats.data?.activePolicies ?? 0,
-                  prefix: "",
-                  suffix: "",
-                  label: "Policies Active",
-                  dec: 0,
-                },
-              ].map((s) => (
-                <div key={s.label}>
-                  <div className="font-display text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
-                    {statsLoading ? (
-                      <Skeleton height={26} width={90} />
-                    ) : (
-                      // Counter only animates once on mount, so it's keyed on
-                      // loaded-state to remount (and pick up the real value)
-                      // the moment the data actually arrives.
-                      <Counter key="loaded" to={s.val} prefix={s.prefix} suffix={s.suffix} decimals={s.dec} />
-                    )}
+            <div className="mt-12 border-t border-pm-border pt-4">
+              <div className="mb-2 flex justify-end">
+                <button type="button" onClick={() => void protocolStats.refresh()} disabled={protocolStats.isRefreshing} aria-label="Refresh protocol statistics" className="text-[11px] text-pm-text/40 hover:text-pm-text disabled:opacity-50">
+                  {protocolStats.isRefreshing ? "Refreshing…" : "Refresh statistics ↻"}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-8 xs:grid-cols-3">
+                {[
+                  {
+                    val: protocolStats.data ? fromStroops(protocolStats.data.tvl) : 0,
+                    prefix: "$",
+                    suffix: "",
+                    label: "Total Value Protected",
+                    dec: 0,
+                    payout: false,
+                  },
+                  {
+                    val: 0,
+                    prefix: "",
+                    suffix: "",
+                    label: "Cumulative Payouts",
+                    dec: 0,
+                    payout: true,
+                  },
+                  {
+                    val: protocolStats.data?.activePolicies ?? 0,
+                    prefix: "",
+                    suffix: "",
+                    label: "Policies Active",
+                    dec: 0,
+                    payout: false,
+                  },
+                ].map((s) => (
+                  <div key={s.label}>
+                    <div className="min-h-[31px] font-display tabular-nums text-[26px] font-extrabold tracking-tight text-pm-text sm:text-[28px]">
+                      {statsLoading ? (
+                        <Skeleton height={26} width={90} />
+                      ) : (
+                        <Counter key="loaded" to={s.payout ? fromStroops(protocolStats.data?.cumulativePayouts ?? "0") : s.val} prefix={s.payout ? "$" : s.prefix} suffix={s.suffix} decimals={s.dec} />
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-pm-text/40">{s.label}</div>
                   </div>
-                  <div className="mt-0.5 text-xs text-pm-text/40">{s.label}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
@@ -356,9 +359,10 @@ export default function Home() {
         <RealtimeBoundary topic="claim_settlement" route="/" fallback={() => <section aria-labelledby="payouts-heading" className="py-16"><Container><h2 id="payouts-heading" className="font-display text-2xl font-extrabold text-pm-text">Recent payouts</h2><p role="status" className="mt-3 text-sm text-pm-text/50">Payout updates are temporarily unavailable.</p></Container></section>}>
         <RealtimeProfiler topic="claim_settlement"><section aria-labelledby="payouts-heading" className="py-16">
           <Container>
-            <h2 id="payouts-heading" className="mb-7 font-display text-2xl font-extrabold tracking-tight text-pm-text sm:text-[26px]">
-              Recent payouts
-            </h2>
+            <div className="mb-7 flex items-center justify-between">
+              <h2 id="payouts-heading" className="font-display text-2xl font-extrabold tracking-tight text-pm-text sm:text-[26px]">Recent payouts</h2>
+              <button type="button" onClick={() => void recentClaims.refresh()} disabled={recentClaims.isRefreshing} className="text-[11px] text-pm-text/40 hover:text-pm-text disabled:opacity-50">Refresh ↻</button>
+            </div>
             {recentClaims.isFixture && (
               <p className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
                 ⚠ Showing example data — the Refract API isn&apos;t reachable from this environment.

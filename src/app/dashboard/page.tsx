@@ -33,7 +33,8 @@ export default function DashboardPage() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
   const { data: policies, loading, error, isFixture, isStale } = useHolderPolicies(address);
-  const claims = useClaims(address, policies);
+  const claimsResource = useClaims(address, policies);
+  const claims = claimsResource.data;
   const policiesById = normalizePolicies(policies ?? []);
   const claimsByPolicyId = normalizeClaims(claims);
   const [exporting, setExporting] = useState(false);
@@ -96,6 +97,9 @@ export default function DashboardPage() {
             </div>
             {canExport && (
               <div className="flex shrink-0 items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => void claimsResource.refresh()} disabled={claimsResource.isRefreshing}>
+                  {claimsResource.isRefreshing ? "Refreshing claims…" : "Refresh claims"}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
