@@ -13,6 +13,8 @@ import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { ACTIVE_NETWORK } from "@/lib/network";
 import { HowItWorks } from "@/components/HowItWorks";
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
 
 function Counter({ to, prefix = "", suffix = "", decimals = 0 }: { to: number; prefix?: string; suffix?: string; decimals?: number }) {
   const [val, setVal] = useState(0);
@@ -179,7 +181,8 @@ export default function Home() {
 
           {/* Hero right: Live coverage card */}
           <div className="relative">
-            <Card className="relative z-10" aria-label="Live oracle status">
+            <RealtimeBoundary topic="oracle_update" route="/" fallback={() => <Card className="relative z-10" aria-label="Live oracle status"><p role="status">Live oracle readings are unavailable. Other Refract sections remain available.</p></Card>}>
+            <RealtimeProfiler topic="oracle_update"><Card className="relative z-10" aria-label="Live oracle status">
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs uppercase tracking-wide text-pm-text/60">Live Oracle Status</span>
@@ -249,10 +252,15 @@ export default function Home() {
                   )}
                 </div>
                 <div className="mt-0.5 text-[11px] text-pm-text/40">
-                  {oracleStatus.isFixture ? "Example data — Refract API unreachable" : "Realtime updates with REST fallback"}
+                  {oracleStatus.isFixture
+                    ? "Example data — Refract API unreachable"
+                    : oracleStatus.isStale
+                      ? "Live feed interrupted — showing last known data, refreshing every 60 seconds"
+                      : "Oracles auto-refreshed every 60 seconds"}
                 </div>
               </div>
-            </Card>
+            </Card></RealtimeProfiler>
+            </RealtimeBoundary>
             <div
               className="pointer-events-none absolute left-1/2 top-1/2 -z-0 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-pm-violet/[0.12] blur-[60px]"
               aria-hidden="true"
@@ -348,7 +356,8 @@ export default function Home() {
         <HowItWorks />
 
         {/* Recent payouts */}
-        <section aria-labelledby="payouts-heading" className="py-16">
+        <RealtimeBoundary topic="claim_settlement" route="/" fallback={() => <section aria-labelledby="payouts-heading" className="py-16"><Container><h2 id="payouts-heading" className="font-display text-2xl font-extrabold text-pm-text">Recent payouts</h2><p role="status" className="mt-3 text-sm text-pm-text/50">Payout updates are temporarily unavailable.</p></Container></section>}>
+        <RealtimeProfiler topic="claim_settlement"><section aria-labelledby="payouts-heading" className="py-16">
           <Container>
             <div className="mb-7 flex items-center justify-between">
               <h2 id="payouts-heading" className="font-display text-2xl font-extrabold tracking-tight text-pm-text sm:text-[26px]">Recent payouts</h2>
@@ -359,6 +368,7 @@ export default function Home() {
                 ⚠ Showing example data — the Refract API isn&apos;t reachable from this environment.
               </p>
             )}
+            {recentClaims.isStale && <p className="mb-4 text-[11px] text-pm-text/40">Saved payouts — refreshing live data…</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {(recentClaims.data ?? []).map((claim) => (
                 <Card key={claim.policyId} padding="sm" className="!p-5">
@@ -376,7 +386,8 @@ export default function Home() {
               ))}
             </div>
           </Container>
-        </section>
+        </section></RealtimeProfiler>
+        </RealtimeBoundary>
       </main>
 
       <Footer />
