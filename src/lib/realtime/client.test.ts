@@ -1,217 +1,347 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PERMESSAGE_DEFLATE_OPTIONS, RealtimeClient } from "./client";
-import { ClockOffsetEstimator } from "./clockOffset";
-import { MAX_MESSAGE_BYTES, type RealtimeProtocolError } from "./codec";
-import { FakeWebSocket } from "./dev/fakeSocket";
-import { INTERNAL_TOPICS } from "./topics";
+import { RealtimeClient } from "./client";
+import type { RealtimeError } from "./errors";
+import type { RealtimeBreadcrumb, RealtimeErrorContext, RealtimeReporter } from "./reporter";
+import { fakeSocketFactory } from "./testing/fakeSocket";
 
-function makeClient(opts: { maxMessageBytes?: number; clock?: ClockOffsetEstimator } = {}) {
-  return new RealtimeClient({
-    url: "ws://test/ws",
-    WebSocketImpl: FakeWebSocket as never,
-    heartbeatIntervalMs: 1_000,
-    ...opts,
-  });
+const ACCOUNT_A = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const ACCOUNT_B = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+
+const READING = {
+  coverageType: "StablecoinDepeg",
+  type: "oracle_update",
+  value: 0.999,
+  threshold: 0.95,
+  severity: "low",
+  message: "ok",
+};
+
+const claimFor = (holder: string, policyId = "p-1") => ({
+  policyId,
+  holder,
+  coverageType: 0,
+  triggered: true,
+  payout: "1",
+  reason: "r",
+  processedAt: 1,
+});
+
+function stubReporter() {
+  const errors: { error: RealtimeError; context: RealtimeErrorContext }[] = [];
+  const crumbs: RealtimeBreadcrumb[] = [];
+  const reporter: RealtimeReporter = {
+    captureError: (error, context) => errors.push({ error, context }),
+    addBreadcrumb: (crumb) => crumbs.push(crumb),
+  };
+  return { reporter, errors, crumbs };
 }
 
-beforeEach(() => {
-  FakeWebSocket.reset();
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-});
+function setup(opts: { maxAttempts?: number } = {}) {
+  const sockets = fakeSocketFactory();
+  const stub = stubReporter();
+  const client = new RealtimeClient({
+    createSocket: sockets.create,
+    url: () => "ws://test/ws",
+    reporter: stub.reporter,
+    scopeDebounceMs: 200,
+    maxAttempts: opts.maxAttempts ?? 3,
+  });
+  client.setEnabled(true);
+  return { client, sockets, ...stub };
+}
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
-describe("RealtimeClient", () => {
-  it("delivers payloads and envelopes to topic subscribers", () => {
-    const client = makeClient();
-    const handler = vi.fn();
-    client.subscribe("oracle_update", handler);
-    const ws = FakeWebSocket.latest();
-    ws.open();
-    ws.push("oracle_update", { price: 1 }, 123);
-    ws.push("other", { price: 2 });
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(
-      { price: 1 },
-      { topic: "oracle_update", payload: { price: 1 }, ts: 123 }
-    );
+describe("versioning (#240)", () => {
+  it("advertises supported versions and scope on subscribe", () => {
+    const { client, sockets } = setup();
+    client.subscribe("oracle_update", () => {});
+    sockets.latest().serverOpen();
+    expect(sockets.latest().subscriptions()).toEqual([
+      {
+        type: "subscribe",
+        topic: "oracle_update",
+        versions: [2, 1],
+        scope: { network: "testnet" },
+      },
+    ]);
   });
 
-  it("stops delivering after unsubscribe", () => {
-    const client = makeClient();
+  it("delivers a frame with no version as the legacy version", () => {
+    const { client, sockets } = setup();
     const handler = vi.fn();
-    const off = client.subscribe("t", handler);
-    FakeWebSocket.latest().open();
-    off();
-    FakeWebSocket.latest().push("t", 1);
+    client.subscribe("oracle_update", handler);
+    sockets.latest().serverOpen();
+    sockets.latest().serverSend({ topic: "oracle_update", payload: READING });
+    expect(handler).toHaveBeenCalledWith(READING, expect.objectContaining({ version: 1 }));
+  });
+
+  it("degrades a topic to REST on a future-version frame and reports it once", () => {
+    const { client, sockets, errors } = setup();
+    const handler = vi.fn();
+    client.subscribe("oracle_update", handler);
+    const socket = sockets.latest();
+    socket.serverOpen();
+
+    socket.serverSend({ topic: "oracle_update", v: 99, payload: {} });
+    socket.serverSend({ topic: "oracle_update", v: 99, payload: {} });
+    // Even a valid frame is ignored once the topic is REST-only.
+    socket.serverSend({ topic: "oracle_update", v: 1, payload: READING });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(client.health.get("oracle_update")).toBe("unavailable");
+    expect(client.health.get()).toBe("healthy");
+    expect(socket.sent).toContainEqual({ type: "unsubscribe", topic: "oracle_update" });
+    expect(errors.map((e) => e.error.kind)).toEqual(["unsupported_version"]);
+    expect(errors[0]!.context).toMatchObject({ topic: "oracle_update", fallback: "topic" });
+  });
+
+  it("degrades to REST when the server rejects every advertised version", () => {
+    const { client, sockets, errors } = setup();
+    client.subscribe("claim_settled", () => {});
+    const socket = sockets.latest();
+    socket.serverOpen();
+    socket.serverSend({
+      type: "error",
+      code: "unsupported_version",
+      topic: "claim_settled",
+      supported: [3],
+    });
+
+    expect(client.health.get("claim_settled")).toBe("unavailable");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.error.retryable).toBe(false);
+
+    // Not re-subscribed after a reconnect either.
+    socket.serverDrop();
+    vi.advanceTimersByTime(1_000);
+    sockets.latest().serverOpen();
+    expect(sockets.latest().subscriptions()).toEqual([]);
+  });
+
+  it("drops invalid payloads without breaking the stream", () => {
+    const { client, sockets, errors } = setup();
+    const handler = vi.fn();
+    client.subscribe("oracle_update", handler);
+    sockets.latest().serverOpen();
+    sockets.latest().serverSend({ topic: "oracle_update", v: 1, payload: { nope: true } });
+    sockets.latest().serverSend("not json");
+    sockets.latest().serverSend({ topic: "oracle_update", v: 1, payload: READING });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(errors.map((e) => e.error.kind)).toEqual(["validation", "parse"]);
+  });
+});
+
+describe("scope changes (#241)", () => {
+  it("re-subscribes under the new scope on a fresh connection", () => {
+    const { client, sockets } = setup();
+    client.subscribe("holder_claim", () => {});
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    sockets.latest().serverOpen();
+    expect(sockets.latest().subscriptions()[0]).toMatchObject({
+      scope: { network: "testnet", account: ACCOUNT_A },
+    });
+
+    const first = sockets.latest();
+    client.setScope({ network: "mainnet", account: ACCOUNT_B });
+    vi.advanceTimersByTime(200);
+    expect(first.closed).toBe(true);
+    sockets.latest().serverOpen();
+    expect(sockets.latest()).not.toBe(first);
+    expect(sockets.latest().subscriptions()[0]).toMatchObject({
+      scope: { network: "mainnet", account: ACCOUNT_B },
+    });
+  });
+
+  it("does not subscribe account topics without an account", () => {
+    const { client, sockets } = setup();
+    client.subscribe("holder_claim", () => {});
+    sockets.latest().serverOpen();
+    expect(sockets.latest().subscriptions()).toEqual([]);
+  });
+
+  it("discards frames that arrive while a scope change is pending", () => {
+    const { client, sockets } = setup();
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    const handler = vi.fn();
+    client.subscribe("holder_claim", handler);
+    const oldSocket = sockets.latest();
+    oldSocket.serverOpen();
+
+    client.setScope({ network: "testnet", account: ACCOUNT_B });
+    // Old-identity frame lands right before teardown.
+    oldSocket.serverSend({ topic: "holder_claim", v: 1, payload: claimFor(ACCOUNT_A) });
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("keeps delivering to other subscribers when one throws", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const client = makeClient();
-    const good = vi.fn();
-    client.subscribe("t", () => {
-      throw new Error("boom");
-    });
-    client.subscribe("t", good);
-    FakeWebSocket.latest().open();
-    FakeWebSocket.latest().push("t", 1);
-    expect(good).toHaveBeenCalled();
-  });
+  it("discards frames from a superseded socket (epoch rejection)", () => {
+    const { client, sockets } = setup();
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    const handler = vi.fn();
+    client.subscribe("holder_claim", handler);
+    const oldSocket = sockets.latest();
+    oldSocket.serverOpen();
+    const epochBefore = client.getEpoch();
 
-  describe("payload size guard", () => {
-    it("drops oversize frames, counts them and reports a protocol error", () => {
-      const client = makeClient({ maxMessageBytes: 64 });
-      const handler = vi.fn();
-      const onError = vi.fn<(e: RealtimeProtocolError) => void>();
-      client.subscribe("t", handler);
-      client.onProtocolError(onError);
-      const ws = FakeWebSocket.latest();
-      ws.open();
+    client.setScope({ network: "testnet", account: ACCOUNT_B });
+    vi.advanceTimersByTime(200);
+    expect(client.getEpoch()).toBe(epochBefore + 1);
 
-      ws.push("t", "x".repeat(100));
-      expect(handler).not.toHaveBeenCalled();
-      expect(client.getDiagnostics().oversizeDrops).toBe(1);
-      expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0]![0].code).toBe("oversize");
-      expect(client.getDiagnostics().lastError?.code).toBe("oversize");
+    // A late frame still queued on the old socket.
+    oldSocket.serverSend({ topic: "holder_claim", v: 1, payload: claimFor(ACCOUNT_A) });
+    expect(handler).not.toHaveBeenCalled();
 
-      // The connection keeps working for normal frames.
-      ws.push("t", "ok");
-      expect(handler).toHaveBeenCalledWith("ok", expect.anything());
-    });
-
-    it("accepts a frame exactly at the limit and rejects one byte over", () => {
-      const client = makeClient();
-      const handler = vi.fn();
-      client.subscribe("t", handler);
-      const ws = FakeWebSocket.latest();
-      ws.open();
-      const shell = JSON.stringify({ topic: "t", payload: "" }).length;
-      ws.receiveRaw(JSON.stringify({ topic: "t", payload: "x".repeat(MAX_MESSAGE_BYTES - shell) }));
-      ws.receiveRaw(
-        JSON.stringify({ topic: "t", payload: "x".repeat(MAX_MESSAGE_BYTES - shell + 1) })
-      );
-      expect(handler).toHaveBeenCalledTimes(1);
-      expect(client.getDiagnostics().oversizeDrops).toBe(1);
-    });
-
-    it("counts malformed frames separately", () => {
-      const client = makeClient();
-      client.subscribe("t", vi.fn());
-      const ws = FakeWebSocket.latest();
-      ws.open();
-      ws.receiveRaw("{not json");
-      expect(client.getDiagnostics()).toMatchObject({ malformedDrops: 1, oversizeDrops: 0 });
-    });
-
-    it("tracks decoded byte counts", () => {
-      const client = makeClient();
-      client.subscribe("t", vi.fn());
-      const ws = FakeWebSocket.latest();
-      ws.open();
-      const frame = JSON.stringify({ topic: "t", payload: "hello" });
-      ws.receiveRaw(frame);
-      expect(client.getDiagnostics()).toMatchObject({
-        framesReceived: 1,
-        bytesReceived: frame.length,
-      });
+    sockets.latest().serverOpen();
+    sockets.latest().serverSend({ topic: "holder_claim", v: 1, payload: claimFor(ACCOUNT_B) });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]![1]).toMatchObject({
+      epoch: epochBefore + 1,
+      scope: { account: ACCOUNT_B },
     });
   });
 
-  describe("permessage-deflate", () => {
-    it("asks for deflate with no context takeover", () => {
-      makeClient().connect();
-      expect(FakeWebSocket.latest().options).toEqual(PERMESSAGE_DEFLATE_OPTIONS);
+  it("drops frames labelled with a different scope", () => {
+    const { client, sockets } = setup();
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    const handler = vi.fn();
+    client.subscribe("holder_claim", handler);
+    sockets.latest().serverOpen();
+    sockets.latest().serverSend({
+      topic: "holder_claim",
+      v: 1,
+      payload: claimFor(ACCOUNT_B),
+      scope: { network: "testnet", account: ACCOUNT_B },
     });
-
-    it("reports compression when the server accepts the extension", () => {
-      const client = makeClient();
-      client.connect();
-      FakeWebSocket.latest().open(
-        "permessage-deflate; client_no_context_takeover; server_no_context_takeover"
-      );
-      expect(client.getDiagnostics()).toMatchObject({
-        compressionActive: true,
-        negotiatedExtensions:
-          "permessage-deflate; client_no_context_takeover; server_no_context_takeover",
+    sockets
+      .latest()
+      .serverSend({
+        topic: "oracle_update",
+        v: 1,
+        payload: READING,
+        scope: { network: "mainnet" },
       });
-    });
-
-    it("keeps working when the server declines compression", () => {
-      const client = makeClient();
-      const handler = vi.fn();
-      client.subscribe("t", handler);
-      const ws = FakeWebSocket.latest();
-      ws.open("");
-      ws.push("t", 1);
-      expect(client.getDiagnostics()).toMatchObject({
-        compressionActive: false,
-        negotiatedExtensions: "",
-      });
-      expect(handler).toHaveBeenCalled();
-    });
-
-    it("records server-reported compressed/uncompressed byte counts", () => {
-      const client = makeClient();
-      client.connect();
-      const ws = FakeWebSocket.latest();
-      ws.open("permessage-deflate");
-      ws.push(INTERNAL_TOPICS.WIRE_STATS, { compressedBytes: 1_200, uncompressedBytes: 9_600 });
-      expect(client.getDiagnostics().wireStats).toEqual({
-        compressedBytes: 1_200,
-        uncompressedBytes: 9_600,
-      });
-    });
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  describe("heartbeat / clock sync", () => {
-    it("pings on open and on every heartbeat", () => {
-      vi.useFakeTimers();
-      const client = makeClient();
-      client.connect();
-      const ws = FakeWebSocket.latest();
-      ws.open();
-      expect(ws.sent).toHaveLength(1);
-      expect(ws.sent[0]).toMatchObject({
-        topic: INTERNAL_TOPICS.PING,
-        payload: { t0: expect.any(Number) },
-      });
-      vi.advanceTimersByTime(2_000);
-      expect(ws.sent).toHaveLength(3);
-      client.disconnect();
-      vi.advanceTimersByTime(5_000);
-      expect(ws.sent).toHaveLength(3);
-    });
+  it("clears per-identity buffers so a late subscriber never sees the previous account's frame", () => {
+    const { client, sockets } = setup();
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    client.subscribe("holder_claim", () => {});
+    sockets.latest().serverOpen();
+    sockets.latest().serverSend({ topic: "holder_claim", v: 1, payload: claimFor(ACCOUNT_A) });
 
-    it("feeds pong round trips into the clock estimator and never exposes internal topics", () => {
-      const clock = new ClockOffsetEstimator();
-      const client = makeClient({ clock });
-      const handler = vi.fn();
-      client.subscribe(INTERNAL_TOPICS.PONG, handler);
-      const ws = FakeWebSocket.latest();
-      ws.open();
-      const t0 = Date.now();
-      ws.push(INTERNAL_TOPICS.PONG, { t0, serverTs: t0 + 60_000 });
-      expect(clock.getSnapshot().sampleCount).toBe(1);
-      expect(Math.abs(clock.getSnapshot().offsetMs - 60_000)).toBeLessThan(1_000);
-      expect(handler).not.toHaveBeenCalled();
-    });
+    // Same scope: a late subscriber is replayed the last frame.
+    const sameScope = vi.fn();
+    client.subscribe("holder_claim", sameScope);
+    expect(sameScope).toHaveBeenCalledTimes(1);
+
+    client.setScope({ network: "testnet", account: ACCOUNT_B });
+    vi.advanceTimersByTime(200);
+    const late = vi.fn();
+    client.subscribe("holder_claim", late);
+    expect(late).not.toHaveBeenCalled();
   });
 
-  it("reconnects with backoff after an unexpected close", () => {
-    vi.useFakeTimers();
-    const client = makeClient();
-    client.connect();
-    FakeWebSocket.latest().open();
-    FakeWebSocket.latest().close();
-    expect(FakeWebSocket.instances).toHaveLength(1);
+  it("debounces rapid switching into a single new connection", () => {
+    const { client, sockets } = setup();
+    client.subscribe("oracle_update", () => {});
+    sockets.latest().serverOpen();
+    const before = sockets.sockets.length;
+
+    for (const network of ["mainnet", "futurenet", "testnet", "mainnet"]) {
+      client.setScope({ network, account: null });
+      vi.advanceTimersByTime(50);
+    }
+    vi.advanceTimersByTime(200);
+
+    expect(sockets.sockets.length).toBe(before + 1);
+    expect(sockets.sockets.filter((s) => !s.closed)).toHaveLength(1);
+    expect(client.getScope().network).toBe("mainnet");
+  });
+
+  it("does nothing when toggled back to the current scope before the debounce fires", () => {
+    const { client, sockets } = setup();
+    client.subscribe("oracle_update", () => {});
+    sockets.latest().serverOpen();
+    const listener = vi.fn();
+    client.onScopeChange(listener);
+
+    client.setScope({ network: "mainnet", account: null });
+    client.setScope({ network: "testnet", account: null });
+    vi.advanceTimersByTime(500);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(sockets.sockets).toHaveLength(1);
+  });
+
+  it("notifies scope listeners with the new epoch", () => {
+    const { client } = setup();
+    const listener = vi.fn();
+    client.onScopeChange(listener);
+    client.setScope({ network: "testnet", account: ACCOUNT_A });
+    vi.advanceTimersByTime(200);
+    expect(listener).toHaveBeenCalledWith({ network: "testnet", account: ACCOUNT_A }, 1);
+  });
+});
+
+describe("reporting (#238)", () => {
+  it("emits lifecycle breadcrumbs for connect, open, drop, reconnect and scope change", () => {
+    const { client, sockets, crumbs } = setup();
+    client.subscribe("oracle_update", () => {});
+    sockets.latest().serverOpen();
+    sockets.latest().serverDrop();
+    client.setScope({ network: "mainnet", account: null });
+    vi.advanceTimersByTime(200);
+
+    expect(crumbs.map((c) => c.event)).toEqual([
+      "connecting",
+      "open",
+      "closed",
+      "reconnect_scheduled",
+      "scope_changed",
+      "connecting",
+    ]);
+  });
+
+  it("reports retries exhausted once, tagged with attempt and fallback", () => {
+    const { client, sockets, errors, crumbs } = setup({ maxAttempts: 3 });
+    client.subscribe("oracle_update", () => {});
+    for (let i = 0; i < 6; i += 1) {
+      sockets.latest().serverDrop();
+      vi.advanceTimersByTime(30_000);
+    }
+    const exhausted = errors.filter((e) => e.error.kind === "retries_exhausted");
+    expect(exhausted).toHaveLength(1);
+    expect(exhausted[0]!.context).toMatchObject({
+      transport: "websocket",
+      attempt: 3,
+      fallback: "all",
+    });
+    expect(crumbs.some((c) => c.event === "fallback_engaged")).toBe(true);
+    expect(client.health.get()).toBe("unavailable");
+  });
+
+  it("moves health healthy → degraded → unavailable as reconnects fail", () => {
+    const { client, sockets } = setup({ maxAttempts: 10 });
+    client.subscribe("oracle_update", () => {});
+    sockets.latest().serverOpen();
+    expect(client.health.get()).toBe("healthy");
+    sockets.latest().serverDrop();
+    expect(client.health.get()).toBe("degraded");
     vi.advanceTimersByTime(1_000);
-    expect(FakeWebSocket.instances).toHaveLength(2);
-    client.disconnect();
+    sockets.latest().serverDrop();
+    expect(client.health.get()).toBe("degraded");
+    vi.advanceTimersByTime(2_000);
+    sockets.latest().serverDrop();
+    expect(client.health.get()).toBe("unavailable");
+    vi.advanceTimersByTime(4_000);
+    sockets.latest().serverOpen();
+    expect(client.health.get()).toBe("healthy");
   });
 });

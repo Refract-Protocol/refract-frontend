@@ -1,24 +1,42 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import WebVitals from "./web-vitals";
-import { RealtimeOverrideStatus } from "@/components/RealtimeOverrideStatus";
+import { TransactionTray } from "@/components/TransactionTray";
+import { PendingTxResolver } from "@/lib/wallet/PendingTxResolver";
 
 export const metadata: Metadata = {
-  title: "Refract Protocol",
-  description: "Parametric insurance for digital assets and real-world events.",
+  title: {
+    default: "Refract — Parametric insurance on Stellar",
+    template: "%s · Refract",
+  },
+  description:
+    "Trustless, oracle-triggered parametric insurance. No claims form — automatic payout within seconds of a qualifying event.",
+  metadataBase: new URL("https://refract.example"),
+  icons: {
+    icon: "/favicon.svg",
+  },
+  openGraph: {
+    title: "Refract Protocol",
+    description: "Oracle-triggered parametric insurance on Stellar/Soroban.",
+    type: "website",
+  },
 };
 
-/** App shell. Realtime startup is owned by the hydrated Providers tree. */
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export const viewport: Viewport = {
+  themeColor: "#07050f",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="font-body">
+        <a href="#main-content" className="pm-skip-link">
+          Skip to main content
+        </a>
         <Providers>
+          <PendingTxResolver />
           {children}
-          <RealtimeOverrideStatus />
-          <WebVitals />
+          <TransactionTray />
         </Providers>
       </body>
     </html>

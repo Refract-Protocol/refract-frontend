@@ -95,7 +95,7 @@ export function Tabs({
       if (!isControlled) setInternalValue(next);
       onValueChange?.(next);
     },
-    [isControlled, onValueChange],
+    [isControlled, onValueChange]
   );
 
   const registerTab = useCallback((tabValue: string, node: HTMLButtonElement | null) => {
@@ -122,10 +122,11 @@ export function Tabs({
       else if (direction === "last") nextIndex = values.length - 1;
       else nextIndex = (index + direction + values.length) % values.length;
       const nextValue = values[nextIndex];
+      if (nextValue === undefined) return;
       focusTab(nextValue);
       if (activationMode === "automatic") setValue(nextValue);
     },
-    [activationMode, focusTab, setValue],
+    [activationMode, focusTab, setValue]
   );
 
   const ctx = useMemo<TabsContextValue>(
@@ -139,7 +140,7 @@ export function Tabs({
       focusTab,
       moveFocus,
     }),
-    [baseId, currentValue, setValue, activationMode, orientation, registerTab, focusTab, moveFocus],
+    [baseId, currentValue, setValue, activationMode, orientation, registerTab, focusTab, moveFocus]
   );
 
   return (
@@ -160,15 +161,14 @@ export interface TabListProps {
  * Container for the {@link Tab} buttons. Renders `role="tablist"` and wires
  * the orientation for assistive technology.
  */
-export function TabList({ className = "", children, ...rest }: TabListProps & React.HTMLAttributes<HTMLDivElement>) {
+export function TabList({
+  className = "",
+  children,
+  ...rest
+}: TabListProps & React.HTMLAttributes<HTMLDivElement>) {
   const { orientation } = useTabsContext("TabList");
   return (
-    <div
-      role="tablist"
-      aria-orientation={orientation}
-      className={className}
-      {...rest}
-    >
+    <div role="tablist" aria-orientation={orientation} className={className} {...rest}>
       {children}
     </div>
   );
@@ -185,9 +185,21 @@ export interface TabProps {
  * A single tab button. Implements the roving `tabIndex` and the full APG
  * keyboard interaction (Arrow keys, Home, End, Enter/Space in manual mode).
  */
-export function Tab({ value, className = "", children, ...rest }: TabProps & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { baseId, value: selected, setValue, activationMode, orientation, registerTab, moveFocus } =
-    useTabsContext("Tab");
+export function Tab({
+  value,
+  className = "",
+  children,
+  ...rest
+}: TabProps & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const {
+    baseId,
+    value: selected,
+    setValue,
+    activationMode,
+    orientation,
+    registerTab,
+    moveFocus,
+  } = useTabsContext("Tab");
   const isSelected = selected === value;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -247,7 +259,11 @@ export interface TabPanelsProps {
 }
 
 /** Wrapper around the {@link TabPanel} elements. */
-export function TabPanels({ className = "", children, ...rest }: TabPanelsProps & React.HTMLAttributes<HTMLDivElement>) {
+export function TabPanels({
+  className = "",
+  children,
+  ...rest
+}: TabPanelsProps & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={className} {...rest}>
       {children}
@@ -266,7 +282,12 @@ export interface TabPanelProps {
  * Panel associated with a {@link Tab}. Hidden unless its tab is selected and
  * labelled by the tab via `aria-labelledby`.
  */
-export function TabPanel({ value, className = "", children, ...rest }: TabPanelProps & React.HTMLAttributes<HTMLDivElement>) {
+export function TabPanel({
+  value,
+  className = "",
+  children,
+  ...rest
+}: TabPanelProps & React.HTMLAttributes<HTMLDivElement>) {
   const { baseId, value: selected } = useTabsContext("TabPanel");
   const isSelected = selected === value;
   return (

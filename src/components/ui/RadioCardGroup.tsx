@@ -58,7 +58,7 @@ export function RadioCardGroup<T extends RadioCardOption>({
   }, []);
 
   const selectedIndex = options.findIndex((option) => option.id === value);
-  const focusIndex = selectedIndex >= 0 ? selectedIndex : enabledIndexes[0] ?? -1;
+  const focusIndex = selectedIndex >= 0 ? selectedIndex : (enabledIndexes[0] ?? -1);
 
   function focusOption(index: number) {
     const option = options[index];
@@ -71,12 +71,12 @@ export function RadioCardGroup<T extends RadioCardOption>({
     const current = enabledIndexes.indexOf(focusIndex);
     let next: number;
     if (direction === "first") {
-      next = enabledIndexes[0];
+      next = enabledIndexes[0]!;
     } else if (direction === "last") {
-      next = enabledIndexes[enabledIndexes.length - 1];
+      next = enabledIndexes[enabledIndexes.length - 1]!;
     } else {
       const base = current === -1 ? 0 : current;
-      next = enabledIndexes[(base + direction + enabledIndexes.length) % enabledIndexes.length];
+      next = enabledIndexes[(base + direction + enabledIndexes.length) % enabledIndexes.length]!;
     }
     const option = options[next];
     if (!option) return;
@@ -126,7 +126,7 @@ export function RadioCardGroup<T extends RadioCardOption>({
       className={cn(
         "flex gap-2.5",
         orientation === "vertical" ? "flex-col" : "flex-row flex-wrap",
-        className,
+        className
       )}
     >
       {options.map((option, index) => {
@@ -155,7 +155,7 @@ export function RadioCardGroup<T extends RadioCardOption>({
               selected
                 ? "border-pm-violet bg-pm-violet/10 ring-1 ring-pm-violet"
                 : "border-pm-border bg-pm-panel hover:border-pm-violet/40",
-              disabled && "cursor-not-allowed opacity-50",
+              disabled && "cursor-not-allowed opacity-50"
             )}
           >
             <span className="min-w-0 flex-1">{renderLabel(option)}</span>

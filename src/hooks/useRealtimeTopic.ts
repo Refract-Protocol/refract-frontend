@@ -1,14 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { realtimeClient } from "@/lib/realtime/client";
-import type { Interest, Topic } from "@/lib/realtime/contract";
+import { realtimeClient, type FrameMeta, type RealtimeClient } from "@/lib/realtime/client";
+import type { Interest, Topic, TopicName, TopicPayloads } from "@/lib/realtime/contract";
+
+export interface UseRealtimeTopicOptions<T = unknown> {
+  /** Skip subscribing (e.g. no wallet connected for an account-scoped topic). */
+  enabled?: boolean;
+  /** For account-scoped consumers: only accept frames for this account. */
+  account?: string | null;
+  client?: RealtimeClient;
+  select?: (payload: unknown) => T | null;
+  onEvent?: (value: T, meta?: FrameMeta) => void;
+}
 
 export interface RealtimeTopicState<T> {
   value: T | undefined;
-  /** Alias for `value ?? null` for callers expecting `latest`. */
   latest: T | null;
-  /** True while showing a cached value that no live event has replaced yet. */
   stale: boolean;
   receivedAt: number | undefined;
   source: string | undefined;
@@ -17,23 +25,32 @@ export interface RealtimeTopicState<T> {
   degraded: boolean;
 }
 
-export interface UseRealtimeTopicOptions<T> {
-  enabled?: boolean;
-  select?: (payload: unknown) => T | null;
-  onEvent?: (value: T, meta?: unknown) => void;
-}
-
-/** Seeds from the last-value cache at mount, then follows the live stream. */
+export function useRealtimeTopic<T extends TopicName>(
+  topic: T,
+  onFrame: (payload: TopicPayloads[T], meta: FrameMeta) => void,
+  options?: UseRealtimeTopicOptions<TopicPayloads[T]>
+): void;
 export function useRealtimeTopic<T = unknown>(
   topic: string,
-  options: UseRealtimeTopicOptions<T> = {}
-): RealtimeTopicState<T> {
-  const { enabled = true } = options;
+  options?: UseRealtimeTopicOptions<T>
+): RealtimeTopicState<T>;
+export function useRealtimeTopic<T = unknown>(
+  topic: string,
+  arg2?: ((payload: any, meta: FrameMeta) => void) | UseRealtimeTopicOptions<T>,
+  arg3?: UseRealtimeTopicOptions<any>
+): RealtimeTopicState<T> | void {
+  const isCallbackOverload = typeof arg2 === "function";
+  const onFrame = isCallbackOverload ? arg2 : undefined;
+  const options: UseRealtimeTopicOptions<T> = (isCallbackOverload ? arg3 : arg2) ?? {};
+  const { enabled = true, account, client = realtimeClient } = options;
+
+  const handlerRef = useRef(onFrame);
+  handlerRef.current = onFrame;
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   const [state, setState] = useState<RealtimeTopicState<T>>(() => {
-    const cached = realtimeClient.getLastValue<T>(topic);
+    const cached = client.getLastValue?.<T>(topic);
     return {
       value: cached?.value,
       latest: cached?.value ?? null,
@@ -48,11 +65,17 @@ export function useRealtimeTopic<T = unknown>(
 
   useEffect(() => {
     if (!enabled) return;
-    return realtimeClient.subscribe(topic, (payload) => {
+    return client.subscribe(topic as TopicName, (payload, meta) => {
+      if (meta && (meta.epoch !== client.getEpoch() || client.isScopeChanging())) return;
+      if (meta && account !== undefined && meta.scope.account !== account) return;
+      if (handlerRef.current) {
+        handlerRef.current(payload, meta);
+        return;
+      }
       const { select, onEvent } = optionsRef.current;
       const value = select ? select(payload) : (payload as T);
       if (value === null || value === undefined) return;
-      const cached = realtimeClient.getLastValue<T>(topic);
+      const cached = client.getLastValue?.<T>(topic);
       setState({
         value,
         latest: value,
@@ -63,11 +86,11 @@ export function useRealtimeTopic<T = unknown>(
         status: "connected",
         degraded: false,
       });
-      onEvent?.(value);
+      onEvent?.(value, meta);
     });
-  }, [topic, enabled]);
+  }, [client, topic, enabled, account]);
 
-  return state;
+  if (!isCallbackOverload) return state;
 }
 
 /** Fixed refresh window: continuous traffic cannot postpone REST refresh forever. */

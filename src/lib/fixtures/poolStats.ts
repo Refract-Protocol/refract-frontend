@@ -1,4 +1,4 @@
-import type { PoolStats, UserPoolPosition } from "@/lib/api/pool";
+import type { PoolAllocation, PoolStats, UserPoolPosition } from "@/lib/api/pool";
 
 /**
  * FIXTURE — not live data.
@@ -37,3 +37,15 @@ export function fixtureUserPoolPosition(address: string): UserPoolPosition {
     pct: ((shares / Number(FIXTURE_POOL_STATS.totalShares)) * 100).toFixed(4),
   };
 }
+
+/** FIXTURE — not live data. Per-coverage-type exposure for the Capital Allocation card. */
+export const FIXTURE_POOL_ALLOCATION: PoolAllocation = {
+  asOf: "2026-01-01T00:00:00.000Z",
+  categories: [
+    { coverageType: "0", lockedUsdc: "1200000000000", activePolicies: 14 },
+    { coverageType: "1", lockedUsdc: "850000000000", activePolicies: 9 },
+    { coverageType: "2", lockedUsdc: "400000000000", activePolicies: 5 },
+    { coverageType: "3", lockedUsdc: "300000000000", activePolicies: 4 },
+    { coverageType: "4", lockedUsdc: "150000000000", activePolicies: 11 },
+  ],
+};

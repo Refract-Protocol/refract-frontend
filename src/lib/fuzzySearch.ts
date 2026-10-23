@@ -12,7 +12,7 @@ export function fuzzyScore(query: string, target: string): number {
 
   const idx = t.indexOf(q);
   if (idx !== -1) {
-    const wordStart = idx === 0 || /[\s\-_./]/.test(t[idx - 1]);
+    const wordStart = idx === 0 || /[\s\-_./]/.test(t[idx - 1] ?? "");
     return 1000 - idx + (wordStart ? 200 : 0) + (q.length === t.length ? 500 : 0);
   }
 
@@ -31,7 +31,12 @@ export function fuzzyScore(query: string, target: string): number {
 }
 
 /** Filters and ranks items by the best fuzzy score across their searchable fields. */
-export function fuzzySearch<T>(items: readonly T[], query: string, fields: (item: T) => string[], limit = 5): T[] {
+export function fuzzySearch<T>(
+  items: readonly T[],
+  query: string,
+  fields: (item: T) => string[],
+  limit = 5
+): T[] {
   if (!query.trim()) return [];
   return items
     .map((item) => ({ item, score: Math.max(0, ...fields(item).map((f) => fuzzyScore(query, f))) }))

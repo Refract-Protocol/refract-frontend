@@ -1,51 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchHolderPolicies, type Policy } from "@/lib/api/policies";
 import { fixtureHolderPolicies } from "@/lib/fixtures/policies";
-import { useWallet } from "@/lib/wallet/WalletProvider";
+import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
 
-export function useHolderPolicies(address?: string | null) {
-  const wallet = useWallet();
-  const holder =
-    address === undefined ? (wallet.status === "connected" ? wallet.address : null) : address;
-  const [data, setData] = useState<Policy[] | null>(null);
-  const [loading, setLoading] = useState(Boolean(holder));
-  const [error, setError] = useState<string | null>(null);
-  const [isFixture, setIsFixture] = useState(false);
-  const [isStale] = useState(false);
+interface HolderPoliciesState {
+  data: Policy[] | null;
+  loading: boolean;
+  error: string | null;
+  isFixture: boolean;
+  /** True while showing previously cached data and a background refresh is in flight. */
+  isStale: boolean;
+}
 
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    setData(null);
-    if (!holder) {
-      setLoading(false);
-      setError(null);
-      setIsFixture(false);
-      return () => controller.abort();
-    }
-    setLoading(true);
-    fetchHolderPolicies(holder, undefined, controller.signal)
-      .then((response) => {
-        if (!active) return;
-        setData(response.items);
-        setIsFixture(false);
-        setError(null);
-        setLoading(false);
-      })
-      .catch((cause) => {
-        if (!active) return;
-        setData(fixtureHolderPolicies(holder));
-        setIsFixture(true);
-        setError(cause instanceof Error ? cause.message : "Unable to load policies");
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [holder]);
+/**
+ * Loads a wallet's policies from GET /api/v1/policies/holder/:address — a
+ * real backend route. Its in-memory store is empty on every process
+ * restart though, so this also falls back to a labeled fixture both when
+ * the API is unreachable AND when it legitimately returns zero policies,
+ * so the dashboard has something to demo. `isFixture` tells the caller
+ * which happened.
+ */
+export function useHolderPolicies(address: string | null): HolderPoliciesState {
+  const {
+    data: result,
+    isLoading,
+    isRefetching,
+  } = useQuery({
+    queryKey: ["holderPolicies", address],
+    enabled: Boolean(address),
+    queryFn: ({ signal }) =>
+      queryFnWithFixtureFallback(
+        async () => (await fetchHolderPolicies(address!, {}, signal)).items,
+        () => fixtureHolderPolicies(address!),
+        {
+          signal,
+          isEmpty: (policies) => policies.length === 0,
+          errorMessage: "Failed to load policies",
+        }
+      ),
+  });
 
-  return { data, loading, error, isFixture, isStale };
+  if (!address)
+    return { data: null, loading: false, error: null, isFixture: false, isStale: false };
+  return {
+    data: result?.data ?? null,
+    loading: isLoading,
+    error: result?.error ?? null,
+    isFixture: result?.isFixture ?? false,
+    isStale: isRefetching,
+  };
 }

@@ -71,19 +71,19 @@ export function extractKeys(source: string): { keys: string[]; dynamic: string[]
   const dynamic: string[] = [];
 
   for (const match of source.matchAll(STATIC_KEY_RE)) {
-    keys.push(match[2]);
+    keys.push(match[2]!);
   }
 
   for (const match of source.matchAll(DYNAMIC_TEMPLATE_RE)) {
-    if (match[1].includes("${")) {
-      dynamic.push(match[1]);
-    } else if (match[1].length > 0) {
-      keys.push(match[1]);
+    if (match[1]!.includes("${")) {
+      dynamic.push(match[1]!);
+    } else if (match[1]!.length > 0) {
+      keys.push(match[1]!);
     }
   }
 
   for (const match of source.matchAll(DYNAMIC_EXPR_RE)) {
-    dynamic.push(match[1]);
+    dynamic.push(match[1]!);
   }
 
   return { keys, dynamic };
@@ -151,11 +151,15 @@ function runCheck(): number {
     for (const key of missing.sort()) {
       console.error(`  - ${key} (referenced in ${staticKeys.get(key)!.join(", ")})`);
     }
-    console.error("\nAdd the missing keys to src/locales/en.json or remove the stale references.\n");
+    console.error(
+      "\nAdd the missing keys to src/locales/en.json or remove the stale references.\n"
+    );
     return 1;
   }
 
-  console.log(`[i18n-check] OK — ${staticKeys.size} referenced key(s) resolved against the base locale.`);
+  console.log(
+    `[i18n-check] OK — ${staticKeys.size} referenced key(s) resolved against the base locale.`
+  );
   return 0;
 }
 

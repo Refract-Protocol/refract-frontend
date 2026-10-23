@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useCallback, useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -52,9 +45,9 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 function getFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.offsetParent !== null || el === document.activeElement
+  );
 }
 
 function getPortalRoot(): HTMLElement | null {
@@ -100,6 +93,7 @@ export function Modal({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
       const active = document.activeElement as HTMLElement | null;
 
       if (event.shiftKey) {
@@ -112,7 +106,7 @@ export function Modal({
         first.focus();
       }
     },
-    [dismissible, onClose],
+    [dismissible, onClose]
   );
 
   useEffect(() => {
@@ -162,7 +156,7 @@ export function Modal({
         {children}
       </div>
     </div>,
-    root,
+    root
   );
 }
 

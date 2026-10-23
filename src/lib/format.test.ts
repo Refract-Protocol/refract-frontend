@@ -1,33 +1,27 @@
 import { describe, it, expect } from "vitest";
-import {
-  toStroops,
-  fromStroops,
-  formatUsd,
-  formatCompactUsd,
-  formatRelativeTime,
-} from "./format";
+import { toStroops, fromStroops, formatUsd, formatCompactUsd, formatRelativeTime } from "./format";
 
 describe("toStroops", () => {
   it("converts whole numbers", () => {
-    expect(toStroops(1)).toBe(10_000_000n);
-    expect(toStroops(0)).toBe(0n);
-    expect(toStroops(100)).toBe(1_000_000_000n);
+    expect(toStroops(1)).toBe("10000000");
+    expect(toStroops(0)).toBe("0");
+    expect(toStroops(100)).toBe("1000000000");
   });
 
   it("converts fractional amounts", () => {
-    expect(toStroops(0.5)).toBe(5_000_000n);
-    expect(toStroops(1.2345678)).toBe(12_345_678n);
+    expect(toStroops(0.5)).toBe("5000000");
+    expect(toStroops(1.2345678)).toBe("12345678");
   });
 
   it("rounds at the decimal boundary", () => {
-    expect(toStroops(0.00000005)).toBe(1n);
-    expect(toStroops(0.00000004)).toBe(0n);
-    expect(toStroops(1.00000005)).toBe(10_000_001n);
+    expect(toStroops(0.00000005)).toBe("1");
+    expect(toStroops(0.00000004)).toBe("0");
+    expect(toStroops(1.00000005)).toBe("10000001");
   });
 
   it("handles negative inputs", () => {
-    expect(toStroops(-1)).toBe(-10_000_000n);
-    expect(toStroops(-0.5)).toBe(-5_000_000n);
+    expect(toStroops(-1)).toBe("-10000000");
+    expect(toStroops(-0.5)).toBe("-5000000");
   });
 });
 

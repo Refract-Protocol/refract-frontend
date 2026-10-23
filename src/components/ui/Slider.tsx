@@ -89,8 +89,7 @@ export function Slider({
   const valueText = formatValue(safeValue);
 
   const describedBy =
-    [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") ||
-    undefined;
+    [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const [active, setActive] = useState(false);
@@ -101,7 +100,7 @@ export function Slider({
       const clamped = clamp(roundToStep(next, min, step), min, max);
       if (clamped !== value) onChange(clamped);
     },
-    [min, max, step, value, onChange],
+    [min, max, step, value, onChange]
   );
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -161,11 +160,7 @@ export function Slider({
         <label className="pm-slider-field__label" htmlFor={inputId}>
           {label}
         </label>
-        <output
-          className="pm-slider-field__value"
-          htmlFor={inputId}
-          aria-live="polite"
-        >
+        <output className="pm-slider-field__value" htmlFor={inputId} aria-live="polite">
           {valueText}
         </output>
       </div>
@@ -184,7 +179,7 @@ export function Slider({
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={safeValue}
-        aria-valuetext={display}
+        aria-valuetext={valueText}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         style={{ ["--pct" as string]: `${pct}%` }}
@@ -201,7 +196,7 @@ export function Slider({
         style={{ left: `${pct}%` }}
         aria-hidden="true"
       >
-        {display}
+        {valueText}
       </span>
 
       {presets && presets.length > 0 ? (

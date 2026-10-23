@@ -92,12 +92,8 @@ export function HowItWorks() {
                         STEP {item.step}
                       </span>
                     </div>
-                    <h3 className="mb-2 text-base font-bold text-pm-text">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs leading-relaxed text-pm-text/60">
-                      {item.desc}
-                    </p>
+                    <h3 className="mb-2 text-base font-bold text-pm-text">{item.title}</h3>
+                    <p className="text-xs leading-relaxed text-pm-text/60">{item.desc}</p>
                   </div>
                   <div className="mt-6 rounded-md border border-pm-violet/15 bg-pm-violet/[0.05] px-3 py-2 text-[11px] font-medium text-pm-violet">
                     {item.highlight}
@@ -106,14 +102,10 @@ export function HowItWorks() {
               );
             }
 
-            const { opacity, y } = stepTransforms[index];
+            const { opacity, y } = stepTransforms[index]!;
 
             return (
-              <motion.div
-                key={item.step}
-                style={{ opacity, y }}
-                className="h-full"
-              >
+              <motion.div key={item.step} style={{ opacity, y }} className="h-full">
                 <Card
                   padding="lg"
                   className="relative flex h-full flex-col justify-between border-white/10 bg-white/[0.02] transition-colors hover:border-pm-violet/30"
@@ -127,12 +119,8 @@ export function HowItWorks() {
                         STEP {item.step}
                       </span>
                     </div>
-                    <h3 className="mb-2 text-base font-bold text-pm-text">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs leading-relaxed text-pm-text/60">
-                      {item.desc}
-                    </p>
+                    <h3 className="mb-2 text-base font-bold text-pm-text">{item.title}</h3>
+                    <p className="text-xs leading-relaxed text-pm-text/60">{item.desc}</p>
                   </div>
                   <div className="mt-6 rounded-md border border-pm-violet/15 bg-pm-violet/[0.05] px-3 py-2 text-[11px] font-medium text-pm-violet">
                     {item.highlight}

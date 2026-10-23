@@ -40,10 +40,19 @@ export const criticalTokens: CriticalTokens = {
   danger: "#ef4444",
   surface: "#0f0b1c",
   border: "#241b3d",
-  fontDisplay:
-    "'Space Grotesk', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
-  fontBody:
-    "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-  fontMono:
-    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontDisplay: "'Space Grotesk', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
+  fontBody: "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+  fontMono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
 };
+
+/** Flat style values consumed by the root error boundary (src/app/global-error.tsx). */
+export const criticalStyles = {
+  background: criticalTokens.bg,
+  foreground: criticalTokens.text,
+  accent: criticalTokens.accent,
+  accentForeground: "#ffffff",
+  panel: criticalTokens.surface,
+  border: criticalTokens.border,
+  muted: "rgba(237, 233, 248, 0.6)",
+  fontFamily: criticalTokens.fontBody,
+} as const;

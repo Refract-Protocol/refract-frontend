@@ -1,12 +1,9 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ApiUnreachableError,
-  fetchPoolAllocation,
-  type PoolAllocation,
-} from '@/lib/api/pool';
-import { FIXTURE_POOL_ALLOCATION } from '@/lib/fixtures/poolStats';
+import { useCallback, useEffect, useState } from "react";
+import { fetchPoolAllocation, type PoolAllocation } from "@/lib/api/pool";
+import { ApiUnreachableError } from "@/lib/api/client";
+import { FIXTURE_POOL_ALLOCATION } from "@/lib/fixtures/poolStats";
 
 /**
  * Per-coverage-type pool exposure for the Capital Allocation card.

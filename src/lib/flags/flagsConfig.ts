@@ -4,6 +4,9 @@ export interface FlagsDocument {
 
 /** Safe default if the remote flags source is unreachable — new/risky features default off. */
 export const DEFAULT_FLAGS: Record<string, boolean> = {
+  /** Realtime WebSocket connection (src/lib/realtime). Off until the backend ships /ws. */
+  realtime: false,
+  /** Legacy alias for `realtime`, kept so existing flag documents still work. */
   "realtime-oracle": false,
   "realtime-soroban-events": false,
 };

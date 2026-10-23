@@ -1,16 +1,27 @@
-/**
- * Consumer-driven realtime topic/message contract & topic scheduling contract.
- */
-
 import { z } from "zod";
+import type { OracleReading } from "@/lib/api/oracle";
+import type { ClaimRecord } from "@/lib/api/claims";
 
 /** Semver string of the backend contract revision this frontend targets. */
 export const CONTRACT_VERSION = "0.1.0";
 
-/**
- * `oracle_update` — pushed whenever an oracle check completes on the backend.
- * Shape mirrors `OracleReading` in `openapi/refract-api.yaml` / `schema.d.ts`.
- */
+/** Version assumed for frames that omit `v` (pre-versioning servers). */
+export const LEGACY_VERSION = 1;
+
+export interface RealtimeScope {
+  network: string;
+  account: string | null;
+}
+
+export type TopicScope = "global" | "account";
+
+type Parser<T> = (payload: unknown) => T;
+
+interface TopicDefinition<T> {
+  scope: TopicScope;
+  versions: Record<number, Parser<T>>;
+}
+
 export const oracleUpdateSchema = z.object({
   coverageType: z.string().min(1),
   type: z.literal("oracle_update"),
@@ -22,10 +33,31 @@ export const oracleUpdateSchema = z.object({
 
 export type OracleUpdatePayload = z.infer<typeof oracleUpdateSchema>;
 
-/**
- * The outer envelope for every frame received from the WebSocket.
- * Inner payload validation is done per-topic via `TOPIC_SCHEMAS`.
- */
+const oracleReadingSchema = z.object({
+  coverageType: z.string(),
+  type: z.literal("oracle_update"),
+  value: z.number(),
+  threshold: z.number(),
+  severity: z.enum(["low", "medium", "high", "triggered"]),
+  message: z.string(),
+});
+
+const oracleUpdateV2Schema = z.object({
+  reading: oracleReadingSchema.omit({ type: true }),
+  observedAt: z.number(),
+});
+
+const claimRecordSchema = z.object({
+  policyId: z.string(),
+  holder: z.string(),
+  coverageType: z.number(),
+  triggered: z.boolean(),
+  payout: z.string(),
+  reason: z.string(),
+  processedAt: z.number(),
+  settlementTxHash: z.string().optional(),
+});
+
 export const envelopeSchema = z.object({
   topic: z.string().min(1),
   payload: z.unknown(),
@@ -33,12 +65,10 @@ export const envelopeSchema = z.object({
 
 export type Envelope = z.infer<typeof envelopeSchema>;
 
-/** All topics the frontend currently subscribes to, with their validators. */
 export const TOPIC_SCHEMAS: Record<string, z.ZodTypeAny> = {
   oracle_update: oracleUpdateSchema,
 };
 
-/** Names of all known topics (derived from TOPIC_SCHEMAS for DRYness). */
 export const KNOWN_TOPICS: ReadonlyArray<string> = Object.keys(TOPIC_SCHEMAS);
 
 export interface ValidationResult {
@@ -50,7 +80,6 @@ export interface ValidationResult {
 export function validateFrame(topic: string, payload: unknown): ValidationResult {
   const schema = TOPIC_SCHEMAS[topic];
   if (!schema) return { ok: true, topic };
-
   const result = schema.safeParse(payload);
   if (result.success) return { ok: true, topic };
   return { ok: false, topic, errors: result.error.issues };
@@ -80,25 +109,74 @@ export function diffOpenApiSchema(
 ): { missingInZod: string[]; missingInOpenApi: string[] } {
   const openApiKeys = new Set(Object.keys(openApiProperties));
   const zodKeys = new Set(Object.keys(zodSchema.shape));
-
   const missingInZod = [...openApiKeys].filter((k) => !zodKeys.has(k));
   const missingInOpenApi = [...zodKeys].filter((k) => !openApiKeys.has(k));
-
   return { missingInZod, missingInOpenApi };
 }
 
-/** Every supported topic has an explicit scheduling class. Unknown topics are rejected. */
 export const TOPICS = {
+  oracle_update: {
+    scope: "global",
+    versions: {
+      1: (p) => oracleReadingSchema.parse(p),
+      2: (p) => {
+        const { reading } = oracleUpdateV2Schema.parse(p);
+        return { ...reading, type: "oracle_update" as const };
+      },
+    },
+  } satisfies TopicDefinition<OracleReading>,
+  claim_settled: {
+    scope: "global",
+    versions: {
+      1: (p) => claimRecordSchema.parse(p),
+    },
+  } satisfies TopicDefinition<ClaimRecord>,
+  holder_claim: {
+    scope: "account",
+    versions: {
+      1: (p) => claimRecordSchema.parse(p),
+    },
+  } satisfies TopicDefinition<ClaimRecord>,
   claim_settlement: "critical",
   transaction_confirmation: "critical",
   auth: "critical",
   control: "critical",
-  oracle_update: "bulk",
   pool_stats: "bulk",
   activity_feed: "bulk",
 } as const;
+
+export type TopicName = "oracle_update" | "claim_settled" | "holder_claim";
 export type Topic = keyof typeof TOPICS;
-export type Priority = (typeof TOPICS)[Topic];
+export type Priority = "critical" | "bulk";
+
+export interface TopicPayloads {
+  oracle_update: OracleReading;
+  claim_settled: ClaimRecord;
+  holder_claim: ClaimRecord;
+}
+
+export function isKnownTopic(topic: string): topic is TopicName {
+  return topic === "oracle_update" || topic === "claim_settled" || topic === "holder_claim";
+}
+
+export function supportedVersions(topic: TopicName): number[] {
+  return Object.keys(TOPICS[topic].versions)
+    .map(Number)
+    .sort((a, b) => b - a);
+}
+
+export function topicScope(topic: TopicName): TopicScope {
+  return TOPICS[topic].scope;
+}
+
+export function parserFor(
+  topic: TopicName,
+  version: number
+): Parser<TopicPayloads[TopicName]> | null {
+  const versions = TOPICS[topic].versions as Record<number, Parser<TopicPayloads[TopicName]>>;
+  return versions[version] ?? null;
+}
+
 export interface Message {
   topic: Topic;
   payload: unknown;

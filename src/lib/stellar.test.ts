@@ -6,10 +6,17 @@ describe("stellar.expert URL helpers", () => {
     "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
     "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
   ])("builds a testnet contract URL for %s", (address) => {
-    expect(stellarExpertContractUrl(address)).toBe(`https://stellar.expert/explorer/testnet/contract/${address}`);
+    expect(stellarExpertContractUrl(address)).toBe(
+      `https://stellar.expert/explorer/testnet/contract/${address}`
+    );
   });
 
-  it("builds a testnet tx URL", () => {
-    expect(stellarExpertTxUrl("abc123")).toBe("https://stellar.expert/explorer/testnet/tx/abc123");
+  it("builds a testnet tx URL for a valid hash", () => {
+    const hash = "a".repeat(64);
+    expect(stellarExpertTxUrl(hash)).toBe(`https://stellar.expert/explorer/testnet/tx/${hash}`);
+  });
+
+  it("returns null for an invalid tx hash", () => {
+    expect(stellarExpertTxUrl("abc123")).toBeNull();
   });
 });

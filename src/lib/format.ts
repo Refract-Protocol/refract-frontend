@@ -6,7 +6,6 @@ import { usePreferencesStore } from "@/lib/store/preferencesStore";
  * Number of decimal places USDC supports (7-decimal base units / stroops).
  */
 export const USDC_DECIMALS = 7;
-export const USDC_BASE_UNIT = 10 ** USDC_DECIMALS;
 
 /**
  * Parse a user-entered amount string into a finite number.
@@ -24,16 +23,20 @@ export function parseAmount(input: string | null | undefined): number | null {
 }
 
 /**
- * Convert a decimal amount into stroops (7-decimal USDC base units).
+ * Convert a decimal amount into base units (stroops for USDC) as a string,
+ * the shape every API endpoint expects.
+ *
+ * @param decimals Asset precision; defaults to USDC's 7 decimals.
  *
  * Throws a typed error when handed a non-finite number so an invalid amount
  * can never silently reach `BigInt` and surface as a raw `RangeError`.
  */
-export function toStroops(amount: number): bigint {
+export function toStroops(amount: number, decimals: number = USDC_DECIMALS): string {
   if (!Number.isFinite(amount)) {
     throw new TypeError(`toStroops: expected a finite number, received ${amount}`);
   }
-  return BigInt(Math.round(amount * USDC_BASE_UNIT));
+  const scaled = Math.round(amount * 10 ** decimals);
+  return BigInt(Object.is(scaled, -0) ? 0 : scaled).toString();
 }
 
 /**
@@ -44,9 +47,16 @@ export function toStroops(amount: number): bigint {
  */
 export const MIN_DEPOSIT_USDC = 1;
 
-/** Converts a base-unit string (1e7 per USDC) back to a human float. */
-export function fromStroops(value: string | number): number {
-  return Number(value) / USDC_BASE_UNIT;
+/**
+ * Converts a base-unit amount (1e7 per USDC by default) back to a human float.
+ *
+ * @param decimals Asset precision; defaults to USDC's 7 decimals.
+ */
+export function fromStroops(
+  value: string | number | bigint,
+  decimals: number = USDC_DECIMALS
+): number {
+  return Number(value) / 10 ** decimals;
 }
 
 /**
@@ -72,9 +82,30 @@ export function formatUsd(value: number, opts: Intl.NumberFormatOptions = {}): s
   });
 }
 
-/** Renders a past timestamp (ms since epoch) as "3 days ago", "2 weeks ago", etc. */
-export function formatRelativeTime(timestampMs: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+/**
+ * Compact USD for large figures: "$1.5K", "$2M", "$3B". Values under $1,000
+ * keep full cents ("$12.34").
+ */
+export function formatCompactUsd(value: number): string {
+  if (Math.abs(value) < 1000) return formatUsd(value);
+  return value.toLocaleString(resolveLocale(), {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+}
+
+type TimeInput = number | string | Date;
+
+const toMs = (t: TimeInput): number => (typeof t === "number" ? t : new Date(t).getTime());
+
+/**
+ * Renders a past timestamp as "3 days ago", "2 weeks ago", etc. Accepts ms
+ * since epoch, an ISO string, or a Date; `now` is injectable for tests.
+ */
+export function formatRelativeTime(timestamp: TimeInput, now: TimeInput = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((toMs(now) - toMs(timestamp)) / 1000));
   const units: [string, number][] = [
     ["year", 31_536_000],
     ["month", 2_592_000],
@@ -113,9 +144,7 @@ export function decimalPlaces(input: string | null | undefined): number | null {
  * `value` is only present when the input is a valid, in-range amount.
  */
 export type AmountValidation =
-  | { status: "empty" }
-  | { status: "invalid"; error: string }
-  | { status: "valid"; value: number };
+  { status: "empty" } | { status: "invalid"; error: string } | { status: "valid"; value: number };
 
 export interface ValidateAmountOptions {
   /** Reject amounts strictly below this value. */
@@ -136,7 +165,7 @@ export interface ValidateAmountOptions {
  */
 export function validateAmount(
   input: string | null | undefined,
-  options: ValidateAmountOptions = {},
+  options: ValidateAmountOptions = {}
 ): AmountValidation {
   const { min, max, maxDecimals, label = "amount" } = options;
   const trimmed = input?.trim() ?? "";
@@ -167,10 +196,13 @@ export function validateAmount(
   return { status: "valid", value };
 }
 
-
 /** "Oct 5, 2026" — the short date used for expiry and unlock displays. */
 export function formatShortDate(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return new Date(timestampMs).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /** Full-precision local date/time, used as a countdown's `title` and screen-reader text. */
@@ -189,8 +221,10 @@ export function formatDuration(ms: number): string {
   const hours = Math.floor((minutes % 1440) / 60);
   const mins = minutes % 60;
   const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
-  if (days > 0) return hours > 0 ? `${plural(days, "day")}, ${plural(hours, "hour")}` : plural(days, "day");
-  if (hours > 0) return mins > 0 ? `${plural(hours, "hour")}, ${plural(mins, "minute")}` : plural(hours, "hour");
+  if (days > 0)
+    return hours > 0 ? `${plural(days, "day")}, ${plural(hours, "hour")}` : plural(days, "day");
+  if (hours > 0)
+    return mins > 0 ? `${plural(hours, "hour")}, ${plural(mins, "minute")}` : plural(hours, "hour");
   return plural(mins, "minute");
 }
 

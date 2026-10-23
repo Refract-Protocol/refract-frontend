@@ -1,13 +1,3 @@
-/* Realtime freshness status stays static when reduced motion is enabled. */
-.data-freshness { display: inline-flex; align-items: center; gap: .4rem; min-width: 8rem; font-size: .75rem; line-height: 1.25rem; color: var(--pm-text-muted, #a1a1aa); }
-.data-freshness__dot { width: .4rem; height: .4rem; flex: 0 0 .4rem; border-radius: 50%; background: #a1a1aa; }
-.data-freshness--live { color: #34d399; }
-.data-freshness--live .data-freshness__dot { background: #34d399; }
-.data-freshness--muted .data-freshness__dot { background: #fbbf24; }
-.data-freshness__dot--pulse { animation: freshness-pulse 1.8s ease-in-out infinite; }
-@keyframes freshness-pulse { 50% { opacity: .4; transform: scale(.8); } }
-@media (prefers-reduced-motion: reduce) { .data-freshness__dot--pulse { animation: none; } }
-
 @import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
@@ -15,11 +5,25 @@
 @tailwind utilities;
 
 /* ── Refract Design Tokens ─────────────────────────────────────────────────── */
-  --pm-text:    237 233 248;
-  --pm-muted:   123 111 168;
-  --pm-muted-2: 74 64 112;
-
-  /* Alph
+/*
+ * globals.css is the single authoritative source of truth for every colour and
+ * radius token. tailwind.config.ts references these custom properties (e.g.
+ * `pm-border: "var(--pm-border)"`) instead of hardcoding values, so a token can
+ * never drift between the two files. `npm run tokens:check` enforces this.
+ *
+ * Colour tokens are stored as space-separated RGB channel triplets so Tailwind
+ * can compose opacity modifiers (`border-pm-border/60`) via the
+ * `<alpha-value>` placeholder. Always consume them through `rgb(var(--pm-*))`
+ * or the Tailwind utilities — never as a bare `var(--pm-*)` colour.
+ */
+:root {
+  /* Backgrounds */
+  --pm-bg:        7 5 15;
+  --pm-surface:   15 12 26;
+  --pm-surface-2: 23 19 42;
+  --pm-surface-3: 32 27 56;
+  --pm-border:    139 92 246;
+  --pm-border-2:  139 92 246;
 
   /* Brand — violet */
   --pm-violet:     139 92 246;
@@ -337,8 +341,3 @@ input:focus-visible,
 
 /* ── Loading skeleton ────────────────────────────────────────────────────── */
 
-.pm-skeleton {
-  background: linear-gradient(90deg, var(--pm-surface-2) 25%, var(--pm-surface-3) 50%, var(--pm-surface-2) 75%);
-  background-size: 200% 100%;
-  animation: pmShimmer 1.4s var(--pm-ease-linear) infinite;
-}

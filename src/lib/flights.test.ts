@@ -11,8 +11,8 @@ describe("Flight Autocomplete", () => {
   it("filters flights by flight number, airline, or airport code", () => {
     const baResults = searchFlights("BA249");
     expect(baResults.length).toBe(1);
-    expect(baResults[0].flightNumber).toBe("BA249");
-    expect(baResults[0].airline).toBe("British Airways");
+    expect(baResults[0]!.flightNumber).toBe("BA249");
+    expect(baResults[0]!.airline).toBe("British Airways");
 
     const sfoResults = searchFlights("SFO");
     expect(sfoResults.some((f) => f.from.includes("SFO") || f.to.includes("SFO"))).toBe(true);

@@ -42,18 +42,18 @@ describe("searchCommands", () => {
 
   it("matches by label", () => {
     const res = searchCommands("dash", testCommands);
-    expect(res[0].id).toBe("1");
+    expect(res[0]!.id).toBe("1");
   });
 
   it("matches by keyword", () => {
     const res = searchCommands("insurance", testCommands);
-    expect(res[0].id).toBe("2");
+    expect(res[0]!.id).toBe("2");
   });
 
   it("orders results by relevance", () => {
     const res = searchCommands("flight", STATIC_COMMANDS);
     expect(res.length).toBeGreaterThan(0);
-    expect(res[0].label).toContain("Flight");
+    expect(res[0]!.label).toContain("Flight");
   });
 
   it("returns empty array when nothing matches", () => {

@@ -8,10 +8,8 @@ import { useHolderPolicies } from "./useHolderPolicies";
 import { useClaims } from "./useClaims";
 import { useLockupStatus } from "./useLockupStatus";
 import { useOracleStatus } from "./useOracleStatus";
-import {
-  deriveNotifications,
-  type RefractNotification,
-} from "@/lib/notifications";
+import { useAdaptivePolling } from "./useAdaptivePolling";
+import { deriveNotifications, type RefractNotification } from "@/lib/notifications";
 
 const STORAGE_KEY = "refract_read_notifications_v1";
 
@@ -27,17 +25,14 @@ export function useNotifications() {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [pushed, setPushed] = useState<RefractNotification[]>([]);
 
-  // Realtime delivers new items; REST-derived items below supply history.
-  // If the topic is disabled or unhealthy nothing arrives and REST still works.
   useEffect(() => {
-    return realtimeClient.subscribe("notifications", (payload) => {
+    return realtimeClient.subscribe("notifications" as any, (payload: unknown) => {
       const item = payload as Partial<RefractNotification> | null;
       if (!item || typeof item.id !== "string" || typeof item.timestamp !== "number") return;
       setPushed((prev) => mergeNotifications([item as RefractNotification], prev));
     });
   }, []);
 
-  // Reflect read state changes made in other tabs.
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key !== STORAGE_KEY || !e.newValue) return;
@@ -50,6 +45,17 @@ export function useNotifications() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
+
+  const tickInterval = useAdaptivePolling({ topic: "holder_claim", tier: "background" });
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (tickInterval === false) return;
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      setNow(Date.now());
+    }, tickInterval);
+    return () => clearInterval(id);
+  }, [tickInterval]);
 
   useEffect(() => {
     try {
@@ -78,12 +84,13 @@ export function useNotifications() {
       lockupExpiresAt,
       oracleReadings,
       readIds,
+      now,
     });
     return mergeNotifications(
       pushed.map((n) => ({ ...n, read: readIds.has(n.id) })),
       derived
     );
-  }, [policies, claims, lockupExpiresAt, oracleReadings, readIds, pushed]);
+  }, [policies, claims, lockupExpiresAt, oracleReadings, readIds, pushed, now]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.read).length;

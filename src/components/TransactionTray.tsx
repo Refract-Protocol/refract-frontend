@@ -27,7 +27,9 @@ export function TransactionTray() {
   const [open, setOpen] = useState(false);
 
   if (transactions.length === 0) return null;
-  const inFlight = transactions.filter((t) => t.status === "pending" || t.status === "signing").length;
+  const inFlight = transactions.filter(
+    (t) => t.status === "pending" || t.status === "signing"
+  ).length;
 
   return (
     <div className="fixed bottom-4 right-4 z-40 w-[min(320px,calc(100vw-2rem))]">
@@ -48,7 +50,7 @@ export function TransactionTray() {
                     <>
                       {" · "}
                       <a
-                        href={stellarExpertTxUrl(t.txHash)}
+                        href={stellarExpertTxUrl(t.txHash) ?? undefined}
                         target="_blank"
                         rel="noreferrer"
                         className="font-mono underline"

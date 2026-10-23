@@ -28,7 +28,7 @@ type Spec = {
 };
 
 const buttonSpecs: Spec[] = [
-  ...(["primary", "secondary", "ghost"] as const).flatMap((variant) =>
+  ...(["primary", "outline", "ghost"] as const).flatMap((variant) =>
     (["sm", "md", "lg"] as const).map((size) => ({
       name: `Button / ${variant} / ${size}`,
       props: `variant="${variant}" size="${size}"`,
@@ -38,7 +38,7 @@ const buttonSpecs: Spec[] = [
           Button
         </Button>
       ),
-    })),
+    }))
   ),
   {
     name: "Button / block",
@@ -67,14 +67,12 @@ const buttonSpecs: Spec[] = [
 ];
 
 const badgeSpecs: Spec[] = [
-  ...(["neutral", "info", "success", "warning", "danger"] as const).map(
-    (tone) => ({
-      name: `Badge / ${tone}`,
-      props: `tone="${tone}"`,
-      snippet: `<Badge tone="${tone}">Badge</Badge>`,
-      render: () => <Badge tone={tone}>Badge</Badge>,
-    }),
-  ),
+  ...(["neutral", "safe", "risk", "danger", "violet"] as const).map((tone) => ({
+    name: `Badge / ${tone}`,
+    props: `tone="${tone}"`,
+    snippet: `<Badge tone="${tone}">Badge</Badge>`,
+    render: () => <Badge tone={tone}>Badge</Badge>,
+  })),
   {
     name: "Badge / dot",
     props: "dot",
@@ -163,8 +161,8 @@ export default function UiGalleryPage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">UI Gallery</h1>
         <p className="text-sm text-muted-foreground">
-          Dev-only gallery of the design-system primitives. Toggle the theme and
-          resize the viewport to verify every state.
+          Dev-only gallery of the design-system primitives. Toggle the theme and resize the viewport
+          to verify every state.
         </p>
       </header>
 
@@ -182,8 +180,8 @@ export default function UiGalleryPage() {
       <section className="space-y-2">
         <h2 className="text-lg font-medium">Reduced motion</h2>
         <p className="text-sm text-muted-foreground">
-          Motion demos render the static variant when the user has opted out of
-          motion; no animation is forced.
+          Motion demos render the static variant when the user has opted out of motion; no animation
+          is forced.
         </p>
       </section>
     </Container>

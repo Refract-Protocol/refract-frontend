@@ -1,11 +1,3 @@
-/**
- * Realtime connection health observability.
- *
- * A tiny store-like emitter that the realtime client pushes health signals
- * into and React (via `useRealtimeHealth`) subscribes to. Kept free of socket
- * internals so consumers only ever see sanitized, machine-readable state.
- */
-
 export enum RealtimeStatus {
   Idle = "idle",
   Connecting = "connecting",
@@ -49,7 +41,6 @@ const SECRET_PATTERNS: RegExp[] = [
   /(wss?:\/\/)[^@\s/]+@/gi,
 ];
 
-/** Redact tokens, credentials, and embedded URLs from anything we report. */
 export function redactSecrets(input: string): string {
   let out = input;
   for (const pattern of SECRET_PATTERNS) {
@@ -70,19 +61,55 @@ function createInitialSnapshot(): RealtimeHealthSnapshot {
   };
 }
 
-class RealtimeHealthStore {
+export type RealtimeHealth = "healthy" | "degraded" | "unavailable";
+
+export interface HealthSource {
+  get(topic?: string): RealtimeHealth;
+  subscribe(listener: () => void): () => void;
+}
+
+export class RealtimeHealthStore implements HealthSource {
+  private connection: RealtimeHealth = "unavailable";
+  private restOnly = new Set<string>();
+  private listeners = new Set<(event?: any) => void>();
   private snapshot: RealtimeHealthSnapshot = createInitialSnapshot();
-  private listeners = new Set<RealtimeHealthListener>();
   private reporter: RealtimeHealthReporter | null = null;
   private reportedReconnectLoops = 0;
   private lastMessageEmitAt = 0;
   private pendingMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
+  get(topic?: string): RealtimeHealth {
+    if (topic && this.restOnly.has(topic)) return "unavailable";
+    return this.connection;
+  }
+
+  isRestOnly(topic: string): boolean {
+    return this.restOnly.has(topic);
+  }
+
+  setConnection(next: RealtimeHealth): void {
+    if (next === this.connection) return;
+    this.connection = next;
+    this.emit();
+  }
+
+  markRestOnly(topic: string): void {
+    if (this.restOnly.has(topic)) return;
+    this.restOnly.add(topic);
+    this.emit();
+  }
+
+  resetTopics(): void {
+    if (this.restOnly.size === 0) return;
+    this.restOnly.clear();
+    this.emit();
+  }
+
   getSnapshot(): RealtimeHealthSnapshot {
     return this.snapshot;
   }
 
-  subscribe(listener: RealtimeHealthListener): () => void {
+  subscribe(listener: (event?: any) => void): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -93,12 +120,12 @@ class RealtimeHealthStore {
     this.reporter = reporter;
   }
 
-  private emit(event: RealtimeHealthEvent): void {
+  private emit(event?: RealtimeHealthEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event);
       } catch {
-        // A misbehaving subscriber must never break the realtime layer.
+        // Ignore subscriber errors.
       }
     }
   }
@@ -129,10 +156,7 @@ class RealtimeHealthStore {
   recordMessage(): void {
     const now = Date.now();
     this.update({ lastMessageAt: now, lastMessageAgeMs: 0 });
-    // Coalesce high-frequency message updates into at most one emit per window.
-    if (this.pendingMessageTimer) {
-      return;
-    }
+    if (this.pendingMessageTimer) return;
     const elapsed = now - this.lastMessageEmitAt;
     if (elapsed >= MESSAGE_COALESCE_MS) {
       this.lastMessageEmitAt = now;
@@ -160,11 +184,9 @@ class RealtimeHealthStore {
 
   private reportStatusTransition(
     previous: RealtimeStatus,
-    snapshot: RealtimeHealthSnapshot,
+    snapshot: RealtimeHealthSnapshot
   ): void {
-    if (!this.reporter) {
-      return;
-    }
+    if (!this.reporter) return;
     const context = {
       status: snapshot.status,
       previousStatus: previous,
@@ -172,7 +194,6 @@ class RealtimeHealthStore {
       attemptCount: snapshot.attemptCount,
     };
     this.reporter.captureMessage?.(`realtime:${snapshot.status}`, context);
-
     if (snapshot.status === RealtimeStatus.Reconnecting) {
       if (this.reportedReconnectLoops < MAX_REPORTED_RECONNECT_LOOPS) {
         this.reportedReconnectLoops += 1;
@@ -184,9 +205,7 @@ class RealtimeHealthStore {
   }
 
   private reportError(message: string): void {
-    if (!this.reporter) {
-      return;
-    }
+    if (!this.reporter) return;
     const context = {
       status: this.snapshot.status,
       transport: this.snapshot.transport,
