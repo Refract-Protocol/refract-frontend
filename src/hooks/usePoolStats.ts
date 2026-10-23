@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchPoolStats, type PoolStats } from "@/lib/api/pool";
@@ -7,11 +6,16 @@ import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { readPoolStats } from "@/lib/stellar/rpc";
 import { realtimeClient } from "@/lib/realtime/client";
+import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
+import { useRealtimeRevision } from "./useRealtimeTopic";
+import { ACTIVE_NETWORK } from "@/lib/network";
 
-export function usePoolStats() {
+export function usePoolStats(poolId = `${ACTIVE_NETWORK.id}:protocol`) {
   const client = useQueryClient();
+  const enabled = useFeatureFlag("realtime-pool");
+  const revision = useRealtimeRevision("pool_stats", enabled ? { entityIds: [poolId] } : null);
   const query = useQuery({
-    queryKey: ["poolStats"],
+    queryKey: ["poolStats", poolId, revision],
     queryFn: async ({ signal }) => {
       try {
         return {
@@ -51,13 +55,13 @@ export function usePoolStats() {
     () =>
       realtimeClient.subscribe("pool_update", (payload) => {
         if (!payload || typeof payload !== "object") return;
-        client.setQueryData(["poolStats"], {
+        client.setQueryData(["poolStats", poolId, revision], {
           data: payload as PoolStats,
           dataSource: "realtime",
           isFixture: false,
         });
       }),
-    [client]
+    [client, poolId, revision]
   );
   const fixture = query.data?.isFixture ?? false;
   return {

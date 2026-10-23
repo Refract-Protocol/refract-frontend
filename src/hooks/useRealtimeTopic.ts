@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   realtimeClient,
@@ -8,6 +7,7 @@ import {
   type RealtimeClient,
   type RealtimeStatus,
 } from "@/lib/realtime/client";
+import { descriptor, type Interest, type Topic } from "@/lib/realtime/contract";
 
 export interface UseRealtimeTopicOptions<T> {
   enabled?: boolean;
@@ -68,4 +68,22 @@ export function useRealtimeTopic<T = unknown>(
   }, [client, topic, enabled]);
 
   return { latest, status, degraded: status === "degraded" };
+}
+
+/** Fixed refresh window: continuous traffic cannot postpone REST refresh forever. */
+export function useRealtimeRevision(topic: Topic, interest: Interest | null) {
+  const [revision, setRevision] = useState(0);
+  const pending = useRef<ReturnType<typeof setTimeout>>();
+  useRealtimeTopic(topic, {
+    onEvent: () => {
+      if (pending.current !== undefined) return;
+      pending.current = setTimeout(() => {
+        pending.current = undefined;
+        setRevision((n) => n + 1);
+      }, 100);
+    },
+  });
+  useEffect(() => () => clearTimeout(pending.current), []);
+  return revision;
+}
 }
