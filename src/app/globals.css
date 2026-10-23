@@ -1,3 +1,13 @@
+/* Realtime freshness status stays static when reduced motion is enabled. */
+.data-freshness { display: inline-flex; align-items: center; gap: .4rem; min-width: 8rem; font-size: .75rem; line-height: 1.25rem; color: var(--pm-text-muted, #a1a1aa); }
+.data-freshness__dot { width: .4rem; height: .4rem; flex: 0 0 .4rem; border-radius: 50%; background: #a1a1aa; }
+.data-freshness--live { color: #34d399; }
+.data-freshness--live .data-freshness__dot { background: #34d399; }
+.data-freshness--muted .data-freshness__dot { background: #fbbf24; }
+.data-freshness__dot--pulse { animation: freshness-pulse 1.8s ease-in-out infinite; }
+@keyframes freshness-pulse { 50% { opacity: .4; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .data-freshness__dot--pulse { animation: none; } }
+
 @import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
@@ -306,28 +316,6 @@ input:focus-visible,
   background: rgb(var(--pm-violet));
   color: #fff;
   padding: 10px 18px;
-  border-radius: var(--pm-r);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: top 0.15s ease;
-}
-.pm-skip-link:focus {
-  top: 16px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ── Loading skeleton ────────────────────────────────────────────────────── */
-
-x 18px;
   border-radius: var(--pm-r);
   font-size: 13px;
   font-weight: 600;

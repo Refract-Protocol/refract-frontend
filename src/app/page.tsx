@@ -15,6 +15,7 @@ import { formatUsd, formatRelativeTime, fromStroops } from "@/lib/format";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 import { ACTIVE_NETWORK } from "@/lib/network";
 import { HowItWorks } from "@/components/HowItWorks";
+import { DataFreshness } from "@/components/DataFreshness";
 import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
 import { RealtimeProfiler } from "@/lib/realtime/devProfiler";
 
@@ -188,6 +189,7 @@ export default function Home() {
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs uppercase tracking-wide text-pm-text/60">Live Oracle Status</span>
+                  <DataFreshness updatedAt={oracleStatus.lastUpdated?.getTime()} source={oracleStatus.dataSource} />
                   <button
                     type="button"
                     onClick={() => void oracleStatus.refresh()}
@@ -365,6 +367,7 @@ export default function Home() {
               <h2 id="payouts-heading" className="font-display text-2xl font-extrabold tracking-tight text-pm-text sm:text-[26px]">Recent payouts</h2>
               <button type="button" onClick={() => void recentClaims.refresh()} disabled={recentClaims.isRefreshing} className="text-[11px] text-pm-text/40 hover:text-pm-text disabled:opacity-50">Refresh ↻</button>
             </div>
+            <div className="-mt-4 mb-5"><DataFreshness updatedAt={recentClaims.lastUpdated?.getTime()} source={recentClaims.dataSource} /></div>
             {recentClaims.isFixture && (
               <p className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-pm-amber">
                 ⚠ Showing example data — the Refract API isn&apos;t reachable from this environment.
