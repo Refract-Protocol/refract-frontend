@@ -24,12 +24,12 @@ this policy.
 
 ## Routes
 
-| Path | Page |
-|---|---|
-| `/` | Landing — live oracle status, recent payouts, protocol stats |
-| `/cover` | Policy purchase flow |
-| `/provide` | LP capital provision + pool allocation |
-| `/status` | Protocol status, maintenance windows and incidents (REST snapshot + realtime) |
+| Path       | Page                                                                           |
+| ---------- | ------------------------------------------------------------------------------ |
+| `/`        | Landing — live oracle status, recent payouts, protocol stats                   |
+| `/cover`   | Policy purchase flow                                                           |
+| `/provide` | LP capital provision + pool allocation                                         |
+| `/status`  | Protocol status, maintenance windows and incidents (REST snapshot + realtime) |
 
 ## Quick start
 
@@ -67,16 +67,19 @@ fails fast with a message naming the variable and what was expected. Read env th
   used to filter the Dashboard's Transaction History (read client-side from public Horizon
   `/accounts/{address}/operations`, paged by cursor, retried with backoff on 429/5xx). When
   unset, every Soroban contract call by the wallet is listed.
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — WalletConnect Cloud project ID used by the
+  WalletConnect v2 mobile-wallet adapter. Desktop users receive a QR code; mobile users
+  receive a registered-wallet deep link. The UI reports a configuration error when unset.
 
 ## Scripts
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Dev server with HMR |
-| `npm run build` | Production build |
-| `npm start` | Serve the production build |
-| `npm run lint` | `next lint` |
-| `npm run typecheck` | `tsc --noEmit` |
+| Command             | Purpose                    |
+| ------------------- | -------------------------- |
+| `npm run dev`       | Dev server with HMR        |
+| `npm run build`     | Production build           |
+| `npm start`         | Serve the production build |
+| `npm run lint`      | `next lint`                |
+| `npm run typecheck` | `tsc --noEmit`             |
 
 ## Monitoring
 

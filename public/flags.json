@@ -15,6 +15,10 @@
     "realtime-heartbeat-pong-deadline-ms": 10000,
     "realtime-shadow-mode": false,
     "realtime-pool-stats": false,
+    "oracle.readings": false,
+    "claims.settlement": false,
+    "pool.stats": false,
+    "notifications": false,
     "realtime": {
       "topics": {
         "oracle_update": { "enabled": false },

@@ -3,6 +3,7 @@ import * as freighterApi from "@stellar/freighter-api";
 import { freighterAdapter } from "./freighter";
 import { xbullAdapter } from "./xbull";
 import { getActiveAdapter, getAdapter, setActiveAdapter, WALLET_ADAPTERS } from "./index";
+import { walletConnectAdapter } from "./walletconnect";
 
 vi.mock("@stellar/freighter-api");
 const f = vi.mocked(freighterApi);
@@ -46,18 +47,27 @@ describe("freighter adapter", () => {
   });
 
   it("getNetwork and signTransaction map the SDK responses", async () => {
-    f.getNetwork.mockResolvedValue({ network: "TESTNET", networkPassphrase: "p", extra: 1 } as never);
-    expect(await freighterAdapter.getNetwork()).toEqual({ network: "TESTNET", networkPassphrase: "p" });
+    f.getNetwork.mockResolvedValue({
+      network: "TESTNET",
+      networkPassphrase: "p",
+      extra: 1,
+    } as never);
+    expect(await freighterAdapter.getNetwork()).toEqual({
+      network: "TESTNET",
+      networkPassphrase: "p",
+    });
     f.signTransaction.mockResolvedValueOnce({ signedTxXdr: "S" } as never);
-    expect(await freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })).toBe("S");
+    expect(
+      await freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })
+    ).toBe("S");
     f.signTransaction.mockResolvedValueOnce({ error: { message: "declined" } } as never);
-    await expect(freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })).rejects.toThrow(
-      "declined"
-    );
+    await expect(
+      freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })
+    ).rejects.toThrow("declined");
     f.signTransaction.mockResolvedValueOnce({} as never);
-    await expect(freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })).rejects.toThrow(
-      "Transaction signing was declined"
-    );
+    await expect(
+      freighterAdapter.signTransaction("X", { networkPassphrase: "p", address: "GA" })
+    ).rejects.toThrow("Transaction signing was declined");
   });
 });
 
@@ -85,17 +95,22 @@ describe("xbull adapter", () => {
     await expect(xbullAdapter.connect()).resolves.toBe("GX");
     expect(sdk.connect).toHaveBeenCalledWith({ canRequestPublicKey: true, canRequestSign: true });
     expect(await xbullAdapter.getAddress()).toBe("GX");
-    expect(await xbullAdapter.signTransaction("X", { networkPassphrase: "p", address: "GX" })).toBe("SIGNED");
+    expect(await xbullAdapter.signTransaction("X", { networkPassphrase: "p", address: "GX" })).toBe(
+      "SIGNED"
+    );
     expect(sdk.signXDR).toHaveBeenCalledWith("X", { publicKey: "GX", network: "p" });
     expect((await xbullAdapter.getNetwork()).networkPassphrase).toContain("Network");
   });
 
   it("handles declines and silent failures", async () => {
-    install({ getPublicKey: vi.fn().mockRejectedValue(new Error("locked")), signXDR: vi.fn().mockResolvedValue("") });
+    install({
+      getPublicKey: vi.fn().mockRejectedValue(new Error("locked")),
+      signXDR: vi.fn().mockResolvedValue(""),
+    });
     expect(await xbullAdapter.getAddress()).toBeNull();
-    await expect(xbullAdapter.signTransaction("X", { networkPassphrase: "p", address: "GX" })).rejects.toThrow(
-      "Transaction signing was declined"
-    );
+    await expect(
+      xbullAdapter.signTransaction("X", { networkPassphrase: "p", address: "GX" })
+    ).rejects.toThrow("Transaction signing was declined");
     install({ getPublicKey: vi.fn().mockResolvedValue("") });
     await expect(xbullAdapter.connect()).rejects.toThrow("Connection was declined");
   });
@@ -103,8 +118,9 @@ describe("xbull adapter", () => {
 
 describe("adapter registry", () => {
   it("lists both adapters, falls back to Freighter, and tracks the active one", () => {
-    expect(WALLET_ADAPTERS.map((a) => a.id)).toEqual(["freighter", "xbull"]);
+    expect(WALLET_ADAPTERS.map((a) => a.id)).toEqual(["freighter", "xbull", "walletconnect"]);
     expect(getAdapter("xbull")).toBe(xbullAdapter);
+    expect(getAdapter("walletconnect")).toBe(walletConnectAdapter);
     setActiveAdapter("xbull");
     expect(getActiveAdapter()).toBe(xbullAdapter);
     setActiveAdapter("freighter");

@@ -1,76 +1,64 @@
 "use client";
-import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useCallback, useState } from "react";
+import { ApiUnreachableError } from "@/lib/api/client";
 import { fetchPoolStats, type PoolStats } from "@/lib/api/pool";
 import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
-import { ApiUnreachableError } from "@/lib/api/client";
 import { readPoolStats } from "@/lib/stellar/rpc";
-import { realtimeClient } from "@/lib/realtime/client";
-import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
-import { useRealtimeRevision } from "./useRealtimeTopic";
-import { ACTIVE_NETWORK } from "@/lib/network";
+import type { DataSource } from "@/lib/api/dataSource";
+import { usePolling } from "./usePolling";
 
-export function usePoolStats(poolId = `${ACTIVE_NETWORK.id}:protocol`) {
-  const client = useQueryClient();
-  const enabled = useFeatureFlag("realtime-pool");
-  const revision = useRealtimeRevision("pool_stats", enabled ? { entityIds: [poolId] } : null);
-  const query = useQuery({
-    queryKey: ["poolStats", poolId, revision],
-    queryFn: async ({ signal }) => {
-      try {
-        return {
-          data: await fetchPoolStats(signal),
-          dataSource: "api" as const,
-          isFixture: false,
-          error: undefined,
-        };
-      } catch (apiError) {
-        if (!(apiError instanceof ApiUnreachableError))
-          return {
-            data: null,
-            dataSource: null,
-            isFixture: false,
-            error: apiError instanceof Error ? apiError.message : "Failed to load pool stats",
-          };
-        try {
-          return {
-            data: await readPoolStats(),
-            dataSource: "chain" as const,
-            isFixture: false,
-            error: undefined,
-          };
-        } catch {
-          return {
-            data: FIXTURE_POOL_STATS,
-            dataSource: "fixture" as const,
-            isFixture: true,
-            error: undefined,
-          };
-        }
-      }
-    },
-    refetchInterval: 60_000,
+export const POOL_STATS_POLL_INTERVAL_MS = 60_000;
+
+interface PoolStatsState {
+  data: PoolStats | null;
+  loading: boolean;
+  error: string | null;
+  isFixture: boolean;
+  dataSource: DataSource | null;
+}
+
+export function usePoolStats(): PoolStatsState {
+  const [state, setState] = useState<PoolStatsState>({
+    data: null,
+    loading: true,
+    error: null,
+    isFixture: false,
+    dataSource: null,
   });
-  useEffect(
-    () =>
-      realtimeClient.subscribe("pool_update", (payload) => {
-        if (!payload || typeof payload !== "object") return;
-        client.setQueryData(["poolStats", poolId, revision], {
-          data: payload as PoolStats,
-          dataSource: "realtime",
+  const load = useCallback(async (signal: AbortSignal) => {
+    try {
+      const data = await fetchPoolStats(signal);
+      if (!signal.aborted)
+        setState({ data, loading: false, error: null, isFixture: false, dataSource: "api" });
+    } catch (error) {
+      if (signal.aborted) return;
+      if (!(error instanceof ApiUnreachableError)) {
+        setState({
+          data: null,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to load pool stats",
           isFixture: false,
+          dataSource: null,
         });
-      }),
-    [client, poolId, revision]
-  );
-  const fixture = query.data?.isFixture ?? false;
-  return {
-    data: query.data?.data ?? null,
-    loading: query.isLoading,
-    isFixture: fixture,
-    dataSource: query.data?.dataSource ?? null,
-    lastUpdated: query.dataUpdatedAt ? new Date(query.dataUpdatedAt) : undefined,
-    error: query.error?.message,
-    refreshFromChain: readPoolStats,
-  };
+        return;
+      }
+      try {
+        const data = await readPoolStats(signal);
+        if (!signal.aborted)
+          setState({ data, loading: false, error: null, isFixture: false, dataSource: "chain" });
+      } catch {
+        if (!signal.aborted)
+          setState({
+            data: FIXTURE_POOL_STATS,
+            loading: false,
+            error: null,
+            isFixture: true,
+            dataSource: "fixture",
+          });
+      }
+    }
+  }, []);
+  usePolling(load, POOL_STATS_POLL_INTERVAL_MS);
+  return state;
 }

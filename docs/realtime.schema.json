@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://refract.finance/schemas/realtime-v1.json",
+  "title": "Refract realtime protocol v1",
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "required": ["v", "topic", "type", "id", "seq", "ts", "payload"],
+      "properties": {
+        "v": { "const": 1 },
+        "topic": { "type": "string" },
+        "type": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "ts": { "type": "string", "format": "date-time" },
+        "payload": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "oracle.reading.updated": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "oracle.readings" },
+            "type": { "const": "oracle.reading.updated" },
+            "payload": {
+              "type": "object",
+              "required": ["coverageType", "severity", "value", "observedAt"],
+              "properties": {
+                "coverageType": { "type": "integer", "minimum": 0 },
+                "severity": { "enum": ["low", "medium", "high", "triggered"] },
+                "value": { "type": "number" },
+                "observedAt": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    },
+    "claims.settlement.updated": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "claims.settlement" },
+            "type": { "const": "claims.settlement.updated" },
+            "payload": {
+              "type": "object",
+              "required": ["claimId", "policyId", "status", "txHash"],
+              "properties": {
+                "claimId": { "type": "string" },
+                "policyId": { "type": "string" },
+                "status": { "enum": ["pending", "approved", "paid", "rejected"] },
+                "txHash": { "type": ["string", "null"] }
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    },
+    "pool.stats.updated": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "pool.stats" },
+            "type": { "const": "pool.stats.updated" },
+            "payload": {
+              "type": "object",
+              "required": ["totalUsdc", "lockedUsdc", "utilizationBps", "apyBps"],
+              "properties": {
+                "totalUsdc": { "type": "string", "pattern": "^[0-9]+$" },
+                "lockedUsdc": { "type": "string", "pattern": "^[0-9]+$" },
+                "utilizationBps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                "apyBps": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    },
+    "notifications.created": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "notifications" },
+            "type": { "const": "notifications.created" },
+            "payload": {
+              "type": "object",
+              "required": ["notificationId", "account", "kind", "title"],
+              "properties": {
+                "notificationId": { "type": "string" },
+                "account": { "type": "string", "pattern": "^G[A-Z2-7]{55}$" },
+                "kind": { "type": "string" },
+                "title": { "type": "string" },
+                "body": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    },
+    "system.heartbeat": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "system" },
+            "type": { "const": "system.heartbeat" },
+            "payload": {
+              "type": "object",
+              "required": ["intervalMs"],
+              "properties": { "intervalMs": { "type": "integer", "minimum": 1000 } },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    },
+    "system.error": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "topic": { "const": "system" },
+            "type": { "const": "system.error" },
+            "payload": {
+              "type": "object",
+              "required": ["code", "message", "recoverable"],
+              "properties": {
+                "code": { "type": "string" },
+                "message": { "type": "string" },
+                "recoverable": { "type": "boolean" },
+                "retryAfterMs": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["topic", "type", "payload"]
+        }
+      ]
+    }
+  }
+}

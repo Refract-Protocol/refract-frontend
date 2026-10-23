@@ -1,10 +1,15 @@
 import { freighterAdapter } from "./freighter";
 import { xbullAdapter } from "./xbull";
+import { walletConnectAdapter } from "./walletconnect";
 import type { WalletAdapter, WalletAdapterId } from "./types";
 
 export type { WalletAdapter, WalletAdapterId, WalletNetworkInfo } from "./types";
 
-export const WALLET_ADAPTERS: readonly WalletAdapter[] = [freighterAdapter, xbullAdapter];
+export const WALLET_ADAPTERS: readonly WalletAdapter[] = [
+  freighterAdapter,
+  xbullAdapter,
+  walletConnectAdapter,
+];
 
 export function getAdapter(id: WalletAdapterId): WalletAdapter {
   return WALLET_ADAPTERS.find((a) => a.id === id) ?? freighterAdapter;
