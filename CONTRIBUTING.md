@@ -8,6 +8,13 @@ Install dependencies and start the dev server as usual. The app talks to
 `refract-backend` over `NEXT_PUBLIC_API_URL` for REST; the realtime layer is
 optional and off by default.
 
+## Token check
+
+`npm run check:tokens` validates the design tokens against the build output,
+so it requires a build first. On a clean clone run `npm run build` before
+`npm run check:tokens`; the script exits with an actionable error if the build
+output is missing.
+
 ## Developing against the realtime mock server
 
 The realtime layer is documented in [`docs/realtime/architecture.md`](docs/realtime/architecture.md)
