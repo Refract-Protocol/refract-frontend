@@ -15,8 +15,22 @@ export interface TransportCallbacks {
   onOpen(): void;
   /** A raw frame: a string (WS/SSE) or an already-parsed object (long-poll batch entries). */
   onFrame(frame: unknown): void;
+  /**
+   * A frame could not be decoded. Transports report the failure here (with the
+   * raw payload, truncated) and then close so the client's reconnect path runs.
+   */
+  onError?(error: TransportError): void;
   /** Called once when the transport stops on its own. Not called after `disconnect()`. */
   onClose(info: TransportCloseInfo): void;
+}
+
+export interface TransportError {
+  /** Human-readable description of what went wrong. */
+  message: string;
+  /** The raw payload that failed to decode, truncated for debugging. */
+  raw?: string;
+  /** The underlying thrown value, when available. */
+  cause?: unknown;
 }
 
 export interface ConnectContext {

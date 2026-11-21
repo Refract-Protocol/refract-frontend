@@ -9,6 +9,12 @@ export interface SseTransportOptions {
   EventSourceImpl?: EventSourceCtor;
 }
 
+const MAX_RAW_PAYLOAD = 200;
+
+function truncatePayload(raw: string): string {
+  return raw.length > MAX_RAW_PAYLOAD ? `${raw.slice(0, MAX_RAW_PAYLOAD)}…` : raw;
+}
+
 /**
  * Server-Sent Events transport. SSE is one-way, so subscription changes
  * reopen the stream with the new topic set and current cursors. The browser's
@@ -78,7 +84,18 @@ export class SseTransport implements RealtimeTransport {
       if (this.source === source) this.callbacks?.onOpen();
     };
     source.onmessage = (event) => {
-      if (this.source === source) this.callbacks?.onFrame(event.data);
+      if (this.source !== source) return;
+      try {
+        JSON.parse(event.data);
+      } catch (err) {
+        source.close();
+        this.finish({
+          code: 1006,
+          reason: `parse error: ${String(err)}; payload: ${truncatePayload(event.data)}`,
+        });
+        return;
+      }
+      this.callbacks?.onFrame(event.data);
     };
     source.onerror = () => {
       if (this.source !== source) return;

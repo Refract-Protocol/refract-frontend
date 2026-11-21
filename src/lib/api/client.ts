@@ -56,6 +56,8 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   const payload = isJson ? await res.json().catch(() => null) : null;
 
   if (!res.ok) {
+    // ApiError carries `status`, so the retry helper's isRetryableError can
+    // classify 4xx (fail fast) vs 5xx/429 (retry) without extra wrapping.
     throw new ApiError(payload?.error ?? res.statusText, res.status, payload);
   }
   return payload as T;

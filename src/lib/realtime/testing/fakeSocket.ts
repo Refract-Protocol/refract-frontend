@@ -36,6 +36,11 @@ export class FakeSocket implements WebSocketLike {
     this.emit("message", { data: typeof frame === "string" ? frame : JSON.stringify(frame) });
   }
 
+  /** Deliver a raw frame verbatim, bypassing JSON serialization (for malformed payloads). */
+  serverSendRaw(data: string): void {
+    this.emit("message", { data });
+  }
+
   serverDrop(code = 1006): void {
     this.closed = true;
     this.readyState = 3;
