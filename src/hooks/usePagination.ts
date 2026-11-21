@@ -1,38 +1,78 @@
-"use client";
+import { useCallback, useMemo, useState } from 'react';
 
-import { useEffect, useMemo, useState } from "react";
-
-interface UsePaginationResult<T> {
-  visible: T[];
-  hasMore: boolean;
-  loadMore: () => void;
-  total: number;
+export interface UsePaginationOptions {
+  totalItems?: number;
+  pageSize?: number;
+  initialPageIndex?: number;
 }
 
-/**
- * Generic client-side windowing of an already-fetched array. Renders the
- * first `pageSize` items and grows the window by `pageSize` each time
- * `loadMore` is called. Ordering is preserved (stable across page loads),
- * so callers keep their existing most-recent-first ordering.
- *
- * `resetKey` (typically the wallet `address`) resets the window back to
- * page 1 whenever it changes, so switching wallets never leaves a stale
- * expanded window behind.
- */
-export function usePagination<T>(items: T[], pageSize: number, resetKey?: string | null): UsePaginationResult<T> {
-  const [count, setCount] = useState(pageSize);
+export interface UsePaginationResult {
+  pageIndex: number;
+  pageSize: number;
+  totalItems: number;
+  pageCount: number;
+  canPreviousPage: boolean;
+  canNextPage: boolean;
+  setPageIndex: (index: number) => void;
+  nextPage: () => void;
+  previousPage: () => void;
+  setPageSize: (size: number) => void;
+}
 
-  useEffect(() => {
-    setCount(pageSize);
-  }, [resetKey, pageSize]);
+const DEFAULT_PAGE_SIZE = 10;
 
-  const total = items.length;
-  const visible = useMemo(() => items.slice(0, count), [items, count]);
-  const hasMore = count < total;
+export function usePagination({
+  totalItems,
+  pageSize: initialPageSize = DEFAULT_PAGE_SIZE,
+  initialPageIndex = 0,
+}: UsePaginationOptions = {}): UsePaginationResult {
+  const [pageIndex, setPageIndexState] = useState(initialPageIndex);
+  const [pageSize, setPageSizeState] = useState(initialPageSize);
 
-  const loadMore = () => {
-    setCount((c) => c + pageSize);
+  const resolvedTotal = totalItems ?? 0;
+  const pageCount = Math.max(1, Math.ceil(resolvedTotal / pageSize));
+
+  // Clamp the page index when the underlying list shrinks so we never point
+  // past the last valid page. Skip clamping while totalItems is still loading
+  // (0 or undefined) to avoid resetting the page on initial render.
+  const clampedPageIndex = useMemo(() => {
+    if (!resolvedTotal) {
+      return pageIndex;
+    }
+    const lastValidIndex = pageCount - 1;
+    return pageIndex > lastValidIndex ? lastValidIndex : pageIndex;
+  }, [pageIndex, pageCount, resolvedTotal]);
+
+  const setPageIndex = useCallback(
+    (index: number) => {
+      setPageIndexState(Math.max(0, index));
+    },
+    [],
+  );
+
+  const nextPage = useCallback(() => {
+    setPageIndexState((current) => Math.min(current + 1, pageCount - 1));
+  }, [pageCount]);
+
+  const previousPage = useCallback(() => {
+    setPageIndexState((current) => Math.max(current - 1, 0));
+  }, []);
+
+  const setPageSize = useCallback((size: number) => {
+    setPageSizeState(size);
+    setPageIndexState(0);
+  }, []);
+
+  return {
+    pageIndex: clampedPageIndex,
+    pageSize,
+    totalItems: resolvedTotal,
+    pageCount,
+    canPreviousPage: clampedPageIndex > 0,
+    canNextPage: clampedPageIndex < pageCount - 1,
+    setPageIndex,
+    nextPage,
+    previousPage,
+    setPageSize,
   };
-
-  return { visible, hasMore, loadMore, total };
 }
