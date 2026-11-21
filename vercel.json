@@ -1,18 +1,7 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "github": {
-    "enabled": true,
-    "autoJobCancelation": true,
-    "silent": false
-  },
-  "git": {
-    "deploymentEnabled": {
-      "main": false
-    }
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_API_URL": ""
+  "functions": {
+    "src/app/api/realtime/route.ts": {
+      "maxDuration": 300
     }
   }
 }

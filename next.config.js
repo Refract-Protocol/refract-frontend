@@ -27,6 +27,9 @@ const nextConfig = {
       : process.env.NEXT_PUBLIC_API_URL || "",
     NEXT_PUBLIC_SENTRY_RELEASE:
       process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "",
+    // Opt-in bridge: when set, the client connects through /api/realtime/bridge
+    // instead of hitting NEXT_PUBLIC_API_URL directly.
+    NEXT_PUBLIC_REALTIME_BRIDGE: process.env.NEXT_PUBLIC_REALTIME_BRIDGE || "",
   },
   async headers() {
     return [
