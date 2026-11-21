@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { realtimeClient, type FrameMeta, type RealtimeClient } from "@/lib/realtime/client";
 import type { Interest, Topic, TopicName, TopicPayloads } from "@/lib/realtime/contract";
+import type { RealtimeError } from "@/lib/realtime/errors";
 
 export interface UseRealtimeTopicOptions<T = unknown> {
   /** Skip subscribing (e.g. no wallet connected for an account-scoped topic). */
@@ -12,6 +13,8 @@ export interface UseRealtimeTopicOptions<T = unknown> {
   client?: RealtimeClient;
   select?: (payload: unknown) => T | null;
   onEvent?: (value: T, meta?: FrameMeta) => void;
+  /** Notified with the normalized error whenever the topic degrades. */
+  onError?: (error: RealtimeError) => void;
 }
 
 export interface RealtimeTopicState<T> {
@@ -23,6 +26,8 @@ export interface RealtimeTopicState<T> {
   sequence: number | undefined;
   status: string;
   degraded: boolean;
+  /** Normalized error for the current degraded state, if any. */
+  error: RealtimeError | null;
 }
 
 /**
@@ -69,6 +74,7 @@ export function useRealtimeTopic<T = unknown>(
     sequence: undefined,
     status: "idle",
     degraded: false,
+    error: null,
   }));
 
   useEffect(() => {
@@ -84,6 +90,7 @@ export function useRealtimeTopic<T = unknown>(
         sequence: cached.sequence,
         status: "idle",
         degraded: false,
+        error: null,
       });
     }
     return client.subscribe(topic as TopicName, (payload, meta) => {
@@ -106,10 +113,30 @@ export function useRealtimeTopic<T = unknown>(
         sequence: latest?.sequence,
         status: "connected",
         degraded: false,
+        error: null,
       });
       onEvent?.(value, meta);
     });
   }, [client, topic, enabled, account]);
+
+  // Surface normalized errors emitted by the transport boundary. Non-retryable
+  // errors stop auto-reconnect (handled by the client) and are exposed here so
+  // the UI can render the matching degraded state.
+  useEffect(() => {
+    if (!enabled || !isRealtimeAvailable()) return;
+    const subscribeErrors = client.onError;
+    if (typeof subscribeErrors !== "function") return;
+    return subscribeErrors.call(client, (error: RealtimeError) => {
+      setState((prev) => ({
+        ...prev,
+        stale: true,
+        status: error.retryable ? "reconnecting" : "degraded",
+        degraded: true,
+        error,
+      }));
+      optionsRef.current.onError?.(error);
+    });
+  }, [client, enabled]);
 
   if (!isCallbackOverload) return state;
 }
