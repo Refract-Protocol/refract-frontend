@@ -1,62 +1,50 @@
-import { env } from "@/lib/env";
-/**
- * Thin fetch wrapper for the Refract backend (see refract-backend/src/routes/*.ts
- * for the source of truth on these shapes). Defaults to a local dev server;
- * override with NEXT_PUBLIC_API_URL in production.
- *
- * The backend is not always running in this environment, so every call site
- * that uses this client is expected to catch `ApiUnreachableError` and fall
- * back to a clearly-labeled fixture — see src/lib/fixtures/.
- */
-export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
+export interface ApiErrorEnvelope {
+  code?: string;
+  message?: string;
+}
 
+/** Error thrown for non-2xx API responses, preserving the server error envelope. */
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public details?: unknown
-  ) {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string, message: string) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.code = code;
   }
 }
 
-export class ApiUnreachableError extends Error {
-  constructor(cause: unknown) {
-    super("Refract API is unreachable");
-    this.name = "ApiUnreachableError";
-    this.cause = cause;
-  }
-}
-
-interface RequestOptions {
-  method?: "GET" | "POST";
-  body?: unknown;
-  signal?: AbortSignal;
-  idempotencyKey?: string;
-}
-
-export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  let res: Response;
+async function parseErrorBody(response: Response): Promise<ApiErrorEnvelope | null> {
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
-      method: opts.method ?? "GET",
-      headers: {
-        ...(opts.body ? { "Content-Type": "application/json" } : {}),
-        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
-      },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-      signal: opts.signal,
-    });
-  } catch (err) {
-    throw new ApiUnreachableError(err);
+    const body = await response.json();
+    if (body && typeof body === "object") {
+      return body as ApiErrorEnvelope;
+    }
+    return null;
+  } catch {
+    return null;
   }
+}
 
-  const isJson = res.headers.get("content-type")?.includes("application/json");
-  const payload = isJson ? await res.json().catch(() => null) : null;
+async function toApiError(response: Response): Promise<ApiError> {
+  const envelope = await parseErrorBody(response);
+  const statusText = response.statusText || `HTTP ${response.status}`;
+  const code = envelope?.code ?? statusText;
+  const message = envelope?.message ?? statusText;
+  return new ApiError(response.status, code, message);
+}
 
-  if (!res.ok) {
-    throw new ApiError(payload?.error ?? res.statusText, res.status, payload);
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    throw await toApiError(response);
   }
-  return payload as T;
+  return response;
+}
+
+export async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(input, init);
+  return (await response.json()) as T;
 }

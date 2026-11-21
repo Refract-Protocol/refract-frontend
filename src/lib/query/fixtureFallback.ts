@@ -1,4 +1,5 @@
 import { ApiUnreachableError } from "@/lib/api/client";
+import { env } from "@/lib/env";
 
 /** What every fixture-backed read hook's query resolves to. */
 export interface FixtureResult<T> {
@@ -25,19 +26,30 @@ interface FallbackOptions<T> {
  * unreachable (or on any error / empty result, when asked to), otherwise
  * surface the error as a message. Never rejects except on cancellation, so
  * TanStack Query can still discard aborted requests.
+ *
+ * Fixture fallback is opt-in via `NEXT_PUBLIC_USE_FIXTURE_FALLBACK` and is
+ * disabled in production builds, so a broken backend is never masked by stale
+ * mock data. Whenever a fixture is substituted the original error is logged.
  */
 export async function queryFnWithFixtureFallback<T>(
   fetcher: () => Promise<T>,
   fixture: () => T,
   { signal, fallbackOnAnyError = false, isEmpty, errorMessage = "Failed to load data" }: FallbackOptions<T> = {}
 ): Promise<FixtureResult<T>> {
+  const fallbackEnabled = env.useFixtureFallback && env.isProduction === false;
+
   try {
     const data = await fetcher();
-    if (isEmpty?.(data)) return { data: fixture(), isFixture: true, error: null };
+    if (isEmpty?.(data)) {
+      if (!fallbackEnabled) return { data, isFixture: false, error: null };
+      console.error("[fixture-fallback] Empty response, substituting fixture data");
+      return { data: fixture(), isFixture: true, error: null };
+    }
     return { data, isFixture: false, error: null };
   } catch (err) {
     if (signal?.aborted) throw err;
-    if (fallbackOnAnyError || err instanceof ApiUnreachableError) {
+    if (fallbackEnabled && (fallbackOnAnyError || err instanceof ApiUnreachableError)) {
+      console.error("[fixture-fallback] Query failed, substituting fixture data:", err);
       return { data: fixture(), isFixture: true, error: null };
     }
     return { data: null, isFixture: false, error: err instanceof Error ? err.message : errorMessage };

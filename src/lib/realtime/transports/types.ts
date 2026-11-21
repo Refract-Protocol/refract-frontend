@@ -9,6 +9,10 @@ export interface TransportCloseInfo {
   auth?: boolean;
   /** The server does not offer this transport at all (e.g. 404); try the next tier. */
   unsupported?: boolean;
+  /** The server is rate limiting us (HTTP 429); back off harder before retrying. */
+  rateLimited?: boolean;
+  /** Milliseconds the server asked us to wait (from `Retry-After`), when provided. */
+  retryAfterMs?: number;
 }
 
 export interface TransportCallbacks {
