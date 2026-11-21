@@ -56,6 +56,7 @@ export const envSchema = z.object({
   NEXT_PUBLIC_POLICY_CONTRACT_ID: optional(CONTRACT_ID),
   NEXT_PUBLIC_FLAGS_OVERRIDE: optional(flagsOverride),
   NEXT_PUBLIC_ENABLE_UI_GALLERY: optional(z.enum(["true", "false"])),
+  NEXT_PUBLIC_USE_FIXTURE_FALLBACK: optional(z.enum(["true", "false"])),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -84,4 +85,12 @@ export const env = parseEnv({
   NEXT_PUBLIC_POLICY_CONTRACT_ID: process.env.NEXT_PUBLIC_POLICY_CONTRACT_ID,
   NEXT_PUBLIC_FLAGS_OVERRIDE: process.env.NEXT_PUBLIC_FLAGS_OVERRIDE,
   NEXT_PUBLIC_ENABLE_UI_GALLERY: process.env.NEXT_PUBLIC_ENABLE_UI_GALLERY,
+  NEXT_PUBLIC_USE_FIXTURE_FALLBACK: process.env.NEXT_PUBLIC_USE_FIXTURE_FALLBACK,
 });
+
+/**
+ * Whether fixture fallback is enabled. Opt-in only: defaults to `false` and is
+ * always disabled in production builds so a broken backend is never masked.
+ */
+export const useFixtureFallback: boolean =
+  process.env.NODE_ENV !== "production" && env.NEXT_PUBLIC_USE_FIXTURE_FALLBACK === "true";
