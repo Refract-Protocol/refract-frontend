@@ -3,6 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { TransactionTray } from "@/components/TransactionTray";
 import { PendingTxResolver } from "@/lib/wallet/PendingTxResolver";
+import { RealtimeBootstrap } from "@/lib/realtime/RealtimeBootstrap";
 
 export const metadata: Metadata = {
   title: {
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <Providers>
           <PendingTxResolver />
+          <RealtimeBootstrap />
           {children}
           <TransactionTray />
         </Providers>

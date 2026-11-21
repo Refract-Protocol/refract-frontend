@@ -1,102 +1,124 @@
 #!/usr/bin/env tsx
 /**
- * Informational audit of the Next.js App Router client/server boundary.
+ * Client/server boundary audit.
  *
- * Lists every `"use client"` file under src/app and src/components, flags
- * which top-level page/layout boundaries are client components, and estimates
- * how much of each file is genuinely interactive (hooks, event handlers,
- * browser APIs). A client file with zero such signals is a candidate to become
- * a server component. A heavily interactive page being fully client-rendered
- * is usually correct — the report says so rather than implying a problem.
+ * Ensures that modules which touch browser-only globals (window, document,
+ * WebSocket, EventSource, sessionStorage, localStorage) are marked with the
+ * `"use client"` directive so they are never evaluated during SSR or static
+ * generation in the Next.js App Router.
  *
- * Usage: tsx scripts/audit-client-boundaries.ts [--out report.md]
- * Always exits 0; this is visibility, not a gate.
+ * Realtime modules (issue #227) must additionally never touch those globals at
+ * import time; they must defer access to effects / client-only entry points.
  */
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-export interface FileAudit {
+const ROOT = process.cwd();
+const SRC = join(ROOT, "src");
+
+const BROWSER_GLOBALS = [
+  "window",
+  "document",
+  "WebSocket",
+  "EventSource",
+  "sessionStorage",
+  "localStorage",
+  "navigator",
+];
+
+const REALTIME_PATHS = ["src/lib/realtime", "src/hooks/useRealtimeTopic"];
+
+interface Violation {
   file: string;
-  lines: number;
-  signals: number;
-  /** Share of non-blank lines carrying an interactivity signal (a rough lower bound). */
-  interactiveShare: number;
-  topLevel: boolean;
-  verdict: "interactive" | "candidate-for-server";
+  reason: string;
 }
 
-const SIGNAL =
-  /\buse[A-Z]\w*\s*\(|\bon[A-Z]\w*\s*=\s*\{|\b(window|document|localStorage|sessionStorage|navigator)\b/;
-const TOP_LEVEL = /(^|\/)(page|layout)\.tsx$/;
-
-/** True when the first statement of the file is a "use client" directive (comments allowed before it). */
-export function hasUseClient(source: string): boolean {
-  const stripped = source.replace(/^\s*(\/\*[\s\S]*?\*\/|\/\/[^\n]*\n|\s)*/, "");
-  return /^(["'])use client\1/.test(stripped);
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      walk(full, out);
+    } else if (/\.(ts|tsx)$/.test(entry)) {
+      out.push(full);
+    }
+  }
+  return out;
 }
 
-export function auditSource(file: string, source: string): FileAudit | null {
-  if (!hasUseClient(source)) return null;
-  const nonBlank = source.split("\n").filter((l) => l.trim() !== "");
-  const signals = nonBlank.filter((l) => SIGNAL.test(l)).length;
-  return {
-    file,
-    lines: nonBlank.length,
-    signals,
-    interactiveShare: nonBlank.length ? signals / nonBlank.length : 0,
-    topLevel: TOP_LEVEL.test(file),
-    verdict: signals > 0 ? "interactive" : "candidate-for-server",
-  };
+function hasUseClientDirective(source: string): boolean {
+  // The directive must be the first statement (allow leading comments/whitespace).
+  const stripped = source.replace(/^\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/, "");
+  return /^["']use client["'];?/.test(stripped);
 }
 
-export function listSourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) return listSourceFiles(full);
-    return /\.tsx$/.test(name) && !/\.test\.tsx$/.test(name) ? [full] : [];
-  });
+function referencesBrowserGlobal(source: string): boolean {
+  return BROWSER_GLOBALS.some((name) =>
+    new RegExp(`(^|[^\\w.$])${name}([^\\w$]|$)`).test(source),
+  );
 }
 
-export function renderReport(audits: FileAudit[]): string {
-  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
-  const row = (a: FileAudit) =>
-    `| \`${a.file}\` | ${a.lines} | ${a.signals} | ${pct(a.interactiveShare)} | ${a.verdict} |`;
-  const header =
-    "| File | Lines | Interactive lines | Share | Verdict |\n| --- | ---: | ---: | ---: | --- |";
-  const top = audits.filter((a) => a.topLevel);
-  const candidates = audits.filter((a) => a.verdict === "candidate-for-server");
-  return [
-    "# Client boundary audit",
-    "",
-    `${audits.length} client files; ${top.length} are top-level page/layout boundaries; ${candidates.length} show no interactivity signals.`,
-    "",
-    "## Top-level page/layout boundaries",
-    top.length ? `${header}\n${top.map(row).join("\n")}` : "None.",
-    "",
-    "## Client files with no interactivity signals (candidates for server components)",
-    candidates.length
-      ? `${header}\n${candidates.map(row).join("\n")}`
-      : "None — every client file uses hooks, handlers or browser APIs.",
-    "",
-    "## All client files",
-    `${header}\n${audits.map(row).join("\n")}`,
-    "",
-    "_Heuristic: hooks, `onX={…}` handlers and window/document/storage access count as interactive. A fully client-rendered page that is heavily interactive is expected, not a defect._",
-    "",
-  ].join("\n");
+function isRealtimeModule(file: string): boolean {
+  const rel = relative(ROOT, file).replace(/\\/g, "/");
+  return REALTIME_PATHS.some((p) => rel === p || rel.startsWith(`${p}/`) || rel.startsWith(`${p}.`));
 }
 
-export function runAudit(root = process.cwd()): FileAudit[] {
-  return ["src/app", "src/components"]
-    .flatMap((d) => listSourceFiles(join(root, d)))
-    .map((f) => auditSource(relative(root, f), readFileSync(f, "utf8")))
-    .filter((a): a is FileAudit => a !== null)
-    .sort((a, b) => a.file.localeCompare(b.file));
+function main(): void {
+  const violations: Violation[] = [];
+
+  let files: string[] = [];
+  try {
+    files = walk(SRC);
+  } catch {
+    console.error(`[audit-client-boundaries] unable to read ${SRC}`);
+    process.exit(1);
+  }
+
+  for (const file of files) {
+    const source = readFileSync(file, "utf8");
+    const rel = relative(ROOT, file).replace(/\\/g, "/");
+
+    if (!referencesBrowserGlobal(source)) continue;
+
+    if (!hasUseClientDirective(source)) {
+      violations.push({
+        file: rel,
+        reason: "references browser globals but is missing the \"use client\" directive",
+      });
+    }
+
+    if (isRealtimeModule(file)) {
+      // Realtime modules must not touch browser globals at module scope.
+      // A `"use client"` directive is required, and any direct global access
+      // must be guarded (e.g. `typeof window !== "undefined"`) or deferred
+      // into effects. We flag unguarded top-level references here.
+      const unguarded = BROWSER_GLOBALS.some((name) => {
+        const guarded = new RegExp(
+          `typeof\\s+${name}\\s*!==?\\s*["']undefined["']`,
+        ).test(source);
+        return !guarded && new RegExp(`(^|[^\\w.$])${name}([^\\w$]|$)`).test(source);
+      });
+      if (unguarded) {
+        violations.push({
+          file: rel,
+          reason:
+            "realtime module accesses browser globals without an SSR-safe guard (typeof window !== \"undefined\")",
+        });
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    console.error("[audit-client-boundaries] boundary violations found:");
+    for (const v of violations) {
+      console.error(`  - ${v.file}: ${v.reason}`);
+    }
+    process.exit(1);
+  }
+
+  console.log(
+    `[audit-client-boundaries] OK — checked ${files.length} files, no boundary violations.`,
+  );
 }
 
-if (process.argv[1]?.endsWith("audit-client-boundaries.ts")) {
-  const report = renderReport(runAudit());
-  const out = process.argv.indexOf("--out");
-  if (out !== -1 && process.argv[out + 1]) writeFileSync(process.argv[out + 1], report);
-  console.log(report);
-}
+main();
