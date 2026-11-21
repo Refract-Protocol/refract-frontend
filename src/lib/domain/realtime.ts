@@ -27,3 +27,14 @@ export interface NotificationEvent {
   /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
+
+/**
+ * Realtime policy event. Carries the affected policy id so consumers can patch
+ * the cached list in place instead of invalidating and refetching it.
+ */
+export interface PolicyRealtimeEvent {
+  type: "policy_update";
+  policyId: string;
+  /** Partial policy fields to merge into the cached entry. */
+  changes?: Record<string, unknown>;
+}
