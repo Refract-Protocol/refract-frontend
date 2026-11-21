@@ -1,12 +1,18 @@
 // Fails if regenerating src/lib/api/generated/schema.d.ts from the OpenAPI
 // spec would change the committed file. Run via `npm run api:check-drift`.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SPEC = "openapi/refract-api.yaml";
 const COMMITTED = "src/lib/api/generated/schema.d.ts";
+
+if (!existsSync(SPEC)) {
+  console.error(`Missing OpenAPI spec: expected ${SPEC} but the file was not found.\nRestore the spec (or check your working directory) and re-run \`npm run api:check-drift\`.`);
+  process.exit(1);
+}
+
 const fresh = join(mkdtempSync(join(tmpdir(), "api-drift-")), "schema.d.ts");
 
 execFileSync("npx", ["openapi-typescript", SPEC, "-o", fresh], { stdio: "ignore" });
