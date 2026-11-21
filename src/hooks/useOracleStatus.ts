@@ -1,85 +1,51 @@
-"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePolling } from "./usePolling";
+import { useDocumentVisibility } from "./useDocumentVisibility";
+import { fetchOracleStatus, type OracleStatus } from "../lib/api/oracle";
 
-import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchOracleStatus, type OracleReading } from "@/lib/api/oracle";
-import { FIXTURE_ORACLE_READINGS } from "@/lib/fixtures/oracle";
-import { queryFnWithFixtureFallback, type FixtureResult } from "@/lib/query/fixtureFallback";
-import { useAdaptivePolling } from "./useAdaptivePolling";
-import { useRealtimeTopic } from "./useRealtimeTopic";
+const ORACLE_STATUS_POLL_INTERVAL_MS = 30_000;
 
-export interface OracleStatusState {
-  data: OracleReading[] | null;
-  loading: boolean;
-  isFixture: boolean;
-  /** When the readings were last refreshed, or null before the first load. */
-  lastUpdated: Date | null;
-  /** True while a manual or background refresh is in flight after the first load. */
-  isRefreshing: boolean;
+export interface UseOracleStatusResult {
+  status: OracleStatus | null;
+  isLoading: boolean;
+  error: Error | null;
   refresh: () => Promise<void>;
 }
 
-const QUERY_KEY = ["oracleStatus"] as const;
-
-/** Replaces the reading for the same coverage type, or appends a new one. */
-export function mergeOracleReading(
-  readings: OracleReading[],
-  next: OracleReading
-): OracleReading[] {
-  const index = readings.findIndex((r) => r.coverageType === next.coverageType);
-  if (index === -1) return [...readings, next];
-  const copy = readings.slice();
-  copy[index] = next;
-  return copy;
-}
-
 /**
- * Loads live oracle readings from GET /api/v1/oracle/status, merges
- * `oracle_update` realtime frames into the same cache entry, and polls at a
- * cadence set by realtime health (critical tier). This card is purely
- * informational, so any REST failure falls back to the labeled fixture.
+ * Polls the oracle status endpoint on a fixed interval, but pauses while the
+ * document is hidden so we don't waste requests when the user isn't looking.
+ * Polling resumes immediately when the tab becomes visible again.
  */
-export function useOracleStatus(): OracleStatusState {
-  const queryClient = useQueryClient();
-  const refetchInterval = useAdaptivePolling({
-    topic: "oracle_update",
-    tier: "critical",
-    queryKey: QUERY_KEY,
-  });
+export function useOracleStatus(): UseOracleStatusResult {
+  const [status, setStatus] = useState<OracleStatus | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const isMountedRef = useRef(true);
+  const visible = useDocumentVisibility();
 
-  const {
-    data: result,
-    isLoading,
-    isRefetching,
-    dataUpdatedAt,
-    refetch,
-  } = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: ({ signal }) =>
-      queryFnWithFixtureFallback(
-        async () => (await fetchOracleStatus(signal)).readings,
-        () => FIXTURE_ORACLE_READINGS,
-        { signal, fallbackOnAnyError: true }
-      ),
-    refetchInterval,
-  });
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  useRealtimeTopic("oracle_update", (reading) => {
-    queryClient.setQueryData<FixtureResult<OracleReading[]>>(QUERY_KEY, (prev) =>
-      prev?.data ? { ...prev, data: mergeOracleReading(prev.data, reading) } : prev
-    );
-  });
+  const load = useCallback(async () => {
+    try {
+      const next = await fetchOracleStatus();
+      if (!isMountedRef.current) return;
+      setStatus(next);
+      setError(null);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, []);
 
-  const refresh = useCallback(async () => {
-    await refetch();
-  }, [refetch]);
+  usePolling(load, ORACLE_STATUS_POLL_INTERVAL_MS, { enabled: visible });
 
-  return {
-    data: result?.data ?? null,
-    loading: isLoading,
-    isFixture: result?.isFixture ?? false,
-    lastUpdated: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
-    isRefreshing: isRefetching,
-    refresh,
-  };
+  return { status, isLoading, error, refresh: load };
 }
