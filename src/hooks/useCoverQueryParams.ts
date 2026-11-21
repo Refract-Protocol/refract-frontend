@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   parseCoverQueryParams,
   serializeCoverQueryParams,
+  COVER_QUERY_KEYS,
   type CoverQueryParams,
   type ParseQueryParamsOptions,
 } from "@/lib/coverQueryParams";
@@ -23,6 +24,29 @@ export function useCoverQueryParams(
   const getInitialParams = useCallback(() => {
     return parseCoverQueryParams(searchParams, options);
   }, [searchParams, options]);
+
+  // In development, surface unknown query keys so deep-link typos are visible.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") {
+      return;
+    }
+
+    const knownKeys = new Set<string>(COVER_QUERY_KEYS);
+    const unknownKeys: string[] = [];
+    searchParams.forEach((_value, key) => {
+      if (!knownKeys.has(key)) {
+        unknownKeys.push(key);
+      }
+    });
+
+    if (unknownKeys.length > 0) {
+      console.warn(
+        `[useCoverQueryParams] Ignoring unknown cover query key(s): ${unknownKeys.join(
+          ", "
+        )}`
+      );
+    }
+  }, [searchParams]);
 
   // Sync state to URL with debouncing (router.replace)
   useEffect(() => {
