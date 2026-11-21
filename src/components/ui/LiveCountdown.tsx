@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useCountdown, DEFAULT_TICK_MS } from "@/hooks/useCountdown";
 import { formatDuration, formatFullDateTime } from "@/lib/format";
 
@@ -12,6 +13,8 @@ interface LiveCountdownProps {
   expiredLabel?: string;
   /** Opt in to polite screen-reader announcements on each tick; off by default to avoid constant interruption. */
   announce?: boolean;
+  /** Fired exactly once when the countdown reaches zero. */
+  onComplete?: () => void;
   className?: string;
 }
 
@@ -25,10 +28,18 @@ export function LiveCountdown({
   tickIntervalMs = DEFAULT_TICK_MS,
   expiredLabel = "Expired",
   announce = false,
+  onComplete,
   className,
 }: LiveCountdownProps) {
-  const { remainingMs, expired } = useCountdown(target, tickIntervalMs);
+  const { remainingMs, expired, hasElapsed } = useCountdown(target, tickIntervalMs);
   const full = formatFullDateTime(target);
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasElapsed || firedRef.current) return;
+    firedRef.current = true;
+    onComplete?.();
+  }, [hasElapsed, onComplete]);
 
   return (
     <time

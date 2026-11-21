@@ -1,47 +1,53 @@
-/**
- * Small client-side fuzzy matcher shared by search UIs. Scores a query against
- * a string: an exact substring match anywhere (not just a prefix) ranks highest,
- * earlier/word-start matches rank above later ones, and otherwise the query's
- * characters must appear in order (subsequence), with tighter matches scoring
- * higher. Returns 0 for no match.
- */
-export function fuzzyScore(query: string, target: string): number {
-  const q = query.trim().toLowerCase();
-  const t = target.toLowerCase();
-  if (!q) return 0;
-
-  const idx = t.indexOf(q);
-  if (idx !== -1) {
-    const wordStart = idx === 0 || /[\s\-_./]/.test(t[idx - 1] ?? "");
-    return 1000 - idx + (wordStart ? 200 : 0) + (q.length === t.length ? 500 : 0);
-  }
-
-  let ti = 0;
-  let gaps = 0;
-  let last = -1;
-  for (const ch of q) {
-    if (ch === " ") continue;
-    const found = t.indexOf(ch, ti);
-    if (found === -1) return 0;
-    if (last !== -1) gaps += found - last - 1;
-    last = found;
-    ti = found + 1;
-  }
-  return Math.max(1, 500 - gaps * 10 - (t.length - q.length));
+export interface FuzzyMatch<T> {
+  item: T;
+  score: number;
+  matches: number[];
 }
 
-/** Filters and ranks items by the best fuzzy score across their searchable fields. */
+/**
+ * Escape regex metacharacters so a raw user query can be safely embedded in a
+ * RegExp pattern. Without this, queries like `(` or `[` throw a SyntaxError.
+ */
+export function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildPattern(query: string): RegExp {
+  const escaped = escapeRegExp(query);
+  // Match each character of the query in order, allowing gaps between them.
+  const chars = escaped.split("").join(".*?");
+  return new RegExp(chars, "i");
+}
+
 export function fuzzySearch<T>(
-  items: readonly T[],
+  items: T[],
   query: string,
-  fields: (item: T) => string[],
-  limit = 5
-): T[] {
-  if (!query.trim()) return [];
-  return items
-    .map((item) => ({ item, score: Math.max(0, ...fields(item).map((f) => fuzzyScore(query, f))) }))
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((r) => r.item);
+  getText: (item: T) => string,
+): FuzzyMatch<T>[] {
+  const trimmed = query.trim();
+
+  if (trimmed.length === 0) {
+    return items.map((item) => ({ item, score: 0, matches: [] }));
+  }
+
+  const pattern = buildPattern(trimmed);
+  const results: FuzzyMatch<T>[] = [];
+
+  for (const item of items) {
+    const text = getText(item);
+    const match = pattern.exec(text);
+    if (!match) continue;
+
+    const matches: number[] = [];
+    for (let i = 0; i < match[0].length; i++) {
+      matches.push(match.index + i);
+    }
+
+    // Shorter matches and earlier positions rank higher.
+    const score = match[0].length + match.index;
+    results.push({ item, score, matches });
+  }
+
+  results.sort((a, b) => a.score - b.score);
+  return results;
 }

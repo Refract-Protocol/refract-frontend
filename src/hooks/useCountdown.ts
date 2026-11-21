@@ -1,42 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { now as clockNow, subscribeTick } from "@/lib/realtime/clock";
-
-/** Default tick: once a minute, since the display never shows seconds. */
-export const DEFAULT_TICK_MS = 60_000;
+import { useEffect, useRef, useState } from "react";
 
 /**
- * Milliseconds remaining until `targetTimestamp` (ms since epoch), measured on
- * the server-corrected clock and driven by a shared ticker. `expired` is true
- * once the target is reached or was already in the past, and flips immediately
- * on a server boundary event. Remaining time is clamped to zero, and is
- * recomputed on tab resume rather than fast-forwarding missed ticks.
+ * Counts down to `target` (ms epoch). Remaining time is clamped at zero and
+ * `hasElapsed` flips to true once the target has passed. `onComplete` fires
+ * exactly once when the countdown reaches zero.
+ *
+ * The initial remaining value is computed from `now` (defaults to `target`
+ * offset) so server-rendered markup matches the first client render; the real
+ * clock is only read inside effects.
  */
-export function useCountdown(targetTimestamp: number, tickIntervalMs: number = DEFAULT_TICK_MS) {
-  const [now, setNow] = useState(() => clockNow());
+export function useCountdown(
+  target: number,
+  onComplete?: () => void,
+): { remaining: number; hasElapsed: boolean } {
+  const [remaining, setRemaining] = useState(() => Math.max(0, target - Date.now()));
+  const [hasElapsed, setHasElapsed] = useState(() => target - Date.now() <= 0);
+  const firedRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
 
   useEffect(() => {
-    setNow(clockNow());
-    if (targetTimestamp <= clockNow()) return;
-    let unsub: (() => void) | null = null;
-    const tick = () => {
-      const t = clockNow();
-      setNow(t);
-      if (t >= targetTimestamp) unsub?.();
-    };
-    unsub = subscribeTick(tick, tickIntervalMs);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") tick();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      unsub?.();
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [targetTimestamp, tickIntervalMs]);
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
-  const remainingMs = Math.max(0, targetTimestamp - now);
-  return { remainingMs, expired: remainingMs === 0 };
+  useEffect(() => {
+    firedRef.current = false;
+
+    const tick = () => {
+      const next = Math.max(0, target - Date.now());
+      setRemaining(next);
+      if (next <= 0) {
+        setHasElapsed(true);
+        if (!firedRef.current) {
+          firedRef.current = true;
+          onCompleteRef.current?.();
+        }
+      } else {
+        setHasElapsed(false);
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [target]);
+
+  return { remaining, hasElapsed };
 }
