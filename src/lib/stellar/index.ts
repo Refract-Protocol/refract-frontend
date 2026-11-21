@@ -1,6 +1,24 @@
-import { ACTIVE_NETWORK } from "@/lib/network";
+import { StrKey } from '@stellar/stellar-sdk';
 
-/** Explorer link for a transaction on the active network (see src/lib/network.ts). */
-export function stellarExpertTxUrl(txHash: string): string {
-  return `${ACTIVE_NETWORK.explorerBaseUrl}/tx/${txHash}`;
+/**
+ * Returns true when `value` is a well-formed Stellar public key (StrKey).
+ *
+ * This performs a full StrKey decode: base32 decoding plus CRC16 checksum
+ * verification, so a typo'd address with a valid-looking prefix is rejected.
+ */
+export function isValidStellarAddress(value: string): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  try {
+    return StrKey.isValidEd25519PublicKey(trimmed);
+  } catch {
+    return false;
+  }
 }
