@@ -1,26 +1,29 @@
-export interface FlagsDocument {
-  flags: Record<string, boolean>;
-}
+// Feature flag configuration.
+//
+// Unknown-key contract: looking up a flag name that is not defined here
+// throws in development (so typos surface immediately) and returns `false`
+// in production (so a bad flag name never breaks the app).
+// `useFeatureFlag` follows the same contract.
 
-/** Safe default if the remote flags source is unreachable — new/risky features default off. */
-export const DEFAULT_FLAGS: Record<string, boolean> = {
-  /** Realtime WebSocket connection (src/lib/realtime). Off until the backend ships /ws. */
-  realtime: false,
-  /** Legacy alias for `realtime`, kept so existing flag documents still work. */
-  "realtime-oracle": false,
-  "realtime-soroban-events": false,
+export type FlagName =
+  | "newDashboard"
+  | "betaEditor"
+  | "experimentalSearch";
+
+export const flagsConfig: Record<FlagName, boolean> = {
+  newDashboard: false,
+  betaEditor: false,
+  experimentalSearch: false,
 };
 
-export const FLAGS_ENDPOINT = "/flags.json";
-export const FLAGS_CACHE_TTL_MS = 5 * 60 * 1000;
+const isDev = process.env.NODE_ENV !== "production";
 
-/** Reads a local override, e.g. NEXT_PUBLIC_FLAGS_OVERRIDE='{"realtime-oracle":true}'. */
-export function readLocalOverride(): Record<string, boolean> | null {
-  const raw = process.env.NEXT_PUBLIC_FLAGS_OVERRIDE;
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Record<string, boolean>;
-  } catch {
-    return null;
+export function isFlagEnabled(name: string): boolean {
+  if (!Object.prototype.hasOwnProperty.call(flagsConfig, name)) {
+    if (isDev) {
+      throw new Error(`Unknown feature flag: "${name}"`);
+    }
+    return false;
   }
+  return flagsConfig[name as FlagName];
 }
