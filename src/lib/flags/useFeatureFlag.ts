@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { sanitizeFlags } from "../realtime/flags";
-import { DEFAULT_FLAGS, FLAGS_CACHE_TTL_MS, FLAGS_ENDPOINT, readLocalOverride, type FlagsDocument } from "./flagsConfig";
+import { DEFAULT_FLAGS, FLAGS_CACHE_TTL_MS, FLAGS_ENDPOINT, readLocalOverride, resolveFlag, type FlagsDocument } from "./flagsConfig";
 
 let cache: { flags: Record<string, boolean>; fetchedAt: number } | null = null;
 let inflight: Promise<Record<string, boolean>> | null = null;
@@ -33,14 +33,17 @@ async function loadFlags(): Promise<Record<string, boolean>> {
  * Resolves a feature flag from a session-cached remote JSON document, with a
  * safe (off) default if the source is unreachable, and a local override for
  * development via NEXT_PUBLIC_FLAGS_OVERRIDE.
+ *
+ * Unknown flag names follow the shared contract in `flagsConfig.ts`: throw in
+ * development, return `false` in production.
  */
 export function useFeatureFlag(key: string): boolean {
-  const [enabled, setEnabled] = useState(() => cache?.flags[key] ?? DEFAULT_FLAGS[key] ?? false);
+  const [enabled, setEnabled] = useState(() => resolveFlag(cache?.flags, key));
 
   useEffect(() => {
     let cancelled = false;
     loadFlags().then((flags) => {
-      if (!cancelled) setEnabled(flags[key] ?? false);
+      if (!cancelled) setEnabled(resolveFlag(flags, key));
     });
     return () => {
       cancelled = true;

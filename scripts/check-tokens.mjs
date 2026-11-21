@@ -14,7 +14,7 @@
  *
  * @returns {void}
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -83,7 +83,32 @@ function referencedVar(value) {
   return match ? match[1] : null;
 }
 
+/**
+ * Fail with an actionable message when a required input file is missing, so a
+ * fresh clone does not surface a confusing ENOENT.
+ *
+ * @param {string} path
+ * @param {string} hint
+ * @returns {void}
+ */
+function requireFile(path, hint) {
+  if (!existsSync(path)) {
+    console.error(`tokens:check cannot find required input: ${path}`);
+    console.error(hint);
+    process.exit(1);
+  }
+}
+
 function main() {
+  requireFile(
+    CSS_PATH,
+    "This file is part of the source tree; make sure you are running the check from the repository root.",
+  );
+  requireFile(
+    TAILWIND_PATH,
+    "This file is part of the source tree; make sure you are running the check from the repository root.",
+  );
+
   const css = readFileSync(CSS_PATH, "utf8");
   const config = readFileSync(TAILWIND_PATH, "utf8");
 

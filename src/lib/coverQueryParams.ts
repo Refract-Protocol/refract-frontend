@@ -5,6 +5,10 @@ export interface CoverQueryParams {
   flight?: string;
 }
 
+export const COVER_QUERY_KEYS = ["type", "amount", "duration", "flight"] as const;
+
+export type CoverQueryKey = (typeof COVER_QUERY_KEYS)[number];
+
 export interface ParseQueryParamsOptions {
   validTypeIds?: number[];
   minAmount?: number;
@@ -60,6 +64,19 @@ export function parseCoverQueryParams(
   }
 
   return result;
+}
+
+export function getUnknownCoverQueryKeys(
+  searchParams: { keys: () => Iterable<string> } | URLSearchParams
+): string[] {
+  const known = new Set<string>(COVER_QUERY_KEYS);
+  const unknown: string[] = [];
+  for (const key of searchParams.keys()) {
+    if (!known.has(key) && !unknown.includes(key)) {
+      unknown.push(key);
+    }
+  }
+  return unknown;
 }
 
 export function serializeCoverQueryParams(params: CoverQueryParams): string {
