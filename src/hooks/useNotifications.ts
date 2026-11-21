@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { realtimeClient } from "@/lib/realtime/client";
 import { mergeNotifications } from "@/lib/notificationGroups";
 import { useWallet } from "@/lib/wallet/WalletProvider";
@@ -17,7 +17,7 @@ export function useNotifications() {
   const wallet = useWallet();
   const address = wallet.status === "connected" ? wallet.address : null;
 
-  const { data: policies } = useHolderPolicies(address);
+  const { data: policies, isLoading: policiesLoading, isError: policiesError, refetch: refetchPolicies } = useHolderPolicies(address);
   const claims = useClaims(address, policies);
   const { lockupExpiresAt } = useLockupStatus(address);
   const { data: oracleReadings } = useOracleStatus();
@@ -110,9 +110,16 @@ export function useNotifications() {
     saveReadIds(updated);
   };
 
+  const refetch = useCallback(() => {
+    refetchPolicies();
+  }, [refetchPolicies]);
+
   return {
     notifications,
     unreadCount,
+    isLoading: policiesLoading,
+    isError: policiesError,
+    refetch,
     markAsRead,
     markAllAsRead,
   };

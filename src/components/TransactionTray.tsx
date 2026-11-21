@@ -19,6 +19,15 @@ const STATUS_CLASS: Record<TransactionEntry["status"], string> = {
   signing: "text-pm-violet",
   confirmed: "text-pm-green",
   failed: "text-pm-red",
+  cancelled: "text-pm-text/50",
+};
+
+const STATUS_LABEL: Record<TransactionEntry["status"], string> = {
+  pending: "pending",
+  signing: "signing",
+  confirmed: "confirmed",
+  failed: "failed",
+  cancelled: "cancelled",
 };
 
 /** Corner widget listing this session's most recent transactions across every page. */
@@ -63,7 +72,7 @@ export function TransactionTray() {
                 </div>
               </div>
               <span className={`shrink-0 capitalize ${STATUS_CLASS[t.status]}`} title={t.error}>
-                {t.status}
+                {STATUS_LABEL[t.status]}
               </span>
             </li>
           ))}

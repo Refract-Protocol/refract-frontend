@@ -1,29 +1,39 @@
-"use client";
+import { useRealtimeHealth } from '@/hooks/useRealtimeHealth';
 
-import { ACTIVE_NETWORK } from "@/lib/network";
-import { useNetworkHealth } from "@/hooks/useNetworkHealth";
+const HEALTH_STYLES: Record<string, { dot: string; label: string }> = {
+  connecting: {
+    dot: 'bg-gray-400',
+    label: 'Connecting',
+  },
+  healthy: {
+    dot: 'bg-green-500',
+    label: 'Connected',
+  },
+  degraded: {
+    dot: 'bg-yellow-500',
+    label: 'Degraded',
+  },
+  offline: {
+    dot: 'bg-red-500',
+    label: 'Offline',
+  },
+};
 
-const LABEL = { healthy: "Healthy", degraded: "Degraded", unavailable: "Unavailable" } as const;
-const COLOR = {
-  healthy: "bg-green-500",
-  degraded: "bg-yellow-500",
-  unavailable: "bg-red-500",
-} as const;
-
-/** Navbar network badge with a live health state; text label, not colour alone. */
 export function NetworkBadge() {
-  const { health, ledgerAgeSec } = useNetworkHealth();
-  const age = ledgerAgeSec === undefined ? "unknown" : `${Math.round(ledgerAgeSec)}s ago`;
+  const health = useRealtimeHealth();
+  const style = HEALTH_STYLES[health] ?? HEALTH_STYLES.connecting;
+
   return (
-    <a
-      href={ACTIVE_NETWORK.explorerBaseUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={`${ACTIVE_NETWORK.label}: ${LABEL[health]} — last ledger closed ${age}`}
-      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+    <div
+      className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700"
+      role="status"
+      aria-live="polite"
     >
-      <span aria-hidden className={`h-2 w-2 rounded-full ${COLOR[health]}`} />
-      {ACTIVE_NETWORK.badge} · {LABEL[health]}
-    </a>
+      <span
+        className={`h-2 w-2 rounded-full ${style.dot}`}
+        aria-hidden="true"
+      />
+      <span>{style.label}</span>
+    </div>
   );
 }
