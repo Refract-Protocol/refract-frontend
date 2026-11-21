@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Production-bundle assertions for the realtime layer (issue #248).
+ * Production-bundle assertions for the realtime layer (issue #248, #484).
  * Run after `next build`; exits non-zero on any violation.
  *
  *  1. Dev/test tooling (src/lib/realtime/dev) never ships: no file under
@@ -8,6 +8,9 @@
  *  2. The realtime client is lazy: it lives in the `realtime` chunk and in
  *     no chunk a route loads up front (per .next/app-build-manifest.json and
  *     .next/build-manifest.json).
+ *  3. Transports are tree-shaken: each transport implementation lives in its
+ *     own lazily-loaded chunk, and no single chunk bundles more than one
+ *     transport (issue #484).
  *
  * Usage: node scripts/check-realtime-bundle.mjs [nextDir]
  */
@@ -21,6 +24,16 @@ const STATIC_DIR = join(NEXT_DIR, "static");
 const DEV_ONLY_MARKER = "__REFRACT_REALTIME_DEV_ONLY__";
 /** A property name that only src/lib/realtime/client.ts contains (minifiers keep it). */
 const CLIENT_MARKER = "clientNoContextTakeover";
+/**
+ * Per-transport markers. Each transport module must contain a unique string
+ * literal so we can detect which chunk(s) it landed in. Keep these in sync
+ * with src/lib/realtime/transports/*.ts.
+ */
+const TRANSPORT_MARKERS = {
+  websocket: "__REFRACT_TRANSPORT_WEBSOCKET__",
+  sse: "__REFRACT_TRANSPORT_SSE__",
+  "long-poll": "__REFRACT_TRANSPORT_LONG_POLL__",
+};
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -71,12 +84,44 @@ for (const file of eager) {
   if (code?.includes(CLIENT_MARKER)) failures.push(`realtime client is in an eagerly loaded chunk: ${file}`);
 }
 
+// 3. Transports must be tree-shaken into separate lazy chunks.
+const transportChunks = new Map();
+for (const [name, marker] of Object.entries(TRANSPORT_MARKERS)) {
+  const chunks = [...contents].filter(([, code]) => code.includes(marker)).map(([f]) => f);
+  transportChunks.set(name, chunks);
+  if (chunks.length === 0) {
+    // Transport may legitimately be absent if the build never referenced it.
+    continue;
+  }
+  for (const chunk of chunks) {
+    if (eager.has(relative(NEXT_DIR, chunk))) {
+      failures.push(`transport \`${name}\` is in an eagerly loaded chunk: ${relative(NEXT_DIR, chunk)}`);
+    }
+  }
+}
+
+// No single chunk may bundle more than one transport implementation.
+for (const [file, code] of contents) {
+  const bundled = Object.entries(TRANSPORT_MARKERS)
+    .filter(([, marker]) => code.includes(marker))
+    .map(([name]) => name);
+  if (bundled.length > 1) {
+    failures.push(
+      `chunk ${relative(NEXT_DIR, file)} bundles multiple transports (${bundled.join(", ")}); ` +
+        "load transports via dynamic import() so unused ones are tree-shaken.",
+    );
+  }
+}
+
 if (failures.length) {
   console.error("✗ realtime bundle check failed:");
   failures.forEach((f) => console.error(`  - ${f}`));
   process.exit(1);
 }
+const transportSummary = [...transportChunks]
+  .map(([name, chunks]) => `${name}:${chunks.length}`)
+  .join(", ");
 console.log(
   `✓ realtime bundle check passed (${realtimeChunks.map((f) => relative(NEXT_DIR, f)).join(", ") || "no realtime chunk"}; ` +
-    `${eager.size} eager files scanned, no dev-only code shipped)`,
+    `transports split [${transportSummary}]; ${eager.size} eager files scanned, no dev-only code shipped)`,
 );

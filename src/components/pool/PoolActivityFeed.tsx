@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, RelativeDate } from "@/components/ui";
 import { usePoolActivity } from "@/hooks/usePoolActivity";
 import type { RealtimeStatus } from "@/lib/realtime/client";
@@ -16,7 +17,7 @@ const STATUS_COPY: Partial<Record<RealtimeStatus, string>> = {
   offline: "Offline — activity may be out of date",
 };
 
-export function PoolActivityFeed() {
+function PoolActivityFeedComponent() {
   const { feed, presence, status } = usePoolActivity();
   const notice = STATUS_COPY[status];
 
@@ -55,3 +56,5 @@ export function PoolActivityFeed() {
     </Card>
   );
 }
+
+export const PoolActivityFeed = memo(PoolActivityFeedComponent);
