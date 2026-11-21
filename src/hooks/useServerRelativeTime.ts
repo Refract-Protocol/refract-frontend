@@ -7,6 +7,12 @@ import {
 import { formatRelativeTime } from "@/lib/format";
 
 /**
+ * Deltas (in ms) at or below this magnitude render as "just now" regardless
+ * of direction, so freshly created rows never read as "in 0 seconds" (#450).
+ */
+export const JUST_NOW_THRESHOLD_MS = 5_000;
+
+/**
  * "4 minutes ago" for a server timestamp, corrected for device clock skew
  * (issue #247). Use this for every realtime-driven relative time.
  *
@@ -17,7 +23,11 @@ export function formatServerRelativeTime(
   serverTs: number,
   clock: ClockOffsetEstimator = defaultClock
 ): string {
-  return formatRelativeTime(normalizeServerTs(serverTs, clock));
+  const normalized = normalizeServerTs(serverTs, clock);
+  if (Math.abs(normalized - clock.now()) <= JUST_NOW_THRESHOLD_MS) {
+    return "just now";
+  }
+  return formatRelativeTime(normalized);
 }
 
 export function useServerRelativeTime(
