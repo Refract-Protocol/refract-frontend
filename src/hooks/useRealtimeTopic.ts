@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { realtimeClient, type FrameMeta, type RealtimeClient } from "@/lib/realtime/client";
 import type { Interest, Topic, TopicName, TopicPayloads } from "@/lib/realtime/contract";
+import type { RealtimeError } from "@/lib/realtime/errors";
 
 export interface UseRealtimeTopicOptions<T = unknown> {
   /** Skip subscribing (e.g. no wallet connected for an account-scoped topic). */
@@ -12,6 +13,8 @@ export interface UseRealtimeTopicOptions<T = unknown> {
   client?: RealtimeClient;
   select?: (payload: unknown) => T | null;
   onEvent?: (value: T, meta?: FrameMeta) => void;
+  /** Notified with the normalized error whenever the topic degrades. */
+  onError?: (error: RealtimeError) => void;
 }
 
 export interface RealtimeTopicState<T> {
@@ -23,6 +26,17 @@ export interface RealtimeTopicState<T> {
   sequence: number | undefined;
   status: string;
   degraded: boolean;
+  /** Normalized error for the current degraded state, if any. */
+  error: RealtimeError | null;
+}
+
+/**
+ * SSR-safe guard: realtime is only available in the browser. Returns false
+ * during server rendering / static generation so callers never touch browser
+ * globals (WebSocket, EventSource, window, sessionStorage) on the server.
+ */
+export function isRealtimeAvailable(): boolean {
+  return typeof window !== "undefined";
 }
 
 export function useRealtimeTopic<T extends TopicName>(
@@ -49,22 +63,36 @@ export function useRealtimeTopic<T = unknown>(
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const [state, setState] = useState<RealtimeTopicState<T>>(() => {
-    const cached = client.getLastValue?.<T>(topic);
-    return {
-      value: cached?.value,
-      latest: cached?.value ?? null,
-      stale: !!cached,
-      receivedAt: cached?.receivedAt,
-      source: cached?.source,
-      sequence: cached?.sequence,
-      status: "idle",
-      degraded: false,
-    };
-  });
+  // Stable default until effects run: never read browser-backed caches during
+  // SSR or the initial render, avoiding hydration mismatches.
+  const [state, setState] = useState<RealtimeTopicState<T>>(() => ({
+    value: undefined,
+    latest: null,
+    stale: false,
+    receivedAt: undefined,
+    source: undefined,
+    sequence: undefined,
+    status: "idle",
+    degraded: false,
+    error: null,
+  }));
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !isRealtimeAvailable()) return;
+    const cached = client.getLastValue?.<T>(topic);
+    if (cached) {
+      setState({
+        value: cached.value,
+        latest: cached.value ?? null,
+        stale: true,
+        receivedAt: cached.receivedAt,
+        source: cached.source,
+        sequence: cached.sequence,
+        status: "idle",
+        degraded: false,
+        error: null,
+      });
+    }
     return client.subscribe(topic as TopicName, (payload, meta) => {
       if (meta && (meta.epoch !== client.getEpoch() || client.isScopeChanging())) return;
       if (meta && account !== undefined && meta.scope.account !== account) return;
@@ -75,20 +103,40 @@ export function useRealtimeTopic<T = unknown>(
       const { select, onEvent } = optionsRef.current;
       const value = select ? select(payload) : (payload as T);
       if (value === null || value === undefined) return;
-      const cached = client.getLastValue?.<T>(topic);
+      const latest = client.getLastValue?.<T>(topic);
       setState({
         value,
         latest: value,
         stale: false,
-        receivedAt: cached?.receivedAt ?? Date.now(),
-        source: cached?.source,
-        sequence: cached?.sequence,
+        receivedAt: latest?.receivedAt ?? Date.now(),
+        source: latest?.source,
+        sequence: latest?.sequence,
         status: "connected",
         degraded: false,
+        error: null,
       });
       onEvent?.(value, meta);
     });
   }, [client, topic, enabled, account]);
+
+  // Surface normalized errors emitted by the transport boundary. Non-retryable
+  // errors stop auto-reconnect (handled by the client) and are exposed here so
+  // the UI can render the matching degraded state.
+  useEffect(() => {
+    if (!enabled || !isRealtimeAvailable()) return;
+    const subscribeErrors = client.onError;
+    if (typeof subscribeErrors !== "function") return;
+    return subscribeErrors.call(client, (error: RealtimeError) => {
+      setState((prev) => ({
+        ...prev,
+        stale: true,
+        status: error.retryable ? "reconnecting" : "degraded",
+        degraded: true,
+        error,
+      }));
+      optionsRef.current.onError?.(error);
+    });
+  }, [client, enabled]);
 
   if (!isCallbackOverload) return state;
 }
