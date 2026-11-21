@@ -1,77 +1,67 @@
-import type { ClientMessage, Cursors } from "../topics";
-import type { ConnectContext, RealtimeTransport, TransportCallbacks } from "./types";
-
-type WebSocketCtor = new (url: string) => WebSocket;
+import { retryWithBackoff } from "../../retry";
 
 export interface WebSocketTransportOptions {
   url: string;
-  /** Injectable for tests and the chaos harness. Defaults to the global WebSocket. */
-  WebSocketImpl?: WebSocketCtor;
+  /** Extra reconnect attempts after the first connection drops. */
+  retries?: number;
+  /** Delay before the first reconnect; doubles on each subsequent one. */
+  baseDelayMs?: number;
+  onMessage?: (data: string) => void;
+  onError?: (err: unknown) => void;
 }
 
-export class WebSocketTransport implements RealtimeTransport {
-  readonly kind = "websocket" as const;
+/** Close codes that indicate a transient failure worth retrying. */
+const RETRYABLE_CLOSE_CODES = new Set([1006, 1011, 1012, 1013]);
+
+/** Error raised when the socket closes with a code we should not retry. */
+export class WebSocketTerminalCloseError extends Error {
+  constructor(public readonly code: number, reason: string) {
+    super(`WebSocket closed with non-retryable code ${code}${reason ? `: ${reason}` : ""}`);
+    this.name = "WebSocketTerminalCloseError";
+  }
+}
+
+export class WebSocketTransport {
   private socket: WebSocket | null = null;
-  private callbacks: TransportCallbacks | null = null;
+  private closedByClient = false;
 
-  constructor(private readonly opts: WebSocketTransportOptions) {}
+  constructor(private readonly options: WebSocketTransportOptions) {}
 
-  connect(_ctx: ConnectContext, callbacks: TransportCallbacks): void {
-    this.callbacks = callbacks;
-    const Impl = this.opts.WebSocketImpl ?? WebSocket;
-    let socket: WebSocket;
-    try {
-      socket = new Impl(this.opts.url);
-    } catch (err) {
-      queueMicrotask(() => this.finish({ code: 1006, reason: `connect failed: ${String(err)}` }));
-      return;
-    }
-    this.socket = socket;
-
-    socket.addEventListener("open", () => {
-      if (this.socket === socket) this.callbacks?.onOpen();
-    });
-    socket.addEventListener("message", (event) => {
-      if (this.socket === socket) this.callbacks?.onFrame(event.data);
-    });
-    socket.addEventListener("close", (event) => {
-      if (this.socket !== socket) return;
-      this.finish({ code: event.code, reason: event.reason });
-    });
-    socket.addEventListener("error", () => {
-      // A close event always follows; let it carry the code.
-      if (this.socket === socket) socket.close();
+  connect(): Promise<void> {
+    this.closedByClient = false;
+    return retryWithBackoff(() => this.openOnce(), {
+      retries: this.options.retries ?? 5,
+      baseDelayMs: this.options.baseDelayMs ?? 500,
+      isRetryable: (err) =>
+        err instanceof WebSocketTerminalCloseError ? false : true,
     });
   }
 
-  disconnect(): void {
-    const socket = this.socket;
+  close(): void {
+    this.closedByClient = true;
+    this.socket?.close(1000, "client shutdown");
     this.socket = null;
-    this.callbacks = null;
-    socket?.close(1000, "client disconnect");
   }
 
-  send(message: ClientMessage): void {
-    if (this.socket?.readyState === 1 /* OPEN */) {
-      this.socket.send(JSON.stringify(message));
-    }
-  }
+  private openOnce(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const socket = new WebSocket(this.options.url);
+      this.socket = socket;
 
-  subscribe(topics: string[], cursors: Cursors): void {
-    const relevant = Object.fromEntries(
-      Object.entries(cursors).filter(([topic]) => topics.includes(topic))
-    );
-    this.send({ type: "subscribe", topics, cursors: relevant });
-  }
-
-  unsubscribe(topics: string[]): void {
-    this.send({ type: "unsubscribe", topics });
-  }
-
-  private finish(info: { code: number; reason: string }): void {
-    const callbacks = this.callbacks;
-    this.socket = null;
-    this.callbacks = null;
-    callbacks?.onClose(info);
+      socket.onopen = () => resolve();
+      socket.onmessage = (event) => this.options.onMessage?.(String(event.data));
+      socket.onerror = (event) => this.options.onError?.(event);
+      socket.onclose = (event) => {
+        this.socket = null;
+        if (this.closedByClient) return;
+        if (RETRYABLE_CLOSE_CODES.has(event.code)) {
+          reject(new Error(`WebSocket closed with retryable code ${event.code}`));
+          return;
+        }
+        const err = new WebSocketTerminalCloseError(event.code, event.reason);
+        this.options.onError?.(err);
+        reject(err);
+      };
+    });
   }
 }
