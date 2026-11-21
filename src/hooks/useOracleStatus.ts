@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchOracleStatus, type OracleReading } from "@/lib/api/oracle";
 import { FIXTURE_ORACLE_READINGS } from "@/lib/fixtures/oracle";
 import { queryFnWithFixtureFallback, type FixtureResult } from "@/lib/query/fixtureFallback";
+import { useRealtimeStore } from "@/lib/realtime/store";
 import { useAdaptivePolling } from "./useAdaptivePolling";
 import { useRealtimeTopic } from "./useRealtimeTopic";
 
@@ -35,8 +36,8 @@ export function mergeOracleReading(
 
 /**
  * Loads live oracle readings from GET /api/v1/oracle/status, merges
- * `oracle_update` realtime frames into the same cache entry, and polls at a
- * cadence set by realtime health (critical tier). This card is purely
+ * `oracle_update` realtime frames into the shared Zustand slice, and polls at
+ * a cadence set by realtime health (critical tier). This card is purely
  * informational, so any REST failure falls back to the labeled fixture.
  */
 export function useOracleStatus(): OracleStatusState {
@@ -64,18 +65,27 @@ export function useOracleStatus(): OracleStatusState {
     refetchInterval,
   });
 
+  const realtimeReadings = useRealtimeStore((s) => s.oracleReadings);
+  const upsertOracleReading = useRealtimeStore((s) => s.upsertOracleReading);
+
   useRealtimeTopic("oracle_update", (reading) => {
-    queryClient.setQueryData<FixtureResult<OracleReading[]>>(QUERY_KEY, (prev) =>
-      prev?.data ? { ...prev, data: mergeOracleReading(prev.data, reading) } : prev
-    );
+    upsertOracleReading(reading);
   });
 
   const refresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
 
+  const baseData = result?.data ?? null;
+  const data = realtimeReadings.length
+    ? realtimeReadings.reduce(
+        (acc, reading) => mergeOracleReading(acc, reading),
+        baseData ?? []
+      )
+    : baseData;
+
   return {
-    data: result?.data ?? null,
+    data,
     loading: isLoading,
     isFixture: result?.isFixture ?? false,
     lastUpdated: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
