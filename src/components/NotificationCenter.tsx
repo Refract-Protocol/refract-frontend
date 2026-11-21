@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { RefractNotification } from "@/lib/notifications";
 import { groupNotifications } from "@/lib/notificationGroups";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 const SEVERITY_ICONS: Record<RefractNotification["severity"], string> = {
   info: "ℹ",
@@ -26,7 +27,8 @@ const SEVERITY_COLORS: Record<
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, isError, refetch } =
+    useNotifications();
   const groups = useMemo(() => groupNotifications(notifications), [notifications]);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -116,7 +118,13 @@ export function NotificationCenter() {
           </div>
 
           <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
-            {notifications.length === 0 ? (
+            {isError ? (
+              <ErrorState
+                title="Couldn't load notifications"
+                description="Something went wrong while fetching your notifications."
+                onRetry={() => refetch()}
+              />
+            ) : notifications.length === 0 ? (
               <div className="py-8 text-center text-xs text-pm-text/40">
                 <span className="mb-2 block text-2xl" aria-hidden="true">
                   🔔
@@ -179,8 +187,7 @@ export function NotificationCenter() {
                                   <button
                                     type="button"
                                     onClick={() => markAsRead(item.id)}
-                                    className="text-[10px] text-pm-text/40 hover:text-pm-text"
-                                    title="Mark as read"
+                                    className="text-[10px] text-pm-violet hover:underline"
                                   >
                                     Mark read
                                   </button>
@@ -190,18 +197,13 @@ export function NotificationCenter() {
                                 {item.message}
                               </p>
                               {item.href && (
-                                <div className="mt-1 flex justify-end">
-                                  <Link
-                                    href={item.href}
-                                    onClick={() => {
-                                      markAsRead(item.id);
-                                      setIsOpen(false);
-                                    }}
-                                    className="text-[11px] font-semibold text-pm-violet hover:underline"
-                                  >
-                                    View Details →
-                                  </Link>
-                                </div>
+                                <Link
+                                  href={item.href}
+                                  onClick={() => setIsOpen(false)}
+                                  className="text-[10px] font-medium text-pm-violet hover:underline"
+                                >
+                                  View details →
+                                </Link>
                               )}
                             </div>
                           );
