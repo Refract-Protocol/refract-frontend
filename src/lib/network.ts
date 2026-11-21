@@ -5,6 +5,8 @@
  * misconfigured build fails loudly instead of silently pointing at the
  * wrong chain.
  */
+import { clearFederationCache } from "./stellar/federation";
+
 export type StellarNetworkId = "testnet" | "futurenet" | "mainnet";
 
 export interface StellarNetworkConfig {
@@ -70,6 +72,15 @@ export const NETWORK_LABEL: Record<StellarNetworkId, string> = {
   futurenet: NETWORKS.futurenet.label,
   mainnet: NETWORKS.mainnet.label,
 };
+
+/**
+ * Applies a network change: clears any network-scoped caches so stale data
+ * from the previous chain is never served. Call this whenever the active
+ * network is switched at runtime.
+ */
+export function onNetworkChange(): void {
+  clearFederationCache();
+}
 
 export interface RefractContract {
   name: string;
