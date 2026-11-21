@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { criticalStyles as t } from "@/lib/criticalStyles";
 
+const FALLBACK_MESSAGE = "An unexpected error occurred. Please try again.";
+
 // Root-level error boundary — only fires if the root layout itself throws.
 // Must render its own <html>/<body> since it replaces the whole tree, and it
 // cannot depend on globals.css or the components/ui primitives being loaded.
@@ -15,8 +17,11 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Report even when the message is empty so Sentry still captures the error.
     Sentry.captureException(error, { tags: { boundary: "global-error" } });
   }, [error]);
+
+  const message = error?.message?.trim() ? error.message : FALLBACK_MESSAGE;
 
   return (
     <html lang="en">
@@ -96,6 +101,13 @@ export default function GlobalError({
           <p style={{ color: t.muted, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5 }}>
             A critical UI error occurred. No funds or on-chain state are affected.
           </p>
+          <p
+            role="alert"
+            aria-live="assertive"
+            style={{ color: t.foreground, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5, wordBreak: "break-word" }}
+          >
+            {message}
+          </p>
           {error?.digest ? (
             <p
               style={{
@@ -132,7 +144,7 @@ export default function GlobalError({
                 cursor: "pointer",
               }}
             >
-              Try again
+              Reload
             </button>
             <a
               href="/"
