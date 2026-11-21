@@ -137,6 +137,26 @@ export function decimalPlaces(input: string | null | undefined): number | null {
 }
 
 /**
+ * Truncate a user-entered amount string to at most `maxDecimals` fractional
+ * digits, so values beyond the asset's precision (e.g. stroops for Stellar)
+ * are clamped at the point of entry rather than silently truncated later.
+ *
+ * Non-numeric input is returned unchanged so the caller can still surface a
+ * validation error; a trailing decimal point ("1.") is preserved.
+ */
+export function truncateDecimals(
+  input: string,
+  maxDecimals: number = USDC_DECIMALS
+): string {
+  if (maxDecimals < 0) return input;
+  const dot = input.indexOf(".");
+  if (dot === -1) return input;
+  const fraction = input.slice(dot + 1);
+  if (fraction.length <= maxDecimals) return input;
+  return input.slice(0, dot + 1 + maxDecimals);
+}
+
+/**
  * Classify a user-entered amount for a form field.
  *
  * Returns a discriminated result so callers can derive the inline error, the
@@ -232,6 +252,4 @@ export function formatDuration(ms: number): string {
 export function formatRelativeFromNow(timestampMs: number): string {
   const diff = timestampMs - Date.now();
   if (diff <= 0) return formatRelativeTime(timestampMs);
-  const duration = formatDuration(diff).split(",")[0];
-  return duration === "less than a minute" ? "in less than a minute" : `in ${duration}`;
-}
+  const duration = formatDuration(d
