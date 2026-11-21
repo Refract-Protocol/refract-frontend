@@ -48,3 +48,18 @@ export function useUsdcBalance(address: string | null) {
 
   return { data, loading, error };
 }
+
+/**
+ * Normalise a USDC balance response into a numeric amount for pre-flight
+ * affordability checks (e.g. `batchCheckout`). Returns `null` when the
+ * balance is unavailable so callers can skip the check rather than treat a
+ * missing read as a zero balance.
+ */
+export function getUsdcBalanceAmount(
+  balance: UsdcBalanceResponse | null,
+): number | null {
+  if (!balance) return null;
+  const raw = (balance as { balance?: unknown }).balance;
+  const value = typeof raw === "string" ? Number(raw) : raw;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}

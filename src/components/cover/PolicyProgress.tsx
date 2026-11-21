@@ -1,6 +1,7 @@
 "use client";
 
 import type { PendingPolicy, PendingPolicyStatus } from "@/lib/realtime/pendingPolicies";
+import type { DroppedPolicy } from "@/lib/cover/batchCheckout";
 import { useServerRelativeTime } from "@/hooks/useServerRelativeTime";
 
 const STEPS: { status: PendingPolicyStatus; label: string }[] = [
@@ -42,7 +43,13 @@ function describe(entry: PendingPolicy): string {
 }
 
 /** Submitted → accepted → active progression for one purchase, driven by `policy.<address>` events. */
-export function PolicyProgress({ entry }: { entry: PendingPolicy }) {
+export function PolicyProgress({
+  entry,
+  dropped = [],
+}: {
+  entry: PendingPolicy;
+  dropped?: DroppedPolicy[];
+}) {
   const updated = useServerRelativeTime(entry.lastEventTs);
   const current = STEP_INDEX[entry.status];
   const failed = entry.status === "failed" || entry.status === "cancelled";
@@ -80,6 +87,22 @@ export function PolicyProgress({ entry }: { entry: PendingPolicy }) {
         {describe(entry)}
         {updated && <span className="text-pm-text/35"> · updated {updated}</span>}
       </p>
+      {dropped.length > 0 && (
+        <div
+          role="alert"
+          data-testid="batch-dropped-warning"
+          className="mt-3 rounded-md border border-pm-amber/40 bg-pm-amber/10 p-2.5 text-[12px] leading-relaxed text-pm-amber"
+        >
+          <p className="font-semibold">
+            {dropped.length} {dropped.length === 1 ? "policy was" : "policies were"} not included — your wallet balance doesn't cover the full batch.
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {dropped.map(({ policy }) => (
+              <li key={policy.id}>{policy.label ?? policy.id}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
