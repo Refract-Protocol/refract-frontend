@@ -3,6 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { TransactionTray } from "@/components/TransactionTray";
 import { PendingTxResolver } from "@/lib/wallet/PendingTxResolver";
+import { LazyCommandPalette } from "@/components/LazyCommandPalette";
 
 export const metadata: Metadata = {
   title: {
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PendingTxResolver />
           {children}
           <TransactionTray />
+          <LazyCommandPalette />
         </Providers>
       </body>
     </html>

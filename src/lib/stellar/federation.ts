@@ -7,8 +7,23 @@
 
 export const FEDERATION_TIMEOUT_MS = 5000;
 
+/** How long a resolved federation address stays cached, in milliseconds. */
+export const FEDERATION_CACHE_TTL_MS = 5 * 60 * 1000;
+
 const PUBLIC_KEY_RE = /^G[A-Z2-7]{55}$/;
 const FEDERATION_RE = /^[^*\s]+\*([a-z0-9-]+(?:\.[a-z0-9-]+)+)$/i;
+
+interface CacheEntry {
+  value: string | null;
+  expiresAt: number;
+}
+
+const cache = new Map<string, CacheEntry>();
+
+/** Clears all cached federation lookups (e.g. on network change). */
+export function clearFederationCache(): void {
+  cache.clear();
+}
 
 /** Whether `value` is shaped like a Stellar account public key (`G` + 55 base32 chars). */
 export function isStellarPublicKey(value: string): boolean {
@@ -41,21 +56,7 @@ async function fetchWithTimeout(url: string, signal: AbortSignal): Promise<Respo
   return res;
 }
 
-/**
- * Resolves `input` to a Stellar public key. A raw `G...` address passes
- * through unchanged; a federation address is looked up (bounded by
- * `FEDERATION_TIMEOUT_MS`). Returns `null` for anything that can't be
- * resolved to a well-formed public key — it never falls back to the raw
- * federation string.
- */
-export async function resolveFederationAddress(input: string): Promise<string | null> {
-  const value = input.trim();
-  if (isStellarPublicKey(value)) return value;
-
-  const match = value.match(FEDERATION_RE);
-  if (!match) return null;
-  const domain = match[1]!.toLowerCase();
-
+async function lookupFederationAddress(value: string, domain: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FEDERATION_TIMEOUT_MS);
   try {
@@ -77,4 +78,31 @@ export async function resolveFederationAddress(input: string): Promise<string | 
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Resolves `input` to a Stellar public key. A raw `G...` address passes
+ * through unchanged; a federation address is looked up (bounded by
+ * `FEDERATION_TIMEOUT_MS`). Returns `null` for anything that can't be
+ * resolved to a well-formed public key — it never falls back to the raw
+ * federation string.
+ *
+ * Federation lookups are cached in-memory for `FEDERATION_CACHE_TTL_MS` so
+ * repeated resolutions of the same address don't re-hit the network.
+ */
+export async function resolveFederationAddress(input: string): Promise<string | null> {
+  const value = input.trim();
+  if (isStellarPublicKey(value)) return value;
+
+  const match = value.match(FEDERATION_RE);
+  if (!match) return null;
+  const domain = match[1]!.toLowerCase();
+
+  const now = Date.now();
+  const cached = cache.get(value);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const resolved = await lookupFederationAddress(value, domain);
+  cache.set(value, { value: resolved, expiresAt: Date.now() + FEDERATION_CACHE_TTL_MS });
+  return resolved;
 }
