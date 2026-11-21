@@ -8,6 +8,14 @@ Install dependencies and start the dev server as usual. The app talks to
 `refract-backend` over `NEXT_PUBLIC_API_URL` for REST; the realtime layer is
 optional and off by default.
 
+## API drift check
+
+`scripts/api-check-drift.mjs` compares the committed OpenAPI spec at
+`openapi/refract-api.yaml` against the backend contract. The spec file is
+required: if it is missing, the check exits non-zero and names the expected
+path so a broken setup is never reported as a green run. A present but
+malformed spec also fails the check.
+
 ## Developing against the realtime mock server
 
 The realtime layer is documented in [`docs/realtime/architecture.md`](docs/realtime/architecture.md)

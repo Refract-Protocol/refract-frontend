@@ -1,54 +1,69 @@
-"use client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRealtimeRevalidation } from "./useRealtimeRevalidation";
+import type { PolicyRealtimeEvent } from "../lib/domain/realtime";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchHolderPolicies, type Policy } from "@/lib/api/policies";
-import { fixtureHolderPolicies } from "@/lib/fixtures/policies";
-import { queryFnWithFixtureFallback } from "@/lib/query/fixtureFallback";
-
-interface HolderPoliciesState {
-  data: Policy[] | null;
-  loading: boolean;
-  error: string | null;
-  isFixture: boolean;
-  /** True while showing previously cached data and a background refresh is in flight. */
-  isStale: boolean;
+export interface HolderPolicy {
+  id: string;
+  coverageType: string;
+  coverageAmount: string;
+  active: boolean;
+  [key: string]: unknown;
 }
 
-/**
- * Loads a wallet's policies from GET /api/v1/policies/holder/:address — a
- * real backend route. Its in-memory store is empty on every process
- * restart though, so this also falls back to a labeled fixture both when
- * the API is unreachable AND when it legitimately returns zero policies,
- * so the dashboard has something to demo. `isFixture` tells the caller
- * which happened.
- */
-export function useHolderPolicies(address: string | null): HolderPoliciesState {
-  const {
-    data: result,
-    isLoading,
-    isRefetching,
-  } = useQuery({
-    queryKey: ["holderPolicies", address],
-    enabled: Boolean(address),
-    queryFn: ({ signal }) =>
-      queryFnWithFixtureFallback(
-        async () => (await fetchHolderPolicies(address!, {}, signal)).items,
-        () => fixtureHolderPolicies(address!),
-        {
-          signal,
-          isEmpty: (policies) => policies.length === 0,
-          errorMessage: "Failed to load policies",
-        }
-      ),
+const HOLDER_POLICIES_QUERY_KEY = ["holderPolicies"] as const;
+
+async function fetchHolderPolicies(holder: string): Promise<HolderPolicy[]> {
+  const res = await fetch(`/api/holders/${encodeURIComponent(holder)}/policies`);
+  if (!res.ok) {
+    throw new Error(`Failed to load policies (${res.status})`);
+  }
+  return (await res.json()) as HolderPolicy[];
+}
+
+export function useHolderPolicies(holder: string | undefined) {
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(
+    () => [...HOLDER_POLICIES_QUERY_KEY, holder] as const,
+    [holder],
+  );
+
+  const query = useQuery({
+    queryKey,
+    queryFn: () => fetchHolderPolicies(holder as string),
+    enabled: Boolean(holder),
   });
 
-  if (!address)
-    return { data: null, loading: false, error: null, isFixture: false, isStale: false };
+  // Optimistic update: patch a single policy in the cached list without a refetch.
+  const updatePolicyLocally = useCallback(
+    (policyId: string, changes: Partial<HolderPolicy>) => {
+      queryClient.setQueryData<HolderPolicy[]>(queryKey, (prev) => {
+        if (!prev) return prev;
+        return prev.map((policy) =>
+          policy.id === policyId ? { ...policy, ...changes } : policy,
+        );
+      });
+    },
+    [queryClient, queryKey],
+  );
+
+  // Realtime events carry a policy id; patch the cached list in place instead
+  // of invalidating the whole query (which would refetch every policy).
+  const handleRealtimeEvent = useCallback(
+    (event: PolicyRealtimeEvent) => {
+      if (!event?.policyId) return;
+      updatePolicyLocally(event.policyId, event.changes ?? {});
+    },
+    [updatePolicyLocally],
+  );
+
+  useRealtimeRevalidation({
+    queryKey,
+    onEvent: handleRealtimeEvent,
+  });
+
   return {
-    data: result?.data ?? null,
-    loading: isLoading,
-    error: result?.error ?? null,
-    isFixture: result?.isFixture ?? false,
-    isStale: isRefetching,
+    ...query,
+    updatePolicyLocally,
   };
 }
