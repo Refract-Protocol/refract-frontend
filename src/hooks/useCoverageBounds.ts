@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchCoverageBounds } from "@/lib/api/policies";
 import { ApiUnreachableError } from "@/lib/api/client";
 import { readCoverageBounds } from "@/lib/stellar/rpc";
 import { fromStroops } from "@/lib/format";
+import { normaliseCoverageBounds } from "@/lib/coverQueryParams";
 import type { DataSource } from "@/lib/api/dataSource";
 
 interface CoverageBoundsState {
@@ -31,6 +33,12 @@ interface UseCoverageBoundsResult extends CoverageBoundsState {
  * there's no meaningful synthetic answer for "what can the pool currently
  * accept", so if both fail both bounds stay null and callers fall back to
  * the static per-type catalog alone.
+ *
+ * Query params `min`/`max` are validated via `normaliseCoverageBounds`:
+ * non-numeric or negative values fall back to defaults, and an inverted
+ * range (`min > max`) is swapped rather than discarded. The URL is rewritten
+ * with the normalised values so a refresh does not re-trigger the invalid
+ * state.
  */
 export function useCoverageBounds(): UseCoverageBoundsResult {
   const [state, setState] = useState<CoverageBoundsState>({
@@ -43,6 +51,21 @@ export function useCoverageBounds(): UseCoverageBoundsResult {
 
   const mountedRef = useRef(true);
   const controllerRef = useRef<AbortController | null>(null);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const current = searchParams?.toString() ?? "";
+    const { changed, search } = normaliseCoverageBounds(current, {
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+    });
+    if (changed) {
+      router.replace(`${pathname}?${search}`, { scroll: false });
+    }
+  }, [searchParams, router, pathname]);
 
   const run = useCallback(async () => {
     controllerRef.current?.abort();
