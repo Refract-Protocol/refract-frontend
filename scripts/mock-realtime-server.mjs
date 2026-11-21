@@ -4,6 +4,10 @@
  * Dev/CI only — never imported by the app. Binds to an ephemeral port by default
  * and prints `MOCK_REALTIME_URL=ws://127.0.0.1:<port>/ws`.
  *
+ * This is the single canonical mock realtime server. The former
+ * `scripts/mock-realtime-server.ts` was a stale copy and has been removed;
+ * run this file via `npm run mock:realtime` (see docs/realtime-qa.md).
+ *
  * Scenarios are driven by one config object, from CLI flags (`--dropAfter=3`) or
  * per-connection query params (`ws://…/ws?dropAfter=3&duplicate=1`):
  *   seed, count (frames/topic, default 5), dropAfter (close after N frames),
@@ -249,7 +253,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     scenario,
   });
   console.log(`MOCK_REALTIME_URL=${srv.url}`);
-  const stop = () => srv.close().then(() => process.exit(0));
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
+  const shutdown = () => srv.close().then(() => process.exit(0));
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
