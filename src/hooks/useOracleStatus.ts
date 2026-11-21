@@ -16,6 +16,8 @@ export interface OracleStatusState {
   lastUpdated: Date | null;
   /** True while a manual or background refresh is in flight after the first load. */
   isRefreshing: boolean;
+  /** Set when the oracle feed lookup reports an unsupported asset pair. */
+  error: string | null;
   refresh: () => Promise<void>;
 }
 
@@ -74,12 +76,17 @@ export function useOracleStatus(): OracleStatusState {
     await refetch();
   }, [refetch]);
 
+  const readings = result?.data ?? null;
+  const hasReadings = readings !== null && readings.length > 0;
+  const unsupported = !isLoading && !hasReadings;
+
   return {
-    data: result?.data ?? null,
-    loading: isLoading,
+    data: readings,
+    loading: isLoading && !unsupported,
     isFixture: result?.isFixture ?? false,
     lastUpdated: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
     isRefreshing: isRefetching,
+    error: unsupported ? "Unsupported asset pair: no oracle feed available" : null,
     refresh,
   };
 }

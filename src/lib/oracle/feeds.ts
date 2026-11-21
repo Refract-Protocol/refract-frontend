@@ -33,3 +33,20 @@ const ORACLE_KEY_BY_COVERAGE_TYPE = [
 export function oracleKeyForCoverageType(coverageType: number): string | null {
   return ORACLE_KEY_BY_COVERAGE_TYPE[coverageType] ?? null;
 }
+
+/** Discriminated result of a feed lookup. */
+export type OracleFeedLookup =
+  | { ok: true; feed: OracleFeedDisplay }
+  | { ok: false; reason: "unsupported-pair" };
+
+/**
+ * Look up display metadata for an oracle feed key.
+ * Returns a typed result so callers can distinguish an unsupported pair from
+ * pending/absent data instead of receiving `undefined`.
+ */
+export function getFeed(key: string | null | undefined): OracleFeedLookup {
+  if (!key) return { ok: false, reason: "unsupported-pair" };
+  const feed = ORACLE_FEED_DISPLAY[key];
+  if (!feed) return { ok: false, reason: "unsupported-pair" };
+  return { ok: true, feed };
+}
