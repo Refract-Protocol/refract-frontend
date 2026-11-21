@@ -1,5 +1,15 @@
 import type { WebSocketLike } from "../client";
 
+/**
+ * Canonical fake WebSocket for realtime tests.
+ *
+ * Use this module (src/lib/realtime/testing/fakeSocket) whenever a test needs an
+ * in-memory WebSocket stand-in: `FakeSocket` for a single socket and
+ * `fakeSocketFactory` to create and track sockets. The legacy
+ * `src/lib/realtime/dev/fakeSocket` path re-exports from here, so new code
+ * should always import from `testing/`.
+ */
+
 type Listener = (event: any) => void;
 
 /** In-memory WebSocket stand-in for realtime tests. */
