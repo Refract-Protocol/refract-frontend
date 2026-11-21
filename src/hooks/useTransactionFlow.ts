@@ -6,7 +6,7 @@ import { signAndSubmit } from "@/lib/wallet/signAndSubmit";
 import { ApiUnreachableError } from "@/lib/api/client";
 
 export type TransactionFlowState<TResult> =
-  | { status: "idle" }
+  | { status: "idle"; reason?: "cancelled" }
   | { status: "submitting" }
   | { status: "signing" }
   | { status: "pending-confirmation"; result?: TResult }
@@ -16,6 +16,24 @@ export type TransactionFlowState<TResult> =
 export interface UseTransactionFlowOptions<TResult> {
   onSuccess?: (result: TResult, txHash?: string, demo?: boolean) => void;
   onError?: (error: Error) => void;
+}
+
+/**
+ * Returns true when the error represents a user rejecting the wallet signature prompt.
+ * Wallet rejection is a normal user action, not an error.
+ */
+function isUserRejection(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.toLowerCase();
+  return (
+    message.includes("user rejected") ||
+    message.includes("user declined") ||
+    message.includes("rejected by user") ||
+    message.includes("request rejected") ||
+    message.includes("user cancel") ||
+    message.includes("cancelled by user") ||
+    message.includes("canceled by user")
+  );
 }
 
 /**
@@ -61,6 +79,11 @@ export function useTransactionFlow<TResult>(options: UseTransactionFlowOptions<T
         setState({ status: "success", result, demo: false, txHash });
         options.onSuccess?.(result, txHash, false);
       } catch (err: unknown) {
+        if (isUserRejection(err)) {
+          setState({ status: "idle", reason: "cancelled" });
+          return;
+        }
+
         if (err instanceof ApiUnreachableError) {
           const demoResult = buildDemo();
           setState({ status: "success", result: demoResult, demo: true });
@@ -88,5 +111,6 @@ export function useTransactionFlow<TResult>(options: UseTransactionFlowOptions<T
     isPending: state.status === "pending-confirmation",
     isSuccess: state.status === "success",
     isError: state.status === "error",
+    isCancelled: state.status === "idle" && state.reason === "cancelled",
   };
 }

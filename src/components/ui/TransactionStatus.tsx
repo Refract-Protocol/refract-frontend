@@ -3,11 +3,12 @@ import { Card } from "./Card";
 import { Button } from "./Button";
 
 interface TransactionStatusProps {
-  status: "idle" | "submitting" | "signing" | "pending-confirmation" | "success" | "error";
+  status: "idle" | "submitting" | "signing" | "pending-confirmation" | "success" | "error" | "cancelled";
   title?: string;
   demo?: boolean;
   demoMessage?: string;
   errorMessage?: string;
+  cancelledMessage?: string;
   onReset?: () => void;
   resetLabel?: string;
   children?: React.ReactNode;
@@ -22,6 +23,7 @@ export function TransactionStatus({
   demo = false,
   demoMessage = "Demo mode: the Refract API was not reachable, so this action was simulated client-side.",
   errorMessage,
+  cancelledMessage = "Signature request was cancelled. No transaction was submitted.",
   onReset,
   resetLabel = "Make another transaction",
   children,
@@ -53,6 +55,26 @@ export function TransactionStatus({
             {demoMessage}
           </p>
         )}
+        {children}
+        {onReset && (
+          <Button type="button" variant="outline" block className="mt-5" onClick={onReset}>
+            {resetLabel}
+          </Button>
+        )}
+      </Card>
+    );
+  }
+
+  if (status === "cancelled") {
+    return (
+      <Card padding="md" role="status" aria-live="polite" className="border-pm-amber/30 bg-pm-amber/[0.04]">
+        <div className="mb-4 flex items-center gap-2.5 text-pm-amber">
+          <span className="text-xl" aria-hidden="true">ⓘ</span>
+          <span className="font-display text-base font-bold">Transaction cancelled</span>
+        </div>
+        <p className="mb-4 rounded-md border border-pm-amber/20 bg-pm-amber/[0.06] px-3 py-2 text-[11px] leading-relaxed text-pm-amber">
+          {cancelledMessage}
+        </p>
         {children}
         {onReset && (
           <Button type="button" variant="outline" block className="mt-5" onClick={onReset}>
