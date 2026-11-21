@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Input } from "./Input";
 import { Button } from "./Button";
 import { isFederationAddress, isStellarPublicKey, resolveFederationAddress } from "@/lib/stellar/federation";
+import { isValidStellarAddress } from "@/lib/stellar";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
 interface AddressInputProps {
@@ -29,6 +30,7 @@ export function AddressInput({ label = "Stellar address", placeholder = "G… or
   const [value, setValue] = useState("");
   const [resolution, setResolution] = useState<Resolution>({ status: "empty" });
   const [confirmed, setConfirmed] = useState(false);
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     const input = value.trim();
@@ -58,13 +60,21 @@ export function AddressInput({ label = "Stellar address", placeholder = "G… or
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the typed value changes
   }, [value]);
 
-  const isFederation = isFederationAddress(value.trim());
+  const trimmed = value.trim();
+  const isFederation = isFederationAddress(trimmed);
+  const looksLikePublicKey = isStellarPublicKey(trimmed);
+  const checksumValid = looksLikePublicKey && isValidStellarAddress(trimmed);
+
   const error =
     resolution.status === "invalid"
-      ? "Enter a G… public key or a federation address like name*domain.com"
+      ? looksLikePublicKey
+        ? "Not a valid Stellar address (checksum mismatch)"
+        : "Enter a G… public key or a federation address like name*domain.com"
       : resolution.status === "failed"
         ? "Couldn't resolve this federation address"
-        : undefined;
+        : touched && looksLikePublicKey && !checksumValid
+          ? "Not a valid Stellar address (checksum mismatch)"
+          : undefined;
 
   return (
     <div className="w-full">
@@ -73,6 +83,7 @@ export function AddressInput({ label = "Stellar address", placeholder = "G… or
         placeholder={placeholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onBlur={() => setTouched(true)}
         error={error}
         hint={resolution.status === "resolving" ? "Resolving federation address…" : undefined}
         autoComplete="off"
