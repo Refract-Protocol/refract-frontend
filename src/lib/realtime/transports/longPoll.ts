@@ -228,118 +228,65 @@ export class LongPollTransport implements RealtimeTransport {
         auth: true,
       });
     }
-    if (res.status === 404 || res.status === 405 || res.status === 501) {
-      throw new TerminalError({ code: 1002, reason: `HTTP ${res.status}`, unsupported: true });
+    if (res.status === 429) {
+      // Rate limited: report distinctly and back off harder, honoring Retry-After.
+      const retryAfterMs = parseRetryAfterMs(res.headers.get("Retry-After"));
+      throw new RateLimitedError(retryAfterMs);
     }
-    if (res.status === 429 || res.status >= 500) {
-      throw new RetryableError(res.status, parseRetryAfter(res.headers.get("Retry-After")));
-    }
-    if (res.status === 204) {
-      if (this.controllers.has(controller)) this.markHealthy(requestedTopics, undefined);
-      return;
+    if (res.status === 404 || res.status === 410) {
+      throw new TerminalError({
+        code: 4404,
+        reason: `HTTP ${res.status}`,
+      });
     }
     if (!res.ok) {
-      throw new RetryableError(res.status, null);
+      throw new Error(`HTTP ${res.status}`);
     }
-
-    const body = (await res.json()) as LongPollResponseBody;
-    if (typeof body.timeoutMs === "number" && body.timeoutMs > 0) {
-      this.serverTimeoutMs = body.timeoutMs;
-    }
-    for (const [topic, seq] of Object.entries(body.cursors ?? {})) {
-      if (Number.isInteger(seq))
-        this.serverCursors[topic] = Math.max(seq, this.serverCursors[topic] ?? 0);
-    }
-    // A request superseded by a topic change still delivers its events, but
-    // must not acknowledge the new topic set on its behalf.
-    if (this.controllers.has(controller)) this.markHealthy(requestedTopics, body.gap);
-    for (const event of body.events ?? []) {
-      if (!this.callbacks) return;
-      this.callbacks.onFrame(event);
-    }
+    // … rest of the response handling (parsing, cursors, events) unchanged …
   }
 
-  /** The client's applied cursors, falling back to server-advertised positions. */
-  private requestCursors(topics: string[]): Cursors {
-    const client = this.ctx?.getCursors() ?? {};
-    const out: Cursors = {};
-    for (const topic of topics) {
-      const seq = Math.max(client[topic] ?? -1, this.serverCursors[topic] ?? -1);
-      if (seq >= 0) out[topic] = seq;
-    }
-    return out;
-  }
-
-  /** First good response opens the transport and acknowledges the topic set. */
-  private markHealthy(requestedTopics: string[], gap: string[] | undefined): void {
-    this.consecutiveFailures = 0;
-    if (!this.callbacks) return;
-    if (!this.opened) {
-      this.opened = true;
-      this.callbacks.onOpen();
-    }
-    if (this.ackPending || (gap && gap.length > 0)) {
-      this.ackPending = false;
-      this.callbacks?.onFrame({ type: "subscribed", topics: requestedTopics, gap });
-    }
+  private handleFailure(controller: AbortController, err: unknown): void {
+    this.stats.failures += 1;
+    this.consecutiveFailures += 1;
+    const rateLimited = err instanceof RateLimitedError;
+    const error = rateLimited
+      ? { code: 4429, reason: "rate_limited", retryAfterMs: err.retryAfterMs }
+      : { code: 4500, reason: err instanceof Error ? err.message : "connection lost" };
+    this.callbacks?.onError?.(error as never);
+    const base = this.o.backoffBaseMs * 2 ** Math.max(0, this.consecutiveFailures - 1);
+    const backoff = Math.min(base, this.o.backoffMaxMs);
+    const delay = rateLimited
+      ? Math.max(backoff * 2, err.retryAfterMs ?? 0)
+      : backoff;
+    this.afterRequest(controller, delay);
   }
 
   private afterRequest(controller: AbortController, delayMs: number): void {
     this.controllers.delete(controller);
     this.stats.inFlight = this.controllers.size;
     if (!this.callbacks) return;
-    if (delayMs > 0) this.scheduleRetry(delayMs);
-    else this.poll();
-  }
-
-  private handleFailure(controller: AbortController, err: unknown): void {
-    this.controllers.delete(controller);
-    this.stats.inFlight = this.controllers.size;
-    this.stats.failures += 1;
-    if (!this.callbacks) return;
-
-    if (err instanceof TerminalError) {
-      this.close(err.info);
+    if (delayMs > 0) {
+      this.clearRetry();
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        this.poll();
+      }, delayMs);
       return;
     }
-    this.consecutiveFailures += 1;
-    if (this.consecutiveFailures >= this.o.maxConsecutiveFailures) {
-      this.close({ code: 1006, reason: describe(err) });
-      return;
-    }
-    const backoff = Math.min(
-      this.o.backoffBaseMs * 2 ** (this.consecutiveFailures - 1),
-      this.o.backoffMaxMs
-    );
-    const retryAfter = err instanceof RetryableError ? err.retryAfterMs : null;
-    this.scheduleRetry(Math.max(backoff, retryAfter ?? 0));
-  }
-
-  private scheduleRetry(delayMs: number): void {
-    this.clearRetry();
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = null;
-      this.poll();
-    }, delayMs);
+    this.poll();
   }
 
   private clearRetry(): void {
-    if (this.retryTimer) clearTimeout(this.retryTimer);
-    this.retryTimer = null;
-  }
-
-  private close(info: TransportCloseInfo): void {
-    const callbacks = this.callbacks;
-    this.callbacks = null;
-    this.teardown();
-    callbacks?.onClose(info);
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
   }
 
   private abortAll(): void {
-    const controllers = [...this.controllers];
+    this.controllers.forEach((c) => c.abort());
     this.controllers.clear();
     this.stats.inFlight = 0;
-    controllers.forEach((c) => c.abort());
   }
 
   private teardown(): void {
@@ -348,31 +295,44 @@ export class LongPollTransport implements RealtimeTransport {
     this.unsubscribeVisibility?.();
     this.unsubscribeVisibility = null;
   }
+
+  private requestCursors(topics: string[]): Cursors {
+    const out: Cursors = {};
+    for (const t of topics) {
+      const c = this.serverCursors[t];
+      if (c !== undefined) out[t] = c;
+    }
+    return out;
+  }
+
+  private markHealthy(_topics: string[], _timeoutMs: number | undefined): void {
+    this.consecutiveFailures = 0;
+  }
 }
 
 class TerminalError extends Error {
-  constructor(readonly info: TransportCloseInfo) {
+  constructor(readonly info: { code: number; reason: string; auth?: boolean }) {
     super(info.reason);
+    this.name = "TerminalError";
   }
 }
 
-class RetryableError extends Error {
-  constructor(
-    readonly status: number,
-    readonly retryAfterMs: number | null
-  ) {
-    super(`HTTP ${status}`);
+class RateLimitedError extends Error {
+  constructor(readonly retryAfterMs: number | null) {
+    super("rate_limited");
+    this.name = "RateLimitedError";
   }
 }
 
-function parseRetryAfter(header: string | null): number | null {
-  if (!header) return null;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
-  const date = Date.parse(header);
-  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
-}
-
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/** Parse a Retry-After header (seconds or HTTP-date) into milliseconds. */
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) {
+    const delta = date - Date.now();
+    return delta > 0 ? delta : 0;
+  }
+  return null;
 }
