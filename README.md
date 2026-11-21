@@ -106,3 +106,6 @@ and `NEXT_PUBLIC_FLAGS_OVERRIDE='{"realtime-enabled":true,"realtime-oracle":true
 
 <!-- handsoff-issue-218 -->
 - #218: Stream On-Chain Transaction Confirmation Status for User-Submitted Actions
+
+<!-- handsoff-issue-474 -->
+- #474: `docs/realtime.md` links to a `realtime-transport.md` section that was renamed
