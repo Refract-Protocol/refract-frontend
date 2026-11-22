@@ -22,6 +22,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export type MotionPreference = 'system' | 'reduced' | 'full';
 export type ExplorerNetworkPreference = 'auto' | 'testnet' | 'public';
+export type LiveUpdatesPreference = 'on' | 'off';
 
 export interface PreferencesState {
   motion: MotionPreference;
@@ -29,11 +30,14 @@ export interface PreferencesState {
   compactNumbers: boolean;
   explorerNetwork: ExplorerNetworkPreference;
   attentionCues: boolean;
+  /** User's explicit live-updates preference. Defaults to 'on'. */
+  liveUpdates: LiveUpdatesPreference;
   setMotion: (motion: MotionPreference) => void;
   setLocale: (locale: string) => void;
   setCompactNumbers: (compactNumbers: boolean) => void;
   setExplorerNetwork: (explorerNetwork: ExplorerNetworkPreference) => void;
   setAttentionCues: (attentionCues: boolean) => void;
+  setLiveUpdates: (liveUpdates: LiveUpdatesPreference) => void;
   reset: () => void;
 }
 
@@ -46,6 +50,7 @@ export const DEFAULT_PREFERENCES = {
   compactNumbers: false,
   explorerNetwork: 'auto' as ExplorerNetworkPreference,
   attentionCues: false,
+  liveUpdates: 'on' as LiveUpdatesPreference,
 };
 
 /**
@@ -57,7 +62,7 @@ interface PersistedEnvelope {
   version: number;
   state: Pick<
     PreferencesState,
-    'motion' | 'locale' | 'compactNumbers' | 'explorerNetwork' | 'attentionCues'
+    'motion' | 'locale' | 'compactNumbers' | 'explorerNetwork' | 'attentionCues' | 'liveUpdates'
   >;
 }
 
@@ -82,6 +87,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       setCompactNumbers: (compactNumbers) => set({ compactNumbers }),
       setExplorerNetwork: (explorerNetwork) => set({ explorerNetwork }),
       setAttentionCues: (attentionCues) => set({ attentionCues }),
+      setLiveUpdates: (liveUpdates) => set({ liveUpdates }),
       reset: () => set({ ...DEFAULT_PREFERENCES }),
     }),
     {
@@ -97,10 +103,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           compactNumbers: state.compactNumbers,
           explorerNetwork: state.explorerNetwork,
           attentionCues: state.attentionCues,
+          liveUpdates: state.liveUpdates,
         },
       }),
-      // Rehydrate from the versioned envelope, falling back to defaults for
-      // any missing or unknown fields so old payloads never break the app.
       merge: (persisted, current) => {
         const envelope = persisted as PersistedEnvelope | undefined;
         const stored = envelope?.state;
@@ -114,6 +119,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           compactNumbers: stored.compactNumbers ?? current.compactNumbers,
           explorerNetwork: stored.explorerNetwork ?? current.explorerNetwork,
           attentionCues: stored.attentionCues ?? current.attentionCues,
+          liveUpdates: stored.liveUpdates ?? current.liveUpdates,
         };
       },
     },

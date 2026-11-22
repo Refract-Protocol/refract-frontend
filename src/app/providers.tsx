@@ -12,6 +12,8 @@ import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
 import { bindRealtimeLifecycle, realtimeClient } from "@/lib/realtime";
 import { isRealtimeAllowed } from "@/lib/realtime/preferences";
 
+import { RealtimeModeGuard } from "@/lib/realtime/RealtimeModeGuard";
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
@@ -22,14 +24,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AriaLiveProvider>
-        <RealtimeSyncProvider>
-          <ToastProvider>
-            <WalletProvider>
-              <RealtimeScopeSync />
-              <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
-            </WalletProvider>
-          </ToastProvider>
-        </RealtimeSyncProvider>
+        <RealtimeModeGuard>
+          <RealtimeSyncProvider>
+            <ToastProvider>
+              <WalletProvider>
+                <RealtimeScopeSync />
+                <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
+              </WalletProvider>
+            </ToastProvider>
+          </RealtimeSyncProvider>
+        </RealtimeModeGuard>
       </AriaLiveProvider>
     </QueryClientProvider>
   );
