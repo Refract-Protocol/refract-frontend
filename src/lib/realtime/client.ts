@@ -41,6 +41,26 @@ type AnyHandler = (payload: any, meta: FrameMeta) => void;
 
 export type ScopeListener = (scope: RealtimeScope, epoch: number) => void;
 
+/**
+ * Test-only introspection snapshot for leak-detection tests.
+ * Returned by {@link RealtimeClient.introspect}; `null` in production.
+ */
+export interface ClientIntrospection {
+  enabled: boolean;
+  hasSocket: boolean;
+  hasReconnectTimer: boolean;
+  hasScopeTimer: boolean;
+  activeTopicCount: number;
+  handlerCounts: Record<string, number>;
+  scopeListenerCount: number;
+  bufferCount: number;
+  lastFrameCount: number;
+  topicStateCount: number;
+  epoch: number;
+  scope: RealtimeScope;
+  pendingScope: boolean;
+}
+
 export interface WebSocketLike {
   readonly readyState: number;
   send(data: string): void;
@@ -273,12 +293,45 @@ export class RealtimeClient {
     frameRecorder.recordLifecycle("fallback_activated", { reason });
   }
 
+  /**
+   * Leak-detection introspection. Returns a snapshot of internal state so
+   * tests can assert that handlers, timers, sockets, listeners, and per-topic
+   * stores all reach zero after a session ends.
+   *
+   * Returns `null` in production builds so the snapshot construction is
+   * dead-code-eliminated from the bundle.
+   *
+   * @internal
+   */
+  introspect(): ClientIntrospection | null {
+    if (process.env.NODE_ENV === "production") return null;
+    const handlerCounts: Record<string, number> = {};
+    for (const [topic, set] of this.handlers) handlerCounts[topic] = set.size;
+    return {
+      enabled: this.enabled,
+      hasSocket: this.socket !== null,
+      hasReconnectTimer: this.reconnectTimer !== null,
+      hasScopeTimer: this.scopeTimer !== null,
+      activeTopicCount: this.handlers.size,
+      handlerCounts,
+      scopeListenerCount: this.scopeListeners.size,
+      bufferCount: this.buffers.size,
+      lastFrameCount: this.lastFrames.size,
+      topicStateCount: this.topicState.size,
+      epoch: this.epoch,
+      scope: this.scope,
+      pendingScope: this.pendingScope !== null,
+    };
+  }
+
   private applyScope(next: RealtimeScope): void {
     const previous = this.scope;
     this.epoch += 1;
     this.scope = next;
     this.lastFrames.clear();
     this.cache.clear();
+    this.buffers.clear();
+    this.topicState.clear();
     this.health.resetTopics();
     this.breadcrumb({
       event: "scope_changed",
@@ -397,6 +450,10 @@ export class RealtimeClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.scopeTimer) {
+      clearTimeout(this.scopeTimer);
+      this.scopeTimer = null;
     }
     const socket = this.socket;
     if (!socket) return;
