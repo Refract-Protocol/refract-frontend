@@ -28,7 +28,9 @@
     "gen:realtime-types": "node scripts/gen-realtime-types.mjs",
     "check:realtime-types": "node scripts/gen-realtime-types.mjs --check",
     "realtime:benchmark": "node scripts/realtime-benchmark.mjs",
-    "canary:realtime": "tsx scripts/realtime-canary.ts"
+    "canary:realtime": "tsx scripts/realtime-canary.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
