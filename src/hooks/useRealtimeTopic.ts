@@ -63,8 +63,19 @@ export function useRealtimeTopic<T = unknown>(
     };
   });
 
+  // Track the circuit breaker so the hook can fall back to REST-only while open.
+  const [circuitOpen, setCircuitOpen] = useState(
+    () => client.isCircuitOpen?.() ?? false,
+  );
   useEffect(() => {
-    if (!enabled) return;
+    if (typeof client.onCircuitStateChange !== "function") return;
+    return client.onCircuitStateChange((state) => {
+      setCircuitOpen(state === "open");
+    });
+  }, [client]);
+
+  useEffect(() => {
+    if (!enabled || circuitOpen) return;
     return client.subscribe(topic as TopicName, (payload, meta) => {
       if (meta && (meta.epoch !== client.getEpoch() || client.isScopeChanging())) return;
       if (meta && account !== undefined && meta.scope.account !== account) return;
@@ -88,7 +99,7 @@ export function useRealtimeTopic<T = unknown>(
       });
       onEvent?.(value, meta);
     });
-  }, [client, topic, enabled, account]);
+  }, [client, topic, enabled, account, circuitOpen]);
 
   if (!isCallbackOverload) return state;
 }

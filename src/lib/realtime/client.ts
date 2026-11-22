@@ -23,6 +23,7 @@ import { frameRecorder } from "./recorder";
 import { applyFrame, isRejection, isTopicFrame, type TopicState } from "./patch";
 import { LastValueCache, normalizeTopic, type CachedValue } from "./lastValueCache";
 import { REALTIME_TOPICS, TOPIC_BUFFER_CAPS, type RealtimeTopic } from "./topics";
+import { CircuitBreaker, type CircuitState, type CircuitBreakerConfig } from "./circuitBreaker";
 
 const DEFAULT_BUFFER_CAP = 50;
 
@@ -59,6 +60,7 @@ export interface ClientIntrospection {
   epoch: number;
   scope: RealtimeScope;
   pendingScope: boolean;
+  circuitState: CircuitState;
 }
 
 export interface WebSocketLike {
@@ -81,6 +83,7 @@ export interface RealtimeClientOptions {
   maxAttempts?: number;
   baseBackoffMs?: number;
   maxBackoffMs?: number;
+  circuitBreaker?: Partial<CircuitBreakerConfig>;
 }
 
 const OPEN = 1;
@@ -128,6 +131,8 @@ export class RealtimeClient {
   private cache = new LastValueCache();
   private lastFrames = new Map<string, { payload: unknown; meta: FrameMeta }>();
   private scopeListeners = new Set<ScopeListener>();
+  private circuitListeners = new Set<(state: CircuitState) => void>();
+  readonly circuitBreaker: CircuitBreaker;
 
   constructor(opts: RealtimeClientOptions = {}) {
     this.url = opts.url ?? defaultUrl;
@@ -140,6 +145,26 @@ export class RealtimeClient {
     this.baseBackoffMs = opts.baseBackoffMs ?? 1_000;
     this.maxBackoffMs = opts.maxBackoffMs ?? 30_000;
     this.enabled = opts.createSocket === undefined;
+
+    this.circuitBreaker = new CircuitBreaker(opts.circuitBreaker, {
+      onTrip: () => {
+        this.health.setConnection("unavailable");
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        this.notifyCircuitState("open");
+      },
+      onHalfOpen: () => {
+        // Probe: attempt to open the transport. open() respects the
+        // half-open state (isOpen() is false, so it proceeds).
+        if (this.enabled && this.handlers.size > 0) this.open();
+        this.notifyCircuitState("half-open");
+      },
+      onClose: () => {
+        this.notifyCircuitState("closed");
+      },
+    });
   }
 
   private get createSocket(): ((url: string) => WebSocketLike) | null {
@@ -321,7 +346,30 @@ export class RealtimeClient {
       epoch: this.epoch,
       scope: this.scope,
       pendingScope: this.pendingScope !== null,
+      circuitState: this.circuitBreaker.getState(),
     };
+  }
+
+  /** Current circuit breaker state. */
+  getCircuitState(): CircuitState {
+    return this.circuitBreaker.getState();
+  }
+
+  /** True when the circuit breaker is fully OPEN (REST-only mode). */
+  isCircuitOpen(): boolean {
+    return this.circuitBreaker.isOpen();
+  }
+
+  /** Subscribe to circuit breaker state changes. */
+  onCircuitStateChange(listener: (state: CircuitState) => void): () => void {
+    this.circuitListeners.add(listener);
+    return () => {
+      this.circuitListeners.delete(listener);
+    };
+  }
+
+  private notifyCircuitState(state: CircuitState): void {
+    this.circuitListeners.forEach((listener) => listener(state));
   }
 
   private applyScope(next: RealtimeScope): void {
@@ -355,6 +403,8 @@ export class RealtimeClient {
   private open(): void {
     const factory = this.createSocket;
     if (!this.enabled || !factory || this.socket) return;
+    // Circuit breaker: block transport while fully OPEN (half-open allows the probe).
+    if (this.circuitBreaker.isOpen()) return;
 
     const epoch = this.epoch;
     const wsUrl = this.url();
@@ -369,6 +419,7 @@ export class RealtimeClient {
       realtimeTracer.onConnectError(wsUrl, cause);
       frameRecorder.recordLifecycle("connect_error", { wsUrl, error: String(cause) });
       this.reportConnectionFailure(cause);
+      this.circuitBreaker.recordFailure();
       this.scheduleReconnect();
       return;
     }
@@ -377,6 +428,7 @@ export class RealtimeClient {
 
     socket.addEventListener("open", () => {
       if (!isCurrent()) return;
+      this.circuitBreaker.recordSuccess();
       this.attempt = 0;
       this.retriesExhaustedReported = false;
       this.health.setConnection("healthy");
@@ -402,6 +454,7 @@ export class RealtimeClient {
         level: event?.wasClean ? "info" : "warning",
         data: { code: event?.code ?? null, epoch },
       });
+      if (!event?.wasClean) this.circuitBreaker.recordFailure();
       if (this.enabled) this.scheduleReconnect();
     });
 
@@ -414,6 +467,10 @@ export class RealtimeClient {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || !this.enabled) return;
+    // Circuit breaker: pause reconnect churn while OPEN or HALF_OPEN.
+    // The breaker's own probe timer handles the transition to HALF_OPEN
+    // and triggers a probe via the onHalfOpen callback.
+    if (this.circuitBreaker.isBlockingReconnect()) return;
     this.attempt += 1;
     this.health.setConnection(this.attempt <= this.degradedAttempts ? "degraded" : "unavailable");
 
@@ -454,6 +511,9 @@ export class RealtimeClient {
     if (this.scopeTimer) {
       clearTimeout(this.scopeTimer);
       this.scopeTimer = null;
+    }
+    if (reason === "disabled" || reason === "disconnect") {
+      this.circuitBreaker.dispose();
     }
     const socket = this.socket;
     if (!socket) return;
