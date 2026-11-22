@@ -137,6 +137,25 @@ export interface RegistryChangeEvent {
   active: boolean;
 }
 
+/**
+ * Test-only introspection snapshot for leak-detection tests.
+ * Returned by {@link SubscriptionRegistry.introspect}; `null` in production.
+ */
+export interface RegistryIntrospection {
+  /** Total topics tracked, including those with a pending coalesced teardown. */
+  topicCount: number;
+  /** Topics with at least one active handler. */
+  activeTopicCount: number;
+  /** Registered change listeners. */
+  listenerCount: number;
+  /** Topics whose teardown is coalescing in the current microtask. */
+  pendingTeardownTopics: string[];
+  /** Topics with an open transport subscription. */
+  transportSubscribedTopics: string[];
+  /** Active topics with their consumer counts. */
+  activeTopics: RegistryEntry[];
+}
+
 type ChangeListener = (event: RegistryChangeEvent) => void;
 
 interface TopicState {
@@ -291,6 +310,34 @@ export class SubscriptionRegistry {
 
   getRateBreachCount(): number {
     return this.rateLimiter.getBreachCount();
+  }
+
+  /**
+   * Leak-detection introspection. Returns a snapshot of internal state so
+   * tests can assert that topics, listeners, transport subscriptions, and
+   * pending teardowns all reach zero after a session ends.
+   *
+   * Returns `null` in production builds so the snapshot construction is
+   * dead-code-eliminated from the bundle.
+   *
+   * @internal
+   */
+  introspect(): RegistryIntrospection | null {
+    if (process.env.NODE_ENV === 'production') return null;
+    const pendingTeardownTopics: string[] = [];
+    const transportSubscribedTopics: string[] = [];
+    for (const [topic, state] of this.topics) {
+      if (state.pendingTeardown) pendingTeardownTopics.push(topic);
+      if (state.unsubscribeTransport) transportSubscribedTopics.push(topic);
+    }
+    return {
+      topicCount: this.topics.size,
+      activeTopicCount: this.getActiveTopics().length,
+      listenerCount: this.listeners.size,
+      pendingTeardownTopics,
+      transportSubscribedTopics,
+      activeTopics: this.getActiveTopics(),
+    };
   }
 
   private emit(event: RegistryChangeEvent): void {
