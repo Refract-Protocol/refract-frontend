@@ -109,6 +109,9 @@ export function Modal({
     [dismissible, onClose]
   );
 
+  // Capture the focused element on open and restore it on close.
+  // This effect only depends on `open` so the cleanup that restores focus
+  // is not triggered by unrelated re-renders (e.g. a new `onClose` reference).
   useEffect(() => {
     if (!open) return;
 
@@ -118,6 +121,17 @@ export function Modal({
     const target = initialFocusRef?.current ?? panel;
     target?.focus();
 
+    return () => {
+      previouslyFocused.current?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Register/re-register the keydown listener and body-scroll lock whenever
+  // the modal is open or the handler reference changes.
+  useEffect(() => {
+    if (!open) return;
+
     document.addEventListener("keydown", handleKeyDown, true);
 
     const { overflow } = document.body.style;
@@ -126,9 +140,8 @@ export function Modal({
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
       document.body.style.overflow = overflow;
-      previouslyFocused.current?.focus?.();
     };
-  }, [open, handleKeyDown, initialFocusRef]);
+  }, [open, handleKeyDown]);
 
   if (!open) return null;
 
