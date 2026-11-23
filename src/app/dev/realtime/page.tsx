@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { defaultEndpoints, defaultTransportFactories } from "@/lib/realtime/capabilities";
@@ -22,6 +20,7 @@ import {
  */
 
 const TOPIC = "oracle_update";
+const HISTORY_LIMIT = 20;
 
 function useClient(): RealtimeClient | null {
   const [client, setClient] = useState<RealtimeClient | null>(null);
@@ -59,6 +58,7 @@ function Panel({ client }: { client: RealtimeClient }) {
   const [events, setEvents] = useState<Array<{ id?: string; seq?: number; payload: unknown }>>([]);
   const [gaps, setGaps] = useState<GapInfo[]>([]);
   const [stats, setStats] = useState<RealtimeStats>(() => client.getStats());
+  const [history, setHistory] = useState<Array<{ state: string; at: number }>>([]);
 
   const { status, degraded } = useRealtimeTopic(TOPIC, {
     client,
@@ -66,6 +66,13 @@ function Panel({ client }: { client: RealtimeClient }) {
       setEvents((prev) => [{ id: meta.id, seq: meta.seq, payload }, ...prev].slice(0, 25)),
     onGap: (gap) => setGaps((prev) => [gap, ...prev].slice(0, 10)),
   });
+
+  useEffect(() => {
+    setHistory((prev) => {
+      if (prev.length > 0 && prev[0].state === status) return prev;
+      return [{ state: status, at: Date.now() }, ...prev].slice(0, HISTORY_LIMIT);
+    });
+  }, [status]);
 
   useEffect(() => {
     const timer = setInterval(() => setStats(client.getStats()), 250);
@@ -127,6 +134,17 @@ function Panel({ client }: { client: RealtimeClient }) {
       </dl>
 
       <section>
+        <h2 className="mb-2 font-medium">State history</h2>
+        <ul className="space-y-1 font-mono text-xs" data-testid="realtime-state-history">
+          {history.map((entry, i) => (
+            <li key={`${entry.at}-${i}`}>
+              {new Date(entry.at).toLocaleTimeString()} — {entry.state}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section>
         <h2 className="mb-2 font-medium">Counters</h2>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {counters.map(([label, value, id]) => (
@@ -183,8 +201,5 @@ function Field({ label, value, testId }: { label: string; value: string; testId:
         {value}
       </dd>
     </div>
-  );
-}
-
   );
 }

@@ -16,7 +16,13 @@ export interface RealtimeInspectorMessage {
   merged?: unknown;
 }
 
+export interface RealtimeStateTransition {
+  state: string;
+  at: number;
+}
+
 const MAX_LOG_LENGTH = 100;
+const MAX_STATE_HISTORY = 20;
 const MAX_PAYLOAD_CHARS = 500;
 
 function isDev(): boolean {
@@ -59,12 +65,33 @@ function appendBounded(
   return merged.length > MAX_LOG_LENGTH ? merged.slice(merged.length - MAX_LOG_LENGTH) : merged;
 }
 
+function appendTransition(
+  prev: RealtimeStateTransition[],
+  next: RealtimeStateTransition,
+): RealtimeStateTransition[] {
+  const merged = [...prev, next];
+  return merged.length > MAX_STATE_HISTORY
+    ? merged.slice(merged.length - MAX_STATE_HISTORY)
+    : merged;
+}
+
 export function RealtimeInspector() {
   const [messages, setMessages] = useState<RealtimeInspectorMessage[]>([]);
   const [view, setView] = useState<'raw' | 'merged'>('raw');
   const [open, setOpen] = useState(false);
+  const [stateHistory, setStateHistory] = useState<RealtimeStateTransition[]>([]);
   const counterRef = useRef(0);
   const health = useRealtimeHealth();
+  const currentState = health?.status ?? 'unknown';
+
+  useEffect(() => {
+    if (!isDev()) return;
+    setStateHistory((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.state === currentState) return prev;
+      return appendTransition(prev, { state: currentState, at: Date.now() });
+    });
+  }, [currentState]);
 
   useEffect(() => {
     if (!isDev()) return;
@@ -139,7 +166,7 @@ export function RealtimeInspector() {
         }}
       >
         <span>
-          Realtime Inspector · {health?.status ?? 'unknown'}
+          Realtime Inspector · {currentState}
         </span>
         <span style={{ display: 'flex', gap: 6 }}>
           <button type="button" onClick={() => setView('raw')} disabled={view === 'raw'}>
@@ -155,6 +182,22 @@ export function RealtimeInspector() {
       </div>
       {open && (
         <div style={{ overflowY: 'auto', padding: 6 }}>
+          <div
+            data-testid="realtime-inspector-state-history"
+            style={{ borderBottom: '1px solid #333', paddingBottom: 6, marginBottom: 6 }}
+          >
+            <div style={{ opacity: 0.6, marginBottom: 4 }}>State history</div>
+            {stateHistory.length === 0 ? (
+              <div style={{ opacity: 0.6 }}>No state transitions yet.</div>
+            ) : (
+              stateHistory.map((entry, index) => (
+                <div key={`${entry.at}-${index}`} style={{ display: 'flex', gap: 6 }}>
+                  <span style={{ opacity: 0.6 }}>{formatTimestamp(entry.at)}</span>
+                  <span>{entry.state}</span>
+                </div>
+              ))
+            )}
+          </div>
           {snapshot.length === 0 ? (
             <div style={{ opacity: 0.6 }}>No messages yet.</div>
           ) : (

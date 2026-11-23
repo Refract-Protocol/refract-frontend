@@ -35,4 +35,3 @@ export function useRealtimeHealth(): RealtimeHealthSnapshot {
 
   return { ...snapshot, lastMessageAgeMs };
 }
-}
