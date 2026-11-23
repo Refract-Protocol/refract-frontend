@@ -15,8 +15,8 @@ security-relevant production dependencies still get individual review:
   into a single PR per week.
 - **Ungrouped (individual review required):** major version bumps and
   security-relevant production dependencies — in particular
-  `@stellar/freighter-api` and `next` — are left ungrouped so each is reviewed
-  on its own.
+  `@stellar/freighter-api`, `@walletconnect/sign-client`, and `next` — are left
+  ungrouped so each is reviewed on its own.
 
 ## Vulnerability scanning in CI
 
@@ -48,8 +48,9 @@ because of their centrality to the app's security and correctness:
 | Package | Reason |
 | --- | --- |
 | `@stellar/freighter-api` | Direct wallet integration; a vulnerability here can compromise signing/keys. |
+| `@walletconnect/sign-client` | Mobile wallet bridge; handles session keys and transaction signing over an external relay. |
 | `next` | Application framework; security advisories affect the whole app surface. |
-| Stellar SDK ecosystem (`@stellar/stellar-sdk`, `@stellar/stellar-base`, etc.) | Transaction building/signing correctness and network security. |
+| Stellar SDK ecosystem (`@stellar/stellar-sdk`, etc.) | Transaction building/signing correctness and network security. |
 
 For these packages:
 
