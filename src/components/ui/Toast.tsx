@@ -44,7 +44,9 @@ export const Toast = forwardRef<HTMLDivElement, ToastProps>(function Toast(
   return (
     <div
       ref={ref}
-      role="status"
+      role={tone === "danger" ? "alert" : "status"}
+      aria-live={tone === "danger" ? "assertive" : "polite"}
+      aria-atomic="true"
       className={[
         "pm-panel pointer-events-auto flex w-full max-w-sm items-start gap-3 p-4 shadow-lg",
         toneClass[tone],

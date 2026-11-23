@@ -1,11 +1,16 @@
 import { forwardRef, useId } from "react";
 import { cn } from "@/lib/cn";
 
-interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  hint?: string;
-  error?: string;
-}
+/** Requires either a visible `label` or an `aria-label` for screen readers. */
+type LabelRequirement =
+  | { label: string; "aria-label"?: string }
+  | { label?: never; "aria-label": string };
+
+type InputProps = LabelRequirement &
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "aria-label"> & {
+    hint?: string;
+    error?: string;
+  };
 
 /** Labeled input primitive built on `.pm-input`, with hint/error text and a stable a11y id. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(

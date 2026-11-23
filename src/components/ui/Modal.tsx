@@ -150,9 +150,21 @@ export function Modal({
         tabIndex={-1}
         className={`pm-panel w-full max-w-md rounded-lg p-6 outline-none ${className ?? ""}`}
       >
-        <h2 id={titleId} className="mb-4 text-lg font-semibold">
-          {title}
-        </h2>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 id={titleId} className="text-lg font-semibold">
+            {title}
+          </h2>
+          {dismissible && (
+            <button
+              type="button"
+              aria-label="Close dialog"
+              onClick={onClose}
+              className="shrink-0 rounded p-1 text-pm-text/50 transition-colors hover:text-pm-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          )}
+        </div>
         {children}
       </div>
     </div>,
