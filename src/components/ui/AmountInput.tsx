@@ -9,8 +9,14 @@ import { parseAmount, USDC_DECIMALS } from "@/lib/format";
  *
  * The component owns formatting, parsing and the quick-amount preset chips so
  * that money-entry surfaces do not re-implement (and mis-parse) them.
+ *
+ * Either `label` (visible) or `aria-label` (screen-reader-only) is required
+ * so the input always has a programmatic name.
  */
-export interface AmountInputProps {
+export type AmountInputProps = (
+  | { label: string; "aria-label"?: string }
+  | { label?: never; "aria-label": string }
+) & {
   /** Raw string value of the input. Parsing is done via {@link parseAmount}. */
   value: string;
   /** Called with the raw string whenever the value changes. */
@@ -34,8 +40,6 @@ export interface AmountInputProps {
   hint?: string;
   /** Number of decimal places the asset supports. Defaults to USDC. */
   decimals?: number;
-  /** Accessible label for the input. */
-  label?: string;
   /** Placeholder for the input. */
   placeholder?: string;
   /** Disables the input and its preset chips. */

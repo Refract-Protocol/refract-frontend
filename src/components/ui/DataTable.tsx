@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Card } from "./Card";
+import { useAriaLive } from "./AriaLiveProvider";
 
 /**
  * A single column definition for {@link DataTable}.
@@ -111,6 +112,7 @@ export function DataTable<T>({
   className,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<SortState | null>(null);
+  const { announce } = useAriaLive();
 
   const sortedRows = useMemo(() => {
     if (!sort) return rows;
@@ -122,13 +124,13 @@ export function DataTable<T>({
   const toggleSort = (column: Column<T>) => {
     if (!column.sortable) return;
     setSort((current) => {
-      if (!current || current.key !== column.key) {
-        return { key: column.key, direction: "asc" };
-      }
-      return {
-        key: column.key,
-        direction: current.direction === "asc" ? "desc" : "asc",
-      };
+      const next: SortState =
+        !current || current.key !== column.key
+          ? { key: column.key, direction: "asc" }
+          : { key: column.key, direction: current.direction === "asc" ? "desc" : "asc" };
+      const directionLabel = next.direction === "asc" ? "ascending" : "descending";
+      announce(`Sorted by ${column.header}, ${directionLabel}`);
+      return next;
     });
   };
 

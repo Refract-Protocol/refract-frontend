@@ -141,9 +141,19 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
         )}
       >
         <div className="border-b border-pm-border px-5 py-4">
-          <h2 id={titleId} className="text-[15px] font-semibold text-pm-text">
-            {title}
-          </h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 id={titleId} className="text-[15px] font-semibold text-pm-text">
+              {title}
+            </h2>
+            <button
+              type="button"
+              aria-label="Close dialog"
+              onClick={() => onOpenChange(false)}
+              className="shrink-0 rounded p-1 text-pm-text/50 transition-colors hover:text-pm-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
           {description && (
             <p id={descriptionId} className="mt-1 text-[13px] text-pm-text/60">
               {description}

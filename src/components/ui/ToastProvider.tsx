@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { Toast, type ToastTone } from "./Toast";
+import { useAriaLive } from "./AriaLiveProvider";
 
 /** Options accepted by {@link useToast}'s `toast` function. */
 export interface ToastOptions {
@@ -51,6 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const idRef = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const { announce } = useAriaLive();
 
   const dismiss = useCallback((id: number) => {
     const timer = timers.current.get(id);
@@ -88,9 +90,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         schedule(id, duration);
         return [...current, { id, title, description, tone, duration, action }];
       });
+      // Announce through the shared AriaLiveProvider so screen readers hear
+      // each toast exactly once. danger toasts get the assertive channel via
+      // the role="alert" on the Toast element itself; we still push a polite
+      // announcement for all tones so the message is always read.
+      const descriptionText = typeof description === "string" ? ` ${description}` : "";
+      announce(`${title}${descriptionText}`);
       return id;
     },
-    [schedule],
+    [schedule, announce],
   );
 
   useEffect(() => {
@@ -103,27 +111,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ToastContextValue>(() => ({ toast, dismiss }), [toast, dismiss]);
 
-  const polite = toasts.filter((item) => item.tone !== "danger");
-  const assertive = toasts.filter((item) => item.tone === "danger");
-
   return (
     <ToastContext.Provider value={value}>
       {children}
       <div
-        aria-live="polite"
-        aria-atomic="false"
         className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 sm:bottom-6"
+        aria-hidden="true"
       >
-        {polite.map((item) => (
-          <ToastItem key={item.id} record={item} onDismiss={dismiss} onSchedule={schedule} />
-        ))}
-      </div>
-      <div
-        aria-live="assertive"
-        aria-atomic="false"
-        className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 sm:bottom-6"
-      >
-        {assertive.map((item) => (
+        {toasts.map((item) => (
           <ToastItem key={item.id} record={item} onDismiss={dismiss} onSchedule={schedule} />
         ))}
       </div>

@@ -6,8 +6,15 @@ import { Button } from "./Button";
 import { isFederationAddress, isStellarPublicKey, resolveFederationAddress } from "@/lib/stellar/federation";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
 
+/**
+ * Either a visible `label` or `aria-label` must be supplied. `label` defaults
+ * to `"Stellar address"` so most call sites need not set it explicitly.
+ */
 interface AddressInputProps {
+  /** Visible label rendered above the input. Defaults to "Stellar address". */
   label?: string;
+  /** Screen-reader-only label; use instead of `label` when no visible label is desired. */
+  "aria-label"?: string;
   placeholder?: string;
   /** Called with the accepted `G...` public key, or `null` when the input no longer holds an accepted address. */
   onChange: (address: string | null) => void;
@@ -25,7 +32,7 @@ type Resolution =
  * (`name*domain.com`). Federation inputs are resolved and shown for explicit
  * confirmation before being passed to `onChange`.
  */
-export function AddressInput({ label = "Stellar address", placeholder = "G… or name*domain.com", onChange }: AddressInputProps) {
+export function AddressInput({ label = "Stellar address", placeholder = "G… or name*domain.com", onChange, "aria-label": ariaLabel }: AddressInputProps) {
   const [value, setValue] = useState("");
   const [resolution, setResolution] = useState<Resolution>({ status: "empty" });
   const [confirmed, setConfirmed] = useState(false);
@@ -70,6 +77,7 @@ export function AddressInput({ label = "Stellar address", placeholder = "G… or
     <div className="w-full">
       <Input
         label={label}
+        aria-label={ariaLabel}
         placeholder={placeholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
