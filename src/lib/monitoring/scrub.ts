@@ -21,13 +21,12 @@ function scrubDeep(value: unknown, depth = 0): unknown {
   return out;
 }
 
-/** Shared `beforeSend` for the client, server and edge Sentry configs. */
-export function beforeSend(event: ErrorEvent): ErrorEvent {
+function scrubEvent(event: ErrorEvent): ErrorEvent {
   const scrubbed = scrubDeep(event) as ErrorEvent;
 
-  if (scrubbed.request) {
-    const req = scrubbed.request;
-    if (req.headers) {
+  const req = scrubbed.request;
+  if (req && typeof req === "object") {
+    if (req.headers && typeof req.headers === "object") {
       for (const name of Object.keys(req.headers)) {
         if (SENSITIVE_HEADERS.has(name.toLowerCase())) req.headers[name] = REDACTED;
       }
@@ -35,21 +34,38 @@ export function beforeSend(event: ErrorEvent): ErrorEvent {
     delete req.cookies;
     delete req.data;
     delete req.query_string;
-    if (req.url) req.url = stripQuery(req.url);
+    if (typeof req.url === "string") req.url = stripQuery(req.url);
   }
 
-  if (scrubbed.user) {
-    delete scrubbed.user.email;
-    delete scrubbed.user.ip_address;
+  const user = scrubbed.user;
+  if (user && typeof user === "object") {
+    delete user.email;
+    delete user.ip_address;
   }
 
   for (const crumb of scrubbed.breadcrumbs ?? []) {
-    const data = crumb.data;
-    if (!data) continue;
+    const data = crumb?.data;
+    if (!data || typeof data !== "object") continue;
     for (const key of ["url", "from", "to"]) {
       if (typeof data[key] === "string") data[key] = stripQuery(data[key]);
     }
   }
 
   return scrubbed;
+}
+
+/**
+ * Shared `beforeSend` for the client, server and edge Sentry configs.
+ *
+ * This hook must never throw: an exception in `beforeSend` causes Sentry to
+ * silently drop the whole event. Missing or malformed fields are skipped
+ * rather than treated as fatal, and any unexpected failure falls back to the
+ * original event.
+ */
+export function beforeSend(event: ErrorEvent): ErrorEvent {
+  try {
+    return scrubEvent(event);
+  } catch {
+    return event;
+  }
 }

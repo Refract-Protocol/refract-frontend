@@ -47,3 +47,10 @@ stack traces.
 - Request bodies
 - URL query strings (request URL, query string, and breadcrumb URLs)
 - User email and IP address
+
+### Failure behaviour
+
+The scrubber is **non-fatal**: it never throws. A missing or unexpected field is scrubbed (removed
+or replaced) rather than causing an exception, and any unexpected internal failure returns the
+original event unchanged. This ensures a misconfigured or partial event is still reported instead
+of being silently dropped by Sentry's `beforeSend` hook.
