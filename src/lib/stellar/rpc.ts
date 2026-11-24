@@ -2,7 +2,6 @@ import {
   Account,
   Address,
   Contract,
-  Networks,
   TransactionBuilder,
   nativeToScVal,
   rpc,
@@ -57,7 +56,7 @@ export async function readContract(
   const server = new rpc.Server(ACTIVE_NETWORK.rpcUrl);
   const tx = new TransactionBuilder(new Account(SIMULATION_SOURCE, "0"), {
     fee: "100",
-    networkPassphrase: ACTIVE_NETWORK.networkPassphrase ?? Networks.TESTNET,
+    networkPassphrase: ACTIVE_NETWORK.networkPassphrase,
   })
     .addOperation(new Contract(contractId).call(method, ...args))
     .setTimeout(30)
