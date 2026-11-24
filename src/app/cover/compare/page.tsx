@@ -73,7 +73,7 @@ export default function CoverComparePage() {
     <div className="min-h-screen bg-pm-bg">
       <Navbar right={<WalletButton />} />
 
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <Container className="py-9 sm:py-10">
           {/* Header */}
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -10,7 +10,7 @@ export default function NotFound() {
   return (
     <div className="min-h-screen bg-pm-bg">
       <Navbar />
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <Container className="flex min-h-[70vh] items-center justify-center py-16">
           <Card padding="lg" className="flex max-w-md flex-col items-center gap-4 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-pm-violet/10 text-2xl" aria-hidden="true">
