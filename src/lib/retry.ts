@@ -1,3 +1,5 @@
+import { ApiError } from './api/client';
+
 export interface RetryOptions {
   /** Extra attempts after the first one. */
   retries: number;
@@ -21,6 +23,7 @@ export async function retryWithBackoff<T>(
       return await fn();
     } catch (err) {
       if (attempt >= retries || !isRetryable(err)) throw err;
+      if (err instanceof ApiError && typeof err.status === 'number' && err.status < 500) throw err;
       await sleep(baseDelayMs * 2 ** attempt);
     }
   }

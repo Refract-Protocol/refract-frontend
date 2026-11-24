@@ -1,62 +1,94 @@
-import { env } from "@/lib/env";
-/**
- * Thin fetch wrapper for the Refract backend (see refract-backend/src/routes/*.ts
- * for the source of truth on these shapes). Defaults to a local dev server;
- * override with NEXT_PUBLIC_API_URL in production.
- *
- * The backend is not always running in this environment, so every call site
- * that uses this client is expected to catch `ApiUnreachableError` and fall
- * back to a clearly-labeled fixture — see src/lib/fixtures/.
- */
-export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
-
 export class ApiError extends Error {
+  status?: number;
+  code?: string;
+  cause?: unknown;
+
   constructor(
     message: string,
-    public status: number,
-    public details?: unknown
+    options: { status?: number; code?: string; cause?: unknown } = {},
   ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
+    this.status = options.status;
+    this.code = options.code;
+    this.cause = options.cause;
   }
 }
 
-export class ApiUnreachableError extends Error {
-  constructor(cause: unknown) {
-    super("Refract API is unreachable");
-    this.name = "ApiUnreachableError";
-    this.cause = cause;
-  }
+export interface RequestOptions extends RequestInit {
+  baseUrl?: string;
 }
 
-interface RequestOptions {
-  method?: "GET" | "POST";
-  body?: unknown;
-  signal?: AbortSignal;
-  idempotencyKey?: string;
-}
+const DEFAULT_BASE_URL = '/api';
 
-export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  let res: Response;
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { baseUrl = DEFAULT_BASE_URL, headers, ...rest } = options;
+  const url = `${baseUrl}${path}`;
+
+  let response: Response;
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
-      method: opts.method ?? "GET",
+    response = await fetch(url, {
+      ...rest,
       headers: {
-        ...(opts.body ? { "Content-Type": "application/json" } : {}),
-        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+        'Content-Type': 'application/json',
+        ...headers,
       },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-      signal: opts.signal,
     });
-  } catch (err) {
-    throw new ApiUnreachableError(err);
+  } catch (cause) {
+    throw new ApiError(
+      `Network request to ${url} failed`,
+      { code: 'NETWORK_ERROR', cause },
+    );
   }
 
-  const isJson = res.headers.get("content-type")?.includes("application/json");
-  const payload = isJson ? await res.json().catch(() => null) : null;
-
-  if (!res.ok) {
-    throw new ApiError(payload?.error ?? res.statusText, res.status, payload);
+  if (!response.ok) {
+    let message = `Request to ${url} failed with status ${response.status}`;
+    let code: string | undefined;
+    try {
+      const body = await response.json();
+      if (body && typeof body === 'object') {
+        if (typeof body.message === 'string') message = body.message;
+        if (typeof body.code === 'string') code = body.code;
+      }
+    } catch {
+      // Ignore body parse failures; keep the human-readable default message.
+    }
+    throw new ApiError(message, { status: response.status, code });
   }
-  return payload as T;
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch (cause) {
+    throw new ApiError(
+      `Failed to parse response from ${url}`,
+      { status: response.status, code: 'PARSE_ERROR', cause },
+    );
+  }
 }
+
+export const apiClient = {
+  get<T>(path: string, options?: RequestOptions): Promise<T> {
+    return request<T>(path, { ...options, method: 'GET' });
+  },
+  post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return request<T>(path, {
+      ...options,
+      method: 'POST',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  },
+  put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return request<T>(path, {
+      ...options,
+      method: 'PUT',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  },
+  delete<T>(path: string, options?: RequestOptions): Promise<T> {
+    return request<T>(path, { ...options, method: 'DELETE' });
+  },
+};
