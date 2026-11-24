@@ -103,6 +103,39 @@ by success age and time to first valid message. A valid first message resets the
 endpoint's failures and reconnect backoff. Exponential reconnect delays are capped
 at 30 seconds. Expose `selectedEndpoint` and `endpoints.health` for observability.
 
+### Configuring reconnect timing
+
+There is no `reconnectDelay` option on any transport constructor. Reconnect
+timing is controlled at the **client** layer, not the transport layer, because
+transports only move frames — reconnect policy lives in `RealtimeClient`.
+
+Pass `baseBackoffMs` and `maxBackoffMs` to `RealtimeClient` to adjust the
+exponential backoff schedule:
+
+```ts
+const client = new RealtimeClient({
+  baseBackoffMs: 500,   // first retry after ~500 ms (default: 1 000 ms)
+  maxBackoffMs: 15_000, // cap at 15 s instead of 30 s
+});
+```
+
+The delay for attempt `n` is `min(baseBackoffMs × 2^(n−1), maxBackoffMs)`.
+
+For the **long-poll transport** specifically, the per-request retry backoff (used
+when individual poll requests fail before the transport closes) is controlled by
+`backoffBaseMs` and `backoffMaxMs` on `LongPollTransportOptions`:
+
+```ts
+const transport = new LongPollTransport({
+  url: "/realtime/poll",
+  backoffBaseMs: 1_000,  // default
+  backoffMaxMs: 30_000,  // default
+});
+```
+
+The WebSocket and SSE transports have no per-request retry options; they close on
+the first error and delegate reconnect entirely to `RealtimeClient`.
+
 After 60 seconds on a fallback, its socket closes and reconnect tries the preferred
 endpoint. This runs automatically without user action but occupies the same socket
 slot; there are never simultaneous endpoint connections. If the preferred endpoint
