@@ -14,3 +14,44 @@ Audit result: 41 client files, 6 top-level page boundaries, 0 client files witho
 No low-risk narrowing was applied: every page sources its data from client-only hooks (wallet, TanStack Query), so
 extracting static sections would be cosmetic and is out of scope. Re-run the audit when adding components; a client
 file reported as `candidate-for-server` should drop its directive.
+
+## What the audit script checks
+
+`scripts/audit-client-boundaries.ts` scans every `.tsx` file under `src/app` and `src/components` for a
+`"use client"` directive, then counts interactivity signals — hook calls (`useX(...)`), event-handler
+assignments (`onX={…}`), and direct browser-API access (`window`, `document`, `localStorage`,
+`sessionStorage`, `navigator`). A client file with **zero** such signals is flagged as
+`candidate-for-server`; a heavily interactive file is recorded as `interactive`. The script always
+exits 0 and writes a Markdown report; it is visibility, not a gate.
+
+## RealtimeBoundary
+
+Every component that consumes a realtime topic must be wrapped in
+`src/components/realtime/RealtimeBoundary.ts`. `RealtimeBoundary` is a React error boundary that:
+
+- Subscribes to `realtimeClient.onError(topic)` and calls `realtimeClient.markDegraded(topic)` on
+  transport errors, so the client's health store reflects per-topic failures.
+- Renders the caller-supplied `fallback` render-prop while `failed` is true, keeping the rest of the
+  page intact.
+- Exposes a `retry` callback that calls `realtimeClient.retry(topic)` and resets the failed state,
+  giving users a path back to live data without a full page reload.
+
+Because `RealtimeBoundary` calls browser APIs and subscribes to `realtimeClient` in
+`componentDidMount`, it carries `"use client"` and will appear in the audit report as an interactive
+client file. That is expected and correct — the boundary is intentionally a client component.
+
+### Usage pattern
+
+```tsx
+<RealtimeBoundary
+  topic="oracle_update"
+  route="/cover"
+  fallback={(retry) => <ErrorFallback onRetry={retry} />}
+>
+  <OracleReadings />
+</RealtimeBoundary>
+```
+
+New contributors adding a realtime consumer should wrap it in `RealtimeBoundary` before wiring up
+the topic subscription. Omitting the boundary means transport errors will propagate as unhandled
+React exceptions and the client's health store will not reflect the failure.
