@@ -33,6 +33,25 @@ environment is `development`. CI builds set `production` on `main` and `ci` othe
 `VERCEL_GIT_COMMIT_SHA` or `GITHUB_SHA` (CI sets it to `github.sha`). Uploaded source maps are
 attached to that release, so each error maps to an exact commit with a readable stack trace.
 
+## Sentry configuration files
+
+Three files at the repo root initialise Sentry for each Next.js runtime:
+
+| File | Runtime | When loaded |
+|---|---|---|
+| `sentry.client.config.ts` | Browser | On every page load in the browser bundle |
+| `sentry.server.config.ts` | Node.js (server components, API routes) | At server start |
+| `sentry.edge.config.ts` | Edge (middleware, edge API routes) | At edge-worker start |
+
+All three call `Sentry.init` with the same options, including `beforeSend` imported
+from `src/lib/monitoring/scrub.ts`. Sentry is a no-op in all three unless
+`NEXT_PUBLIC_SENTRY_DSN` is set and the environment is not `development`.
+
+When adding a new error path, check which runtime it runs in and confirm that the
+corresponding config file already passes `beforeSend`. Because all three files
+share the same `beforeSend` import, any change to `scrub.ts` applies
+simultaneously across browser, server, and edge.
+
 ## Data scrubbing
 
 A single `beforeSend` (`src/lib/monitoring/scrub.ts`) runs in all three runtimes. `sendDefaultPii`
