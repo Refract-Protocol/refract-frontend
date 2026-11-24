@@ -2,6 +2,23 @@
 
 Realtime is opt-in per topic through the remotely supplied feature flags. Each enabled topic seeds client state from one REST request, applies ordered realtime events through `useRealtimeResource`, and keeps an explicit refresh action where the UI exposes one. REST is the bounded fallback when the transport is unavailable; there are no interval polls in the data hooks.
 
+## Staleness threshold
+
+Data is considered stale when no update has arrived for **30 seconds** (`staleAfterMs = 30_000` in
+`src/components/DataFreshness.tsx`). `DataFreshness` accepts this value as a prop so individual
+surfaces can override it; the 30 s figure is the application-wide default.
+
+The component transitions through three freshness states:
+
+| State | Meaning |
+| --- | --- |
+| `fresh` | An update arrived within the staleness window. |
+| `aging` | The window has not elapsed but the connection is degrading or reconnecting. |
+| `stale` | No update for more than 30 s and no active reconnect grace period (5 s). |
+
+When the connection drops, `DataFreshness` grants a **5-second reconnect grace period** before
+showing `stale`, so a brief reconnect does not flash stale UI.
+
 ## Legacy path inventory and disposition
 
 | Path                                               | Current state                                                                                                                                                          | Disposition                                                                                                                                   |
