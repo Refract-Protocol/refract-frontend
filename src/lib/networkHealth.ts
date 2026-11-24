@@ -1,6 +1,6 @@
 import type { StellarNetworkId } from "@/lib/network";
 
-export type NetworkHealth = "healthy" | "degraded" | "unavailable";
+export type NetworkHealth = "healthy" | "degraded" | "unavailable" | "unreachable";
 
 export interface HealthSample {
   /** Age of the latest closed ledger in seconds; undefined if Horizon was unreachable. */
@@ -24,7 +24,12 @@ export function classifySample(network: StellarNetworkId, s: HealthSample): Netw
   return s.ledgerAgeSec > DEGRADED_AFTER_SEC[network] ? "degraded" : "healthy";
 }
 
-const RANK: Record<NetworkHealth, number> = { healthy: 0, degraded: 1, unavailable: 2 };
+const RANK: Record<NetworkHealth, number> = {
+  healthy: 0,
+  degraded: 1,
+  unavailable: 2,
+  unreachable: 3,
+};
 
 /** Improves immediately; worsens only after FLAP_THRESHOLD consecutive worse samples. */
 export function nextHealth(
