@@ -39,6 +39,9 @@ const flagsOverride = z.string().refine(
   { message: 'must be a JSON object of booleans, e.g. {"realtime-oracle":true}' }
 );
 
+/** Network names supported by `src/lib/network.ts`. Keep in sync with `.env.example`. */
+export const SUPPORTED_NETWORKS = ["testnet", "futurenet", "mainnet"] as const;
+
 export const envSchema = z.object({
   NEXT_PUBLIC_API_URL: z.preprocess(
     blankToUndefined,
@@ -46,6 +49,23 @@ export const envSchema = z.object({
   ),
   NEXT_PUBLIC_API_BASE_URL: optional(urlWithProtocol(["http:", "https:"])),
   NEXT_PUBLIC_REALTIME_URL: optional(urlWithProtocol(["ws:", "wss:"])),
+  NEXT_PUBLIC_NETWORK: optional(
+    z
+      .string()
+      .transform((v) => v.trim().toLowerCase())
+      .pipe(
+        z.enum(SUPPORTED_NETWORKS, {
+          errorMap: (issue, ctx) => {
+            if (issue.code === "invalid_enum_value") {
+              return {
+                message: `unknown network "${ctx.data}"; allowed values: ${SUPPORTED_NETWORKS.join(", ")}`,
+              };
+            }
+            return { message: ctx.defaultError };
+          },
+        })
+      )
+  ),
   NEXT_PUBLIC_STELLAR_NETWORK: optional(
     z
       .string()
@@ -79,6 +99,7 @@ export const env = parseEnv({
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   NEXT_PUBLIC_REALTIME_URL: process.env.NEXT_PUBLIC_REALTIME_URL,
+  NEXT_PUBLIC_NETWORK: process.env.NEXT_PUBLIC_NETWORK,
   NEXT_PUBLIC_STELLAR_NETWORK: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
   NEXT_PUBLIC_POOL_CONTRACT_ID: process.env.NEXT_PUBLIC_POOL_CONTRACT_ID,
   NEXT_PUBLIC_POLICY_CONTRACT_ID: process.env.NEXT_PUBLIC_POLICY_CONTRACT_ID,

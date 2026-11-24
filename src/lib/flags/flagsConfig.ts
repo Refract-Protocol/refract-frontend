@@ -2,6 +2,12 @@ export interface FlagsDocument {
   flags: Record<string, boolean>;
 }
 
+/**
+ * Documented default for any flag that is not present in the flags document.
+ * Unknown flags resolve to this boolean rather than `undefined`.
+ */
+export const DEFAULT_FLAG_VALUE = false;
+
 /** Safe default if the remote flags source is unreachable — new/risky features default off. */
 export const DEFAULT_FLAGS: Record<string, boolean> = {
   /** Realtime WebSocket connection (src/lib/realtime). Off until the backend ships /ws. */
