@@ -155,7 +155,7 @@ export default function Home() {
         }
       />
 
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         {/* Hero */}
         <Container
           as="section"

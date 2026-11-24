@@ -383,7 +383,7 @@ export default function CoverPage() {
       <Navbar right={<WalletButton />} />
       {reviewDialog}
 
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <Container className="py-9 sm:py-10">
           <div className="mb-8">
             <div className="mb-2 flex items-center gap-2.5">

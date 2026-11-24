@@ -16,7 +16,7 @@ export default async function StatusPage() {
   return (
     <>
       <Navbar />
-      <main className="py-12">
+      <main id="main-content" tabIndex={-1} className="py-12">
         <Container>
           <h1 className="mb-8 font-display text-3xl font-extrabold text-pm-text">
             Protocol status

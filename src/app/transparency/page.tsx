@@ -13,7 +13,7 @@ export default function TransparencyPage() {
   return (
     <>
       <Navbar />
-      <main className="py-12">
+      <main id="main-content" tabIndex={-1} className="py-12">
         <Container>
           <div className="mb-8 flex flex-wrap items-center gap-3">
             <h1 className="font-display text-3xl font-extrabold text-pm-text">Contracts</h1>
