@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { realtimeClient } from '@/lib/realtime/client';
 import { useRealtimeHealth } from '@/hooks/useRealtimeHealth';
+import { getCacheStats } from '@/lib/api/requestCache';
 
 export type RealtimeDirection = 'in' | 'out';
 
@@ -18,6 +19,7 @@ export interface RealtimeInspectorMessage {
 
 const MAX_LOG_LENGTH = 100;
 const MAX_PAYLOAD_CHARS = 500;
+const STATS_POLL_MS = 1000;
 
 function isDev(): boolean {
   return process.env.NODE_ENV !== 'production';
@@ -63,6 +65,7 @@ export function RealtimeInspector() {
   const [messages, setMessages] = useState<RealtimeInspectorMessage[]>([]);
   const [view, setView] = useState<'raw' | 'merged'>('raw');
   const [open, setOpen] = useState(false);
+  const [cacheStats, setCacheStats] = useState(() => getCacheStats());
   const counterRef = useRef(0);
   const health = useRealtimeHealth();
 
@@ -103,6 +106,12 @@ export function RealtimeInspector() {
       if (typeof unsubOut === 'function') unsubOut();
       else client.off?.('send', onOut);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isDev()) return;
+    const id = setInterval(() => setCacheStats(getCacheStats()), STATS_POLL_MS);
+    return () => clearInterval(id);
   }, []);
 
   const snapshot = useMemo(() => messages.slice(), [messages]);
@@ -152,6 +161,20 @@ export function RealtimeInspector() {
             {open ? 'Hide' : 'Show'}
           </button>
         </span>
+      </div>
+      <div
+        data-testid="realtime-inspector-cache-stats"
+        style={{
+          display: 'flex',
+          gap: 12,
+          padding: '4px 8px',
+          borderBottom: '1px solid #333',
+          opacity: 0.85,
+        }}
+      >
+        <span>Cache hits: {cacheStats.hits}</span>
+        <span>misses: {cacheStats.misses}</span>
+        <span>size: {cacheStats.size}</span>
       </div>
       {open && (
         <div style={{ overflowY: 'auto', padding: 6 }}>
