@@ -11,6 +11,47 @@ Audit result: 41 client files, 6 top-level page boundaries, 0 client files witho
 | `/provide` | Intentional: wallet-connected deposit/withdraw flow and pool hooks. |
 | `/dashboard` | Intentional: wallet-dependent portfolio data. |
 
+## Realtime UI boundaries
+
+Pages that render live data should keep the realtime-dependent part of the tree inside
+[`src/components/realtime/RealtimeBoundary.ts`](../src/components/realtime/RealtimeBoundary.ts). Wrap the
+smallest subtree that consumes a realtime topic (for example the oracle quote panel on `/`) rather than the
+whole page, so a decode or subscription failure for that topic degrades only that live region and the rest of
+the page — including REST-rendered content — stays usable.
+
+The boundary is a client component with these props:
+
+- `topic`: the realtime topic whose failures should trigger the fallback.
+- `route`: the page route recorded in diagnostics (topic, route, transport and error type only; no payloads or
+  wallet addresses).
+- `fallback(retry)`: the UI shown while the topic is degraded. It receives a `retry` callback that clears that
+  topic's degraded state and calls `onRetry` when supplied (use it to refresh a REST snapshot).
+- `children`: the live subtree.
+- `onRetry` (optional): a side effect to run after `retry`.
+
+```tsx
+import { RealtimeBoundary } from "@/components/realtime/RealtimeBoundary";
+
+export function LiveOracleSection() {
+  return (
+    <RealtimeBoundary
+      topic="oracle_update"
+      route="/"
+      fallback={(retry) => (
+        <button type="button" onClick={retry}>
+          Show cached oracle data
+        </button>
+      )}
+    >
+      <p>Live oracle status</p>
+    </RealtimeBoundary>
+  );
+}
+```
+
+Use one boundary per live topic/region, and keep the fallback independent of the realtime data it replaces. This
+component stays a client boundary: adding it does not make the rest of the file server-renderable.
+
 No low-risk narrowing was applied: every page sources its data from client-only hooks (wallet, TanStack Query), so
 extracting static sections would be cosmetic and is out of scope. Re-run the audit when adding components; a client
 file reported as `candidate-for-server` should drop its directive.
