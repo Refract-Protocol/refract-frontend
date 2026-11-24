@@ -7,6 +7,9 @@
  */
 export type StellarNetworkId = "testnet" | "futurenet" | "mainnet";
 
+/** The network names the app actually supports, in canonical order. */
+export const STELLAR_NETWORK_IDS = ["testnet", "futurenet", "mainnet"] as const;
+
 export interface StellarNetworkConfig {
   id: StellarNetworkId;
   /** Human-readable name, e.g. "Stellar Testnet". */
@@ -57,7 +60,7 @@ export function resolveNetwork(raw: string | undefined): StellarNetworkConfig {
   if (!value) return NETWORKS[DEFAULT_NETWORK];
   if (value in NETWORKS) return NETWORKS[value as StellarNetworkId];
   throw new Error(
-    `Unrecognized NEXT_PUBLIC_STELLAR_NETWORK "${raw}" — expected one of: ${Object.keys(NETWORKS).join(", ")}`
+    `Unrecognized NEXT_PUBLIC_STELLAR_NETWORK "${raw}" — expected one of: ${STELLAR_NETWORK_IDS.join(", ")}`
   );
 }
 
