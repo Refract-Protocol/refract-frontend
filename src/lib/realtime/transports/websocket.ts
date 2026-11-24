@@ -1,5 +1,10 @@
 import type { ClientMessage, Cursors } from "../topics";
-import type { ConnectContext, RealtimeTransport, TransportCallbacks } from "./types";
+import type {
+  ConnectContext,
+  RealtimeTransport,
+  TransportCallbacks,
+  TransportCloseEvent,
+} from "./types";
 
 type WebSocketCtor = new (url: string) => WebSocket;
 
@@ -68,7 +73,7 @@ export class WebSocketTransport implements RealtimeTransport {
     this.send({ type: "unsubscribe", topics });
   }
 
-  private finish(info: { code: number; reason: string }): void {
+  private finish(info: TransportCloseEvent): void {
     const callbacks = this.callbacks;
     this.socket = null;
     this.callbacks = null;

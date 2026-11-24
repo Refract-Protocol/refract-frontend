@@ -72,3 +72,22 @@ export function useStoreSelector<T, U>(
 ): U {
   return store(useShallow(selector));
 }
+
+/**
+ * `setState` on stores created by `createAppStore` performs a **shallow
+ * merge**, not a replace.
+ *
+ * Calling `setState({ count: 0 })` only overwrites `count`; every other field
+ * keeps its current value. To clear a field, set it explicitly (e.g.
+ * `setState({ count: 0, error: undefined })`). This matches Zustand's default
+ * `set` behaviour and is what `notificationStore` relies on when it updates a
+ * single slice of state.
+ *
+ * @example
+ * ```ts
+ * // state: { count: 5, error: 'boom' }
+ * store.setState({ count: 0 });
+ * // state: { count: 0, error: 'boom' } — `error` is preserved.
+ * ```
+ */
+export type SetStateMergeSemantics = never;

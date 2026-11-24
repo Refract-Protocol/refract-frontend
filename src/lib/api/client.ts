@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { getDataSource } from "@/lib/api/dataSource";
 /**
  * Thin fetch wrapper for the Refract backend (see refract-backend/src/routes/*.ts
  * for the source of truth on these shapes). Defaults to a local dev server;
@@ -9,6 +10,9 @@ import { env } from "@/lib/env";
  * back to a clearly-labeled fixture — see src/lib/fixtures/.
  */
 export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
+
+/** Active data source mode, resolved via the shared helper in dataSource.ts. */
+export const DATA_SOURCE = getDataSource();
 
 export class ApiError extends Error {
   constructor(

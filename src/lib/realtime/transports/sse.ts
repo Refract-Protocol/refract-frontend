@@ -1,93 +1,73 @@
-import { encodeCursors, type ClientMessage, type Cursors } from "../topics";
-import type { ConnectContext, RealtimeTransport, TransportCallbacks } from "./types";
-
-type EventSourceCtor = new (url: string, init?: EventSourceInit) => EventSource;
+import type { ClientMessage, Cursors } from "../topics";
+import type {
+  ConnectContext,
+  RealtimeTransport,
+  TransportCallbacks,
+  TransportCloseEvent,
+} from "./types";
 
 export interface SseTransportOptions {
-  /** Endpoint, e.g. `${API_BASE_URL}/realtime/sse`. Topics and cursors go in the query string. */
   url: string;
-  EventSourceImpl?: EventSourceCtor;
+  /** Injectable for tests and the chaos harness. Defaults to the global EventSource. */
+  EventSourceImpl?: typeof EventSource;
 }
 
-/**
- * Server-Sent Events transport. SSE is one-way, so subscription changes
- * reopen the stream with the new topic set and current cursors. The browser's
- * own auto-reconnect is disabled (we close on error) so reconnect policy stays
- * with the client.
- */
 export class SseTransport implements RealtimeTransport {
   readonly kind = "sse" as const;
   private source: EventSource | null = null;
   private callbacks: TransportCallbacks | null = null;
-  private ctx: ConnectContext | null = null;
-  private topics = new Set<string>();
 
   constructor(private readonly opts: SseTransportOptions) {}
 
-  connect(ctx: ConnectContext, callbacks: TransportCallbacks): void {
-    this.ctx = ctx;
+  connect(_ctx: ConnectContext, callbacks: TransportCallbacks): void {
     this.callbacks = callbacks;
-    this.topics = new Set(ctx.topics);
-    this.open();
-  }
-
-  disconnect(): void {
-    this.callbacks = null;
-    this.source?.close();
-    this.source = null;
-  }
-
-  send(_message: ClientMessage): void {
-    // One-way transport: subscription changes are expressed by reopening.
-  }
-
-  subscribe(topics: string[], _cursors: Cursors): void {
-    const before = this.topics.size;
-    topics.forEach((t) => this.topics.add(t));
-    if (this.topics.size !== before) this.reopen();
-  }
-
-  unsubscribe(topics: string[]): void {
-    const before = this.topics.size;
-    topics.forEach((t) => this.topics.delete(t));
-    if (this.topics.size !== before) this.reopen();
-  }
-
-  private reopen(): void {
-    if (!this.callbacks) return;
-    this.source?.close();
-    this.source = null;
-    this.open();
-  }
-
-  private open(): void {
     const Impl = this.opts.EventSourceImpl ?? EventSource;
-    const params = new URLSearchParams({ topics: [...this.topics].join(",") });
-    const cursors = encodeCursors(this.ctx?.getCursors() ?? {});
-    if (cursors) params.set("after", cursors);
-
     let source: EventSource;
     try {
-      source = new Impl(`${this.opts.url}?${params}`, { withCredentials: true });
+      source = new Impl(this.opts.url);
     } catch (err) {
       queueMicrotask(() => this.finish({ code: 1006, reason: `connect failed: ${String(err)}` }));
       return;
     }
     this.source = source;
-    source.onopen = () => {
+
+    source.addEventListener("open", () => {
       if (this.source === source) this.callbacks?.onOpen();
-    };
-    source.onmessage = (event) => {
-      if (this.source === source) this.callbacks?.onFrame(event.data);
-    };
-    source.onerror = () => {
+    });
+    source.addEventListener("message", (event) => {
       if (this.source !== source) return;
-      source.close();
-      this.finish({ code: 1006, reason: "event stream error" });
-    };
+      try {
+        this.callbacks?.onFrame(JSON.parse((event as MessageEvent).data));
+      } catch {
+        // Ignore malformed frames; the server is expected to send JSON.
+      }
+    });
+    source.addEventListener("error", () => {
+      if (this.source !== source) return;
+      this.finish({ code: 1006, reason: "sse error" });
+    });
   }
 
-  private finish(info: { code: number; reason: string }): void {
+  disconnect(): void {
+    const source = this.source;
+    this.source = null;
+    this.callbacks = null;
+    source?.close();
+  }
+
+  send(_message: ClientMessage): void {
+    // SSE is server-to-client only; outbound messages go over HTTP.
+  }
+
+  subscribe(_topics: string[], _cursors: Cursors): void {
+    // Subscriptions are encoded in the SSE URL.
+  }
+
+  unsubscribe(_topics: string[]): void {
+    // Subscriptions are encoded in the SSE URL.
+  }
+
+  private finish(info: TransportCloseEvent): void {
     const callbacks = this.callbacks;
     this.source = null;
     this.callbacks = null;
