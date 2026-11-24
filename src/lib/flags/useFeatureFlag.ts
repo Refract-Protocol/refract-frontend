@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { sanitizeFlags } from "../realtime/flags";
-import { DEFAULT_FLAGS, FLAGS_CACHE_TTL_MS, FLAGS_ENDPOINT, readLocalOverride, type FlagsDocument } from "./flagsConfig";
+import { DEFAULT_FLAGS, FLAGS_CACHE_TTL_MS, FLAGS_ENDPOINT, readLocalOverride, resolveFlag, type FlagsDocument } from "./flagsConfig";
 
 let cache: { flags: Record<string, boolean>; fetchedAt: number } | null = null;
 let inflight: Promise<Record<string, boolean>> | null = null;
@@ -33,14 +33,18 @@ async function loadFlags(): Promise<Record<string, boolean>> {
  * Resolves a feature flag from a session-cached remote JSON document, with a
  * safe (off) default if the source is unreachable, and a local override for
  * development via NEXT_PUBLIC_FLAGS_OVERRIDE.
+ *
+ * Always returns a `boolean`: flags not declared in `public/flags.json`
+ * resolve to `DEFAULT_FLAG_VALUE` (`false`), and the value is stable across
+ * renders (no `undefined` flicker on first paint).
  */
 export function useFeatureFlag(key: string): boolean {
-  const [enabled, setEnabled] = useState(() => cache?.flags[key] ?? DEFAULT_FLAGS[key] ?? false);
+  const [enabled, setEnabled] = useState(() => resolveFlag(key, cache?.flags ?? DEFAULT_FLAGS));
 
   useEffect(() => {
     let cancelled = false;
     loadFlags().then((flags) => {
-      if (!cancelled) setEnabled(flags[key] ?? false);
+      if (!cancelled) setEnabled(resolveFlag(key, flags));
     });
     return () => {
       cancelled = true;
