@@ -2,9 +2,12 @@ import type { ClientMessage, Cursors } from "../topics";
 
 export type TransportKind = "websocket" | "sse" | "long-poll";
 
-export interface TransportCloseInfo {
+export interface TransportCloseEvent {
   code: number;
   reason: string;
+}
+
+export interface TransportCloseInfo extends TransportCloseEvent {
   /** The server rejected our credentials; reconnecting will not help. */
   auth?: boolean;
   /** The server does not offer this transport at all (e.g. 404); try the next tier. */
@@ -16,7 +19,7 @@ export interface TransportCallbacks {
   /** A raw frame: a string (WS/SSE) or an already-parsed object (long-poll batch entries). */
   onFrame(frame: unknown): void;
   /** Called once when the transport stops on its own. Not called after `disconnect()`. */
-  onClose(info: TransportCloseInfo): void;
+  onClose(event: TransportCloseEvent): void;
 }
 
 export interface ConnectContext {
