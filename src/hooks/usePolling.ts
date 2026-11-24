@@ -1,53 +1,70 @@
-"use client";
+import { useEffect, useRef, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 
-import { useCallback, useEffect, useRef } from "react";
+interface UsePollingOptions {
+  intervalMs?: number;
+  enabled?: boolean;
+}
 
-/**
- * Runs an abortable fetch immediately and then at `intervalMs` while the tab
- * is visible. Slow requests are allowed to finish; ticks that occur while one
- * is in flight are skipped so requests can never overlap.
- */
-export function usePolling(
-  fetcher: (signal: AbortSignal) => Promise<void>,
-  intervalMs: number,
-  enabled = true
-): { refresh: () => Promise<void> } {
-  const fetcherRef = useRef(fetcher);
-  const controllerRef = useRef<AbortController | null>(null);
-  const inFlightRef = useRef<Promise<void> | null>(null);
-  fetcherRef.current = fetcher;
+interface UsePollingResult<T> {
+  data: T | null;
+  error: Error | null;
+  isLoading: boolean;
+}
 
-  const run = useCallback(async () => {
-    if (!enabled || inFlightRef.current) return inFlightRef.current ?? Promise.resolve();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    const request = fetcherRef.current(controller.signal).finally(() => {
-      if (inFlightRef.current === request) inFlightRef.current = null;
-      if (controllerRef.current === controller) controllerRef.current = null;
-    });
-    inFlightRef.current = request;
-    return request;
-  }, [enabled]);
+const DEFAULT_INTERVAL_MS = 15_000;
+
+export function usePolling<T>(
+  fn: () => Promise<T>,
+  options: UsePollingOptions = {},
+): UsePollingResult<T> {
+  const { intervalMs = DEFAULT_INTERVAL_MS, enabled = true } = options;
+
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(enabled);
+
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const run = async () => {
+      try {
+        const result = await fnRef.current();
+        if (cancelled) return;
+        setData(result);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        const normalized = err instanceof Error ? err : new Error(String(err));
+        setError(normalized);
+        // Report only after the poll cycle has failed; retries are handled
+        // upstream by src/lib/retry.ts, so this fires once per exhausted cycle.
+        Sentry.captureException(normalized);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+          timer = setTimeout(run, intervalMs);
+        }
+      }
+    };
+
+    setIsLoading(true);
     void run();
 
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void run();
-    }, intervalMs);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void run();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      controllerRef.current?.abort();
-      controllerRef.current = null;
-      inFlightRef.current = null;
+      cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [enabled, intervalMs, run]);
+  }, [enabled, intervalMs]);
 
-  return { refresh: run };
+  return { data, error, isLoading };
 }
