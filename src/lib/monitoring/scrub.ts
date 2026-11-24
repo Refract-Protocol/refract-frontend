@@ -21,9 +21,43 @@ function scrubDeep(value: unknown, depth = 0): unknown {
   return out;
 }
 
+/**
+ * Report a malformed event without dropping it. In dev we surface the problem
+ * on the console; in prod we attach a breadcrumb so it reaches Sentry.
+ */
+function warnMalformed(event: ErrorEvent, reason: string): void {
+  const message = `[monitoring] scrubber received malformed event (${reason}); passing through unscrubbed`;
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(message, event);
+    return;
+  }
+  try {
+    const breadcrumbs = (event.breadcrumbs ??= []);
+    breadcrumbs.push({
+      category: "monitoring.scrub",
+      level: "warning",
+      message,
+      timestamp: Date.now() / 1000,
+    });
+  } catch {
+    // Never let diagnostics break event delivery.
+  }
+}
+
 /** Shared `beforeSend` for the client, server and edge Sentry configs. */
 export function beforeSend(event: ErrorEvent): ErrorEvent {
-  const scrubbed = scrubDeep(event) as ErrorEvent;
+  if (event === null || typeof event !== "object") {
+    warnMalformed(event, "event is not an object");
+    return event;
+  }
+
+  let scrubbed: ErrorEvent;
+  try {
+    scrubbed = scrubDeep(event) as ErrorEvent;
+  } catch (err) {
+    warnMalformed(event, `scrub failed: ${(err as Error)?.message ?? "unknown"}`);
+    return event;
+  }
 
   if (scrubbed.request) {
     const req = scrubbed.request;

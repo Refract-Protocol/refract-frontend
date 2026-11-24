@@ -19,6 +19,19 @@ These are regression guards with generous multipliers for noisy CI, not performa
 Budgets live in `src/lib/realtime/latencyBudget.ts` and are asserted by
 `src/lib/realtime/latency.test.ts`, which fails with a per-topic diff and also fails on zero samples.
 
+## Benchmark artifact
+
+`scripts/realtime-benchmark.mjs` measures the same interval and writes a machine-readable artifact so
+CI can diff against the committed baseline. Pass `--out <path>` to choose the destination; the default
+is `reports/realtime-benchmark-baseline.json`. The written JSON uses the same shape as the committed
+baseline (per-topic p50/p95 plus sample counts), so a run can be compared directly against it:
+
+```bash
+node scripts/realtime-benchmark.mjs --out /tmp/bench.json
+```
+
+The numbers quoted in the table above should be sourced from this baseline artifact.
+
 # Data-usage accounting
 
 `src/lib/realtime/metrics.ts` counts UTF-8 bytes of decoded text frames per topic and direction at the

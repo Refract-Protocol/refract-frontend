@@ -47,3 +47,11 @@ stack traces.
 - Request bodies
 - URL query strings (request URL, query string, and breadcrumb URLs)
 - User email and IP address
+
+### Malformed events
+
+The scrubber never drops an event. If an event is missing an expected field (for example a
+request without headers, or a breadcrumb without a URL), the scrubber logs a warning and returns
+the event unscrubbed so the underlying error still reaches Sentry. In development the warning is
+written with `console.warn`; in production it is attached as a Sentry breadcrumb. This surfaces
+configuration problems instead of silently hiding real errors.

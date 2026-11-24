@@ -1,5 +1,5 @@
 import { encodeCursors, type ClientMessage, type Cursors } from "../topics";
-import type { ConnectContext, RealtimeTransport, TransportCallbacks } from "./types";
+import type { ConnectContext, RealtimeTransport, TransportCallbacks, TransportCloseEvent } from "./types";
 
 type EventSourceCtor = new (url: string, init?: EventSourceInit) => EventSource;
 
@@ -70,7 +70,9 @@ export class SseTransport implements RealtimeTransport {
     try {
       source = new Impl(`${this.opts.url}?${params}`, { withCredentials: true });
     } catch (err) {
-      queueMicrotask(() => this.finish({ code: 1006, reason: `connect failed: ${String(err)}` }));
+      queueMicrotask(() =>
+        this.finish({ code: 1006, reason: `connect failed: ${String(err)}`, source: "sse" }),
+      );
       return;
     }
     this.source = source;
@@ -82,12 +84,17 @@ export class SseTransport implements RealtimeTransport {
     };
     source.onerror = () => {
       if (this.source !== source) return;
+      // EventSource exposes no status code; readyState distinguishes a
+      // terminal CLOSED stream from a transient CONNECTING retry.
+      const readyState = source.readyState;
       source.close();
-      this.finish({ code: 1006, reason: "event stream error" });
+      const reason =
+        readyState === 2 /* CLOSED */ ? "event stream closed" : "event stream error";
+      this.finish({ code: 1006, reason, source: "sse" });
     };
   }
 
-  private finish(info: { code: number; reason: string }): void {
+  private finish(info: TransportCloseEvent): void {
     const callbacks = this.callbacks;
     this.source = null;
     this.callbacks = null;

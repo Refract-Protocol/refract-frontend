@@ -5,6 +5,10 @@ const origin = process.env.REALTIME_BENCHMARK_URL ?? "http://127.0.0.1:3000";
 const baseline = JSON.parse(await readFile(new URL("../reports/realtime-benchmark-baseline.json", import.meta.url), "utf8"));
 const routes = ["/", "/cover", "/provide"];
 const runs = Number(process.env.REALTIME_BENCHMARK_RUNS ?? 5);
+const outIndex = process.argv.indexOf("--out");
+const outPath = outIndex !== -1 && process.argv[outIndex + 1]
+  ? process.argv[outIndex + 1]
+  : process.env.REALTIME_BENCHMARK_OUT ?? "reports/realtime-benchmark.json";
 const browser = await chromium.launch({ headless: true });
 const samples = { disconnected: [], streaming: [] };
 for (let index = 0; index < runs; index += 1) {
@@ -68,6 +72,6 @@ const report = {
   scenarios: { disconnected, streaming },
   budget: baseline.budgets,
 };
-await writeFile("reports/realtime-benchmark.json", `${JSON.stringify(report, null, 2)}\n`);
+await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));
 if (streaming.medianCommitDurationMs > report.budget.medianCommitDurationMs || streaming.p95CommitDurationMs > report.budget.p95CommitDurationMs || streaming.longTaskCount > report.budget.longTaskCount || streaming.p98InteractionDurationMs > report.budget.p98InteractionDurationMs) process.exitCode = 1;
