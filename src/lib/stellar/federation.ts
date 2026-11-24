@@ -7,6 +7,24 @@
 
 export const FEDERATION_TIMEOUT_MS = 5000;
 
+// ---------------------------------------------------------------------------
+// In-memory cache for resolved federation addresses
+// ---------------------------------------------------------------------------
+// Keyed by the original federation address string (e.g. "alice*domain.com").
+// Only successful resolutions are cached; failed lookups are never stored so
+// transient network errors are always retried on the next call.
+// TTL is 5 minutes — long enough to avoid per-keystroke round-trips while
+// short enough that stale federation data does not persist indefinitely.
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface CacheEntry {
+  accountId: string;
+  expiresAt: number;
+}
+
+const federationCache = new Map<string, CacheEntry>();
+
 const PUBLIC_KEY_RE = /^G[A-Z2-7]{55}$/;
 const FEDERATION_RE = /^[^*\s]+\*([a-z0-9-]+(?:\.[a-z0-9-]+)+)$/i;
 
@@ -56,6 +74,12 @@ export async function resolveFederationAddress(input: string): Promise<string | 
   if (!match) return null;
   const domain = match[1]!.toLowerCase();
 
+  // Return a cached result if it has not yet expired.
+  const cached = federationCache.get(value);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.accountId;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FEDERATION_TIMEOUT_MS);
   try {
@@ -71,7 +95,13 @@ export async function resolveFederationAddress(input: string): Promise<string | 
     url.searchParams.set("type", "name");
     const body: unknown = await (await fetchWithTimeout(url.toString(), controller.signal)).json();
     const accountId = (body as { account_id?: unknown } | null)?.account_id;
-    return typeof accountId === "string" && isStellarPublicKey(accountId) ? accountId : null;
+    if (typeof accountId === "string" && isStellarPublicKey(accountId)) {
+      // Cache successful resolutions only; failures are not stored so they
+      // will be retried on the next call.
+      federationCache.set(value, { accountId, expiresAt: Date.now() + CACHE_TTL_MS });
+      return accountId;
+    }
+    return null;
   } catch {
     return null;
   } finally {
