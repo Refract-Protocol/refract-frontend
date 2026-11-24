@@ -30,6 +30,13 @@ export function fuzzyScore(query: string, target: string): number {
   return Math.max(1, 500 - gaps * 10 - (t.length - q.length));
 }
 
+/**
+ * Debounce delay (ms) applied before running fuzzy matching on user input.
+ * Kept short enough to feel responsive while avoiding a search on every
+ * keystroke. Configure the delay here in one place.
+ */
+export const FUZZY_SEARCH_DEBOUNCE_MS = 200;
+
 /** Filters and ranks items by the best fuzzy score across their searchable fields. */
 export function fuzzySearch<T>(
   items: readonly T[],

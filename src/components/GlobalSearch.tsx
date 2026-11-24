@@ -10,6 +10,9 @@ import { fuzzySearch } from "@/lib/fuzzySearch";
 import { formatUsd, fromStroops } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
+/** Delay (ms) before the typed query is committed to fuzzy matching. */
+export const SEARCH_DEBOUNCE_MS = 200;
+
 interface SearchResult {
   key: string;
   label: string;
@@ -77,12 +80,18 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
   const { data: claims } = useClaims(address, policies);
   const { data: coverageTypes } = useCoverageTypes();
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [active, setActive] = useState(0);
 
-  const groups = useMemo(() => buildGroups(query, address ? policies ?? [] : null, address ? claims : null, coverageTypes ?? []), [query, address, policies, claims, coverageTypes]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const groups = useMemo(() => buildGroups(debouncedQuery, address ? policies ?? [] : null, address ? claims : null, coverageTypes ?? []), [debouncedQuery, address, policies, claims, coverageTypes]);
   const flat = groups.flatMap((g) => g.results);
 
-  useEffect(() => setActive(0), [query]);
+  useEffect(() => setActive(0), [debouncedQuery]);
 
   function go(result: SearchResult) {
     onClose();
@@ -123,7 +132,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
           aria-activedescendant={flat[active] ? `search-${flat[active].key}` : undefined}
         />
         <div id="global-search-results" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
-          {query.trim() && flat.length === 0 && <p className="px-3 py-6 text-center text-sm text-pm-text/45">No matches</p>}
+          {debouncedQuery.trim() && flat.length === 0 && <p className="px-3 py-6 text-center text-sm text-pm-text/45">No matches</p>}
           {groups.map((group) => (
             <div key={group.category} role="group" aria-label={group.category} className="mb-2 last:mb-0">
               <div className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-pm-text/40">{group.category}</div>
