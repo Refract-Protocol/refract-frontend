@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeRouteProvider } from "@/lib/realtime/RouteProvider";
 import { WalletProvider } from "@/lib/wallet/WalletProvider";
@@ -11,6 +12,11 @@ import { RealtimeScopeSync } from "@/lib/realtime/RealtimeScopeSync";
 import { useFeatureFlag } from "@/lib/flags/useFeatureFlag";
 import { bindRealtimeLifecycle, realtimeClient } from "@/lib/realtime";
 import { isRealtimeAllowed } from "@/lib/realtime/preferences";
+
+const CommandPalette = dynamic(
+  () => import("@/components/CommandPalette").then((mod) => mod.CommandPalette),
+  { ssr: false }
+);
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -27,6 +33,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <WalletProvider>
               <RealtimeScopeSync />
               <RealtimeRouteProvider>{children}</RealtimeRouteProvider>
+              <CommandPalette />
             </WalletProvider>
           </ToastProvider>
         </RealtimeSyncProvider>
