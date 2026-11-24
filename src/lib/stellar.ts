@@ -1,19 +1,18 @@
-import { NETWORKS } from "./network";
+import { ACTIVE_NETWORK, NETWORKS } from "./network";
 import { usePreferencesStore } from "./store/preferencesStore";
 import { useWallet } from "./wallet/WalletProvider";
 
 /**
- * Refract only runs on Stellar testnet right now (see refract-backend's
- * .env.example — STELLAR_NETWORK defaults to testnet, and mainnet keys are
- * explicitly disallowed there). Hardcoded to the testnet explorer until
- * there's a mainnet deploy and the network becomes configurable here too.
- *
  * Validation contract: Stellar transaction hashes are 64-character hex
  * strings. `isValidTxHash` accepts them case-insensitively (uppercase hex is
  * normalised rather than rejected) and rejects anything else, including the
  * placeholder hashes carried by fixture claim records. `stellarExpertTxUrl`
  * returns `null` for invalid hashes so callers never render a real-looking
  * explorer link that leads to a dead page.
+ *
+ * The active network is driven by NEXT_PUBLIC_STELLAR_NETWORK (testnet |
+ * futurenet | mainnet), defaulting to testnet when unset — the single source
+ * of truth is src/lib/network.ts.
  */
 const TX_HASH_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -26,12 +25,12 @@ export function stellarExpertTxUrl(txHash: string): string | null {
     return null;
   }
 
-  return `https://stellar.expert/explorer/testnet/tx/${txHash.toLowerCase()}`;
+  return `${ACTIVE_NETWORK.explorerBaseUrl}/tx/${txHash.toLowerCase()}`;
 }
 
-/** StellarExpert link for a Soroban contract on testnet (see note above). */
+/** StellarExpert link for a Soroban contract on the active network (see src/lib/network.ts). */
 export function stellarExpertContractUrl(contractId: string): string {
-  return `https://stellar.expert/explorer/testnet/contract/${contractId}`;
+  return `${ACTIVE_NETWORK.explorerBaseUrl}/contract/${contractId}`;
 }
 
 /**
