@@ -196,6 +196,35 @@ export function validateAmount(
   return { status: "valid", value };
 }
 
+/**
+ * Format a Stellar base-unit amount (stroops) as a human-readable string.
+ *
+ * Converts from base units using `decimals` and renders the result with
+ * exactly `decimals` fractional digits, so the precision matches the asset's
+ * declared scale rather than always showing 7 decimal places.
+ *
+ * @param stroops  On-chain base-unit value (string, number, or bigint).
+ * @param decimals Asset precision; defaults to 7 (USDC / XLM stroops).
+ *                 Pass the asset's `AssetInfo.decimals` where it is already
+ *                 available; do not add new asset lookups for this alone.
+ *
+ * @example
+ * formatStellarAmount("10000000")           // "1.0000000"  (USDC, 7 dp)
+ * formatStellarAmount("100", 2)             // "1.00"       (2-decimal asset)
+ * formatStellarAmount("1000000000000000000", 18) // "1.000000000000000000"
+ */
+export function formatStellarAmount(
+  stroops: string | number | bigint,
+  decimals: number = USDC_DECIMALS
+): string {
+  const human = fromStroops(stroops, decimals);
+  return human.toLocaleString(resolveLocale(), {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: false,
+  });
+}
+
 /** "Oct 5, 2026" — the short date used for expiry and unlock displays. */
 export function formatShortDate(timestampMs: number): string {
   return new Date(timestampMs).toLocaleDateString("en-US", {
