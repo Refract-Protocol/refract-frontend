@@ -8,16 +8,28 @@ results are treated as indicative only.
 
 The first event after connect (warm-up) is excluded from percentiles.
 
-| Topic class | Examples | p50 | p95 |
-| --- | --- | --- | --- |
-| Oracle readings | `oracle_update` | 250 ms | 1000 ms |
-| Quotes / pricing | `quote` | 250 ms | 1000 ms |
-| Notifications | toasts | 500 ms | 2000 ms |
-| Clock / boundary | `clock` | 250 ms | 1000 ms |
+## Render-commit budgets
 
-These are regression guards with generous multipliers for noisy CI, not performance guarantees.
-Budgets live in `src/lib/realtime/latencyBudget.ts` and are asserted by
-`src/lib/realtime/latency.test.ts`, which fails with a per-topic diff and also fails on zero samples.
+The committed baseline in `reports/realtime-benchmark-baseline.json` records React commit
+duration under a 100-oracle-push workload at 25 Hz across the landing page, `/cover`, and `/provide`
+(median of five browser runs).
+
+| Metric | Budget |
+| --- | --- |
+| Median commit duration | 16 ms |
+| p95 commit duration | 50 ms |
+| Long-task count | 0 |
+| p98 interaction duration | 200 ms |
+
+`scripts/realtime-benchmark.mjs` runs the browser workload and exits non-zero if any measured
+value exceeds the corresponding budget. These numbers are regression guards, not performance
+guarantees.
+
+## End-to-end latency assertions
+
+Budgets for the full server-event → store-write path live in `src/lib/realtime/latencyBudget.ts`
+and are asserted by `src/lib/realtime/latency.test.ts`, which fails with a per-topic diff and
+also fails on zero samples.
 
 # Data-usage accounting
 
