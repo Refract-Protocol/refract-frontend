@@ -1,36 +1,53 @@
 /**
- * In-memory, single-tab request dedup: concurrent and near-in-time callers for
- * the same key share one in-flight promise, and a settled success is reused
- * until `ttlMs` elapses. Failures are never cached. The key must include every
- * parameter that changes the response (e.g. `policies:${address}`).
+ * Simple in-memory request cache used by src/lib/api/client.ts.
+ *
+ * Exposes hit/miss counters via getCacheStats() so cache effectiveness can be
+ * measured (e.g. from the dev realtime inspector).
  */
-const DEFAULT_TTL_MS = 30_000;
 
-interface Entry {
-  promise: Promise<unknown>;
-  timestamp: number;
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
 }
 
-const entries = new Map<string, Entry>();
+const store = new Map<string, CacheEntry<unknown>>();
 
-export function cachedRequest<T>(
-  key: string,
-  fetcher: () => Promise<T>,
-  ttlMs = DEFAULT_TTL_MS
-): Promise<T> {
-  const hit = entries.get(key);
-  if (hit && Date.now() - hit.timestamp < ttlMs) return hit.promise as Promise<T>;
+let hits = 0;
+let misses = 0;
 
-  const promise = fetcher();
-  const entry: Entry = { promise, timestamp: Date.now() };
-  entries.set(key, entry);
-  promise.catch(() => {
-    if (entries.get(key) === entry) entries.delete(key);
-  });
-  return promise;
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  size: number;
 }
 
-export function clearRequestCache(key?: string): void {
-  if (key === undefined) entries.clear();
-  else entries.delete(key);
+function isExpired(entry: CacheEntry<unknown>, now: number): boolean {
+  return entry.expiresAt <= now;
+}
+
+export function getCached<T>(key: string): T | undefined {
+  const entry = store.get(key);
+  if (!entry) {
+    misses += 1;
+    return undefined;
+  }
+  if (isExpired(entry, Date.now())) {
+    store.delete(key);
+    misses += 1;
+    return undefined;
+  }
+  hits += 1;
+  return entry.value as T;
+}
+
+export function setCached<T>(key: string, value: T, ttlMs: number): void {
+  store.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+export function clearCache(): void {
+  store.clear();
+}
+
+export function getCacheStats(): CacheStats {
+  return { hits, misses, size: store.size };
 }
