@@ -45,3 +45,16 @@ export interface TransportFactory {
   isSupported(): boolean;
   create(): RealtimeTransport;
 }
+
+/**
+ * Type-only re-exports of the concrete transport factories.
+ *
+ * These are declared with `export type` so they are erased at compile time and
+ * never emit a runtime import of `sse.ts`, `websocket.ts` or `longPoll.ts`.
+ * Consumers that need a transport at runtime must import the specific module
+ * directly (e.g. `import { createSseTransport } from "./sse"`) rather than
+ * going through a barrel, so bundlers can tree-shake unused transports.
+ */
+export type { SseTransportFactory } from "./sse";
+export type { WebSocketTransportFactory } from "./websocket";
+export type { LongPollTransportFactory } from "./longPoll";
