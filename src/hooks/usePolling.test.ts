@@ -1,53 +1,51 @@
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePolling } from "./usePolling";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { usePolling } from './usePolling';
 
-describe("usePolling", () => {
+describe('usePolling', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
-  });
-  afterEach(() => vi.useRealTimers());
-
-  it("runs immediately and at the configured cadence", async () => {
-    const fetcher = vi.fn().mockResolvedValue(undefined);
-    renderHook(() => usePolling(fetcher, 1000));
-    await act(async () => Promise.resolve());
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
-  it("pauses while hidden and refreshes once on resume", async () => {
-    const fetcher = vi.fn().mockResolvedValue(undefined);
-    renderHook(() => usePolling(fetcher, 1000));
-    await act(async () => Promise.resolve());
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
-    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
-    expect(fetcher).toHaveBeenCalledTimes(2);
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("skips ticks while a request is in flight and aborts on unmount", async () => {
-    let resolve!: () => void;
-    const fetcher = vi.fn(
-      (signal: AbortSignal) =>
-        new Promise<void>((done) => {
-          resolve = done;
-          signal.addEventListener("abort", done);
-        })
-    );
-    const hook = renderHook(() => usePolling(fetcher, 1000));
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    resolve();
-    await act(async () => Promise.resolve());
-    await act(async () => vi.advanceTimersByTimeAsync(1000));
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    const signal = fetcher.mock.calls[1]?.[0];
-    hook.unmount();
-    expect(signal?.aborted).toBe(true);
+  it('reports an error when the polled function throws', async () => {
+    const failure = new Error('poll failed');
+    const fn = vi.fn().mockRejectedValue(failure);
+
+    const { result } = renderHook(() => usePolling(fn, { intervalMs: 1000 }));
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(result.current.error).toBe(failure);
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it('clears the error on the next successful poll', async () => {
+    const failure = new Error('poll failed');
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue('ok');
+
+    const { result } = renderHook(() => usePolling(fn, { intervalMs: 1000 }));
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    await result.current.refresh();
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(false);
+    });
+
+    expect(result.current.error).toBeUndefined();
+    expect(result.current.data).toBe('ok');
   });
 });

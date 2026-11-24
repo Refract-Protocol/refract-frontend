@@ -1,70 +1,89 @@
-import { useEffect, useRef, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface UsePollingOptions {
+export interface UsePollingOptions {
+  /** Interval between polls in milliseconds. */
   intervalMs?: number;
+  /** Whether polling is enabled. Defaults to true. */
   enabled?: boolean;
+  /** Run the polled function immediately on mount. Defaults to true. */
+  immediate?: boolean;
 }
 
-interface UsePollingResult<T> {
-  data: T | null;
-  error: Error | null;
+export interface UsePollingResult<T> {
+  data: T | undefined;
+  error: Error | undefined;
   isLoading: boolean;
+  isError: boolean;
+  refresh: () => Promise<void>;
 }
 
 const DEFAULT_INTERVAL_MS = 15_000;
 
+/**
+ * Polls an async function on a fixed cadence, exposing the latest data and any
+ * error from the most recent poll. Errors are captured into state so callers
+ * can surface failures and back off; a successful poll clears the error.
+ */
 export function usePolling<T>(
   fn: () => Promise<T>,
   options: UsePollingOptions = {},
 ): UsePollingResult<T> {
-  const { intervalMs = DEFAULT_INTERVAL_MS, enabled = true } = options;
+  const { intervalMs = DEFAULT_INTERVAL_MS, enabled = true, immediate = true } = options;
 
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(enabled);
+  const [data, setData] = useState<T | undefined>(undefined);
+  const [error, setError] = useState<Error | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState<boolean>(enabled && immediate);
 
   const fnRef = useRef(fn);
   fnRef.current = fn;
 
+  const mountedRef = useRef(true);
+
+  const runPoll = useCallback(async () => {
+    try {
+      const result = await fnRef.current();
+      if (!mountedRef.current) return;
+      setData(result);
+      setError(undefined);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    if (!enabled) {
-      setIsLoading(false);
-      return;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    if (immediate) {
+      setIsLoading(true);
+      void runPoll();
     }
 
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const run = async () => {
-      try {
-        const result = await fnRef.current();
-        if (cancelled) return;
-        setData(result);
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
-        const normalized = err instanceof Error ? err : new Error(String(err));
-        setError(normalized);
-        // Report only after the poll cycle has failed; retries are handled
-        // upstream by src/lib/retry.ts, so this fires once per exhausted cycle.
-        Sentry.captureException(normalized);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-          timer = setTimeout(run, intervalMs);
-        }
-      }
-    };
-
-    setIsLoading(true);
-    void run();
+    const id = setInterval(() => {
+      void runPoll();
+    }, intervalMs);
 
     return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearInterval(id);
     };
-  }, [enabled, intervalMs]);
+  }, [enabled, immediate, intervalMs, runPoll]);
 
-  return { data, error, isLoading };
+  return {
+    data,
+    error,
+    isLoading,
+    isError: error !== undefined,
+    refresh: runPoll,
+  };
 }
