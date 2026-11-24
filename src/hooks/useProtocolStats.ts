@@ -1,5 +1,5 @@
 "use client";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { fetchPoolStats } from "@/lib/api/pool";
 import { fetchClaimStats } from "@/lib/api/claims";
 import { FIXTURE_POOL_STATS } from "@/lib/fixtures/poolStats";
@@ -51,12 +51,36 @@ export function useProtocolStats() {
       timestamp: data.asOf ? Date.parse(data.asOf) : undefined,
     }),
   });
-  return {
-    data: resource.data,
-    loading: resource.loading,
-    error: resource.error,
-    isFixture: resource.isFixture,
-    isRefreshing: resource.isRefreshing,
-    refresh: resource.refresh,
-  };
+  const { data, loading, error, isFixture, isRefreshing, refresh } = resource;
+  // Expose individual fields so consumers can subscribe per-field and avoid
+  // re-rendering when an unrelated stat changes. The returned object is
+  // memoized on the individual field values so it stays referentially stable
+  // across unrelated updates.
+  const tvl = data?.tvl;
+  const activePolicies = data?.activePolicies;
+  const cumulativePayouts = data?.cumulativePayouts;
+  return useMemo(
+    () => ({
+      data,
+      tvl,
+      activePolicies,
+      cumulativePayouts,
+      loading,
+      error,
+      isFixture,
+      isRefreshing,
+      refresh,
+    }),
+    [
+      data,
+      tvl,
+      activePolicies,
+      cumulativePayouts,
+      loading,
+      error,
+      isFixture,
+      isRefreshing,
+      refresh,
+    ]
+  );
 }

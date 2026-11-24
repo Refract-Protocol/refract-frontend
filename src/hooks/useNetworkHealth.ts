@@ -15,6 +15,8 @@ const TIMEOUT_MS = 8_000;
 export interface NetworkHealthState {
   health: NetworkHealth;
   ledgerAgeSec: number | undefined;
+  /** True when the most recent health fetch rejected (network unreachable). */
+  unreachable: boolean;
 }
 
 async function sampleNetwork(signal: AbortSignal): Promise<HealthSample> {
@@ -43,6 +45,7 @@ export function useNetworkHealth(): NetworkHealthState {
   const [state, setState] = useState<NetworkHealthState>({
     health: "healthy",
     ledgerAgeSec: undefined,
+    unreachable: false,
   });
 
   useEffect(() => {
@@ -56,9 +59,11 @@ export function useNetworkHealth(): NetworkHealthState {
       ctrl = new AbortController();
       const abort = setTimeout(() => ctrl?.abort(), TIMEOUT_MS);
       let sample: HealthSample;
+      let unreachable = false;
       try {
         sample = await sampleNetwork(ctrl.signal);
       } catch {
+        unreachable = true;
         sample = { ledgerAgeSec: undefined, rpcOk: false };
       }
       clearTimeout(abort);
@@ -66,7 +71,7 @@ export function useNetworkHealth(): NetworkHealthState {
       setState((prev) => {
         const next = nextHealth(prev.health, classifySample(ACTIVE_NETWORK.id, sample), streak);
         streak = next.streak;
-        return { health: next.health, ledgerAgeSec: sample.ledgerAgeSec };
+        return { health: next.health, ledgerAgeSec: sample.ledgerAgeSec, unreachable };
       });
       timer = setTimeout(run, POLL_MS);
     };

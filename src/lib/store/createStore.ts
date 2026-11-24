@@ -72,3 +72,26 @@ export function useStoreSelector<T, U>(
 ): U {
   return store(useShallow(selector));
 }
+
+/**
+ * Selects a single field from a store.
+ *
+ * This is the preferred way to read store state in components: it subscribes
+ * only to the selected field, so a change to any other field does not
+ * invalidate the component. Unlike `useStoreSelector`, it does not wrap the
+ * selector in `useShallow`, which keeps the subscription as narrow as possible
+ * for primitive values.
+ *
+ * ```ts
+ * const totalValue = useStoreField(protocolStatsStore, (s) => s.totalValue);
+ * ```
+ *
+ * @param store - The Zustand store to read from.
+ * @param selector - A selector that returns a single field.
+ */
+export function useStoreField<T, U>(
+  store: UseBoundStore<StoreApi<T>>,
+  selector: (state: T) => U,
+): U {
+  return store(selector);
+}
