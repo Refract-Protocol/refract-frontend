@@ -55,8 +55,38 @@ export function VirtualList<T>({
 
   const w = computeWindow(items.length, rowHeight, scrollTop, height, overscan);
 
+  // Keep keyboard focus reachable across virtualized rows: when focus moves to a
+  // row that is outside the rendered window (e.g. via Tab from a sibling or a
+  // programmatic focus), scroll it into view so it gets rendered.
+  const onFocus = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      const el = ref.current;
+      if (!el) return;
+      const row = (e.target as HTMLElement).closest<HTMLElement>("[data-virtual-index]");
+      if (!row) return;
+      const index = Number(row.dataset.virtualIndex);
+      if (Number.isNaN(index)) return;
+      const top = index * rowHeight;
+      const bottom = top + rowHeight;
+      if (top < el.scrollTop) {
+        el.scrollTop = top;
+      } else if (bottom > el.scrollTop + el.clientHeight) {
+        el.scrollTop = bottom - el.clientHeight;
+      }
+    },
+    [rowHeight],
+  );
+
   return (
-    <div ref={ref} onScroll={onScroll} style={{ height, overflowY: "auto" }} className={className} role="list" aria-label={label}>
+    <div
+      ref={ref}
+      onScroll={onScroll}
+      onFocus={onFocus}
+      style={{ height, overflowY: "auto" }}
+      className={className}
+      role="list"
+      aria-label={label}
+    >
       <div style={{ height: w.totalHeight, position: "relative" }}>
         <div style={{ transform: `translateY(${w.offsetTop}px)` }}>
           {items.slice(w.start, w.end).map((item, i) => (
@@ -65,6 +95,7 @@ export function VirtualList<T>({
               role="listitem"
               aria-setsize={items.length}
               aria-posinset={w.start + i + 1}
+              data-virtual-index={w.start + i}
               style={{ height: rowHeight }}
             >
               {renderRow(item, w.start + i)}

@@ -5,8 +5,10 @@ import { useTransactionStore, type TransactionEntry } from "@/lib/store/useTrans
 import { formatUsd } from "@/lib/format";
 import { stellarExpertTxUrl } from "@/lib/stellar";
 import { truncateAddress } from "@/lib/wallet/WalletProvider";
+import { VirtualList } from "@/components/ui/VirtualList";
 
 const VISIBLE = 5;
+const ROW_HEIGHT = 44;
 
 const TYPE_LABEL: Record<TransactionEntry["type"], string> = {
   buy: "Buy cover",
@@ -34,40 +36,46 @@ export function TransactionTray() {
   return (
     <div className="fixed bottom-4 right-4 z-40 w-[min(320px,calc(100vw-2rem))]">
       {open && (
-        <ul
+        <div
           id="transaction-tray"
-          className="mb-2 flex flex-col gap-2 rounded-lg border border-pm-border bg-pm-bg/95 p-3 shadow-lg"
+          className="mb-2 rounded-lg border border-pm-border bg-pm-bg/95 p-3 shadow-lg"
         >
-          {transactions.slice(0, VISIBLE).map((t) => (
-            <li key={t.id} className="flex items-center justify-between gap-3 text-xs">
-              <div>
-                <div className="font-semibold text-pm-text">
-                  {TYPE_LABEL[t.type]} · {formatUsd(t.amount)}
+          <VirtualList
+            items={transactions}
+            itemHeight={ROW_HEIGHT}
+            height={VISIBLE * ROW_HEIGHT}
+            getKey={(t) => t.id}
+            renderItem={(t) => (
+              <div className="flex h-full items-center justify-between gap-3 text-xs">
+                <div>
+                  <div className="font-semibold text-pm-text">
+                    {TYPE_LABEL[t.type]} · {formatUsd(t.amount)}
+                  </div>
+                  <div className="text-[11px] text-pm-text/40">
+                    {new Date(t.timestamp).toLocaleTimeString()}
+                    {t.txHash && (
+                      <>
+                        {" · "}
+                        <a
+                          href={stellarExpertTxUrl(t.txHash) ?? undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono underline"
+                        >
+                          {truncateAddress(t.txHash)}
+                        </a>
+                      </>
+                    )}
+                    {t.demo && " · demo"}
+                  </div>
                 </div>
-                <div className="text-[11px] text-pm-text/40">
-                  {new Date(t.timestamp).toLocaleTimeString()}
-                  {t.txHash && (
-                    <>
-                      {" · "}
-                      <a
-                        href={stellarExpertTxUrl(t.txHash) ?? undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono underline"
-                      >
-                        {truncateAddress(t.txHash)}
-                      </a>
-                    </>
-                  )}
-                  {t.demo && " · demo"}
-                </div>
+                <span className={`shrink-0 capitalize ${STATUS_CLASS[t.status]}`} title={t.error}>
+                  {t.status}
+                </span>
               </div>
-              <span className={`shrink-0 capitalize ${STATUS_CLASS[t.status]}`} title={t.error}>
-                {t.status}
-              </span>
-            </li>
-          ))}
-        </ul>
+            )}
+          />
+        </div>
       )}
       <button
         type="button"
