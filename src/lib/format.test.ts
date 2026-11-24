@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toStroops, fromStroops, formatUsd, formatCompactUsd, formatRelativeTime } from "./format";
+import { toStroops, fromStroops, formatUsd, formatCompactUsd, formatRelativeTime, formatAmount } from "./format";
 
 describe("toStroops", () => {
   it("converts whole numbers", () => {
@@ -40,6 +40,27 @@ describe("fromStroops", () => {
     for (const v of [0, 1, 0.5, 12.3456789, 100, -3.25]) {
       expect(fromStroops(toStroops(v))).toBeCloseTo(v, 7);
     }
+  });
+});
+
+describe("formatAmount", () => {
+  it("defaults to fixed 7-decimal output", () => {
+    expect(formatAmount(1)).toBe("1.0000000");
+    expect(formatAmount(0.5)).toBe("0.5000000");
+    expect(formatAmount(12.3456789)).toBe("12.3456789");
+  });
+
+  it("trims trailing zeros when decimals is passed explicitly", () => {
+    expect(formatAmount(1, 7)).toBe("1");
+    expect(formatAmount(0.5, 7)).toBe("0.5");
+    expect(formatAmount(12.3456789, 7)).toBe("12.3456789");
+    expect(formatAmount(1.5, 2)).toBe("1.5");
+    expect(formatAmount(2, 2)).toBe("2");
+  });
+
+  it("respects the explicit precision", () => {
+    expect(formatAmount(1.23456, 2)).toBe("1.23");
+    expect(formatAmount(1.23456, 4)).toBe("1.2346");
   });
 });
 

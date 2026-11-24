@@ -72,6 +72,23 @@ function resolveLocale(): string {
   }
 }
 
+/**
+ * Format an asset amount for display.
+ *
+ * @param value The amount to render.
+ * @param decimals Asset precision. When omitted, the amount is rendered with a
+ *   fixed 7 decimal places (the historical behaviour, kept so existing
+ *   snapshots do not change). When passed explicitly, the amount is rendered
+ *   with up to `decimals` places and trailing zeros are trimmed.
+ */
+export function formatAmount(value: number, decimals?: number): string {
+  if (decimals === undefined) {
+    return value.toFixed(USDC_DECIMALS);
+  }
+  const fixed = value.toFixed(decimals);
+  return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
+}
+
 export function formatUsd(value: number, opts: Intl.NumberFormatOptions = {}): string {
   return value.toLocaleString(resolveLocale(), {
     style: "currency",
@@ -232,6 +249,6 @@ export function formatDuration(ms: number): string {
 export function formatRelativeFromNow(timestampMs: number): string {
   const diff = timestampMs - Date.now();
   if (diff <= 0) return formatRelativeTime(timestampMs);
-  const duration = formatDuration(diff).split(",")[0];
-  return duration === "less than a minute" ? "in less than a minute" : `in ${duration}`;
+  const duration = formatDuration(diff);
+  return duration ? `in ${duration}` : "in less than a minute";
 }

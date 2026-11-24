@@ -2,6 +2,7 @@
 
 import { Card, RelativeDate } from "@/components/ui";
 import { usePoolActivity } from "@/hooks/usePoolActivity";
+import { formatAmount } from "@/lib/format";
 import type { RealtimeStatus } from "@/lib/realtime/client";
 
 const KIND_LABEL = {
@@ -15,6 +16,8 @@ const STATUS_COPY: Partial<Record<RealtimeStatus, string>> = {
   resyncing: "Reconnecting and resyncing…",
   offline: "Offline — activity may be out of date",
 };
+
+const POOL_SHARE_DECIMALS = 7;
 
 export function PoolActivityFeed() {
   const { feed, presence, status } = usePoolActivity();
