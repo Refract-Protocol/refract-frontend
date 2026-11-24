@@ -49,7 +49,13 @@ because of their centrality to the app's security and correctness:
 | --- | --- |
 | `@stellar/freighter-api` | Direct wallet integration; a vulnerability here can compromise signing/keys. |
 | `next` | Application framework; security advisories affect the whole app surface. |
-| Stellar SDK ecosystem (`@stellar/stellar-sdk`, `@stellar/stellar-base`, etc.) | Transaction building/signing correctness and network security. |
+| Stellar SDK ecosystem (`@stellar/stellar-sdk`) | Transaction building/signing correctness and network security. |
+
+Only packages declared in [`package.json`](../package.json) belong in this table. The standalone Stellar
+base-primitives package that used to be listed here is no longer declared: `@stellar/stellar-sdk` now provides
+those transaction/XDR building blocks directly and is the package to triage. When a dependency is dropped,
+remove its row rather than leaving a stale high-priority entry; add a row back only if the dependency is
+reintroduced in `package.json`.
 
 For these packages:
 

@@ -25,6 +25,26 @@ const CSS_PATH = resolve(root, "src/app/globals.css");
 const TAILWIND_PATH = resolve(root, "tailwind.config.ts");
 
 /**
+ * Read a token source, naming the exact file when it is missing so a fresh
+ * checkout can tell which build output needs to be generated.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+function readTokenSource(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      console.error(`tokens:check failed: token source file not found at ${path}`);
+      console.error("Run `npm run build` to generate the token files, then re-run `npm run tokens:check`.");
+      process.exit(1);
+    }
+    throw error;
+  }
+}
+
+/**
  * Normalise a CSS colour/value so cosmetic differences do not trigger false
  * positives (whitespace, casing, `0.5` vs `.5`).
  *
@@ -84,8 +104,8 @@ function referencedVar(value) {
 }
 
 function main() {
-  const css = readFileSync(CSS_PATH, "utf8");
-  const config = readFileSync(TAILWIND_PATH, "utf8");
+  const css = readTokenSource(CSS_PATH);
+  const config = readTokenSource(TAILWIND_PATH);
 
   const cssTokens = parseCssTokens(css);
   const tailwindTokens = parseTailwindTokens(config);
