@@ -2,16 +2,24 @@
 
 ## 1. Breakpoint Definitions
 
-Refract Protocol defines a custom `xs` mobile breakpoint alongside standard Tailwind CSS viewport tiers:
+Refract Protocol uses the standard Tailwind CSS breakpoints with no custom
+`screens` overrides. The values below come directly from `tailwind.config.ts`
+(which does not extend `theme.screens`) and therefore match Tailwind's built-in
+defaults.
 
 | Token | Min Width | Target Devices / Form Factors | Primary Layout Strategy |
 | :--- | :--- | :--- | :--- |
-| **`base`** | `< 420px` (360px min) | Compact mobile (iPhone SE, Galaxy S-series small) | Single-column stacked; sticky disabled; full-width buttons; 44px tap targets |
-| **`xs`** | `420px` | Standard mobile (iPhone 14/15/16, Pixel, Galaxy) | Compact 2-column stats; inline badge rows; horizontal stepper scrolling |
+| **`base`** | `< 640px` | Compact and standard mobile (iPhone SE, iPhone 14/15/16, Pixel, Galaxy) | Single-column stacked; sticky disabled; full-width buttons; 44px tap targets |
 | **`sm`** | `640px` | Large mobile & phablets | 2-column cards; expanded quick-selection grids |
 | **`md`** | `768px` | Tablets & small laptops | Top navigation expanded; 3-column / 4-column metric grids |
 | **`lg`** | `1024px` | Desktop & Laptops | Multi-column split views (e.g. `grid-cols-[1fr_360px]`); sticky sidebar panels |
-| **`xl`** | `1280px`+ | Large Displays | Centered container max `1200px` with generous side padding |
+| **`xl`** | `1280px` | Large Displays | Centered container max `1200px` with generous side padding |
+| **`2xl`** | `1536px` | Extra-large Displays | Maximum container width; additional whitespace |
+
+> **No `xs` breakpoint.** A custom `xs: 420px` breakpoint was previously
+> documented here but does not exist in `tailwind.config.ts`. Any
+> `xs:` utility classes in components will have no effect. Use `base`
+> (unstyled) for sub-640px styles.
 
 ---
 
@@ -30,9 +38,9 @@ Refract Protocol defines a custom `xs` mobile breakpoint alongside standard Tail
 
 ### 3. Provide Capital (`/provide`)
 - **Stats Overview**: 2 columns on mobile, 4 columns on `sm`+.
-- **Capital Allocation Canvas**: Centered on mobile; 2-column split with legend on `xs` (`420px`+).
+- **Capital Allocation Canvas**: Centered on mobile; 2-column split with legend on `sm` (`640px`+).
 - **Deposit/Withdraw Action Card**: Sticky on desktop (`lg:sticky lg:top-20`), stacked inline on mobile to avoid viewport overflow.
-- **Utilization Bar & Subtitles**: Flex wraps to vertical on `< 420px` and horizontal on `xs`+.
+- **Utilization Bar & Subtitles**: Flex wraps to vertical on `< 640px` and horizontal on `sm`+.
 
 ### 4. Dashboard (`/dashboard`)
 - **Portfolio Risk & Stat Cards**: 2 columns on mobile, 4 columns on `sm`+.
