@@ -1,140 +1,165 @@
-# Refract realtime protocol v1
+# Realtime protocol
 
-This is the frontend/backend contract for realtime updates. REST remains the source for initial state and full resynchronization. The v1 endpoint is `GET /api/v1/realtime`; clients request WebSocket with `Upgrade: websocket`. SSE may later expose the same envelopes, cursors, and auth rules.
+This document describes the wire format used by the realtime transports in
+`src/lib/realtime/transports/` and the mappers in `src/lib/realtime/mappers/index.ts`.
+The machine-readable contract is [`docs/realtime.schema.json`](./realtime.schema.json);
+where this prose and the schema disagree, the schema wins.
 
-## Transport decision
+## Envelope
 
-All four topics use one WebSocket. Claims and notifications need an authenticated, account-scoped subscription; bidirectional WebSocket frames support that handshake and dynamic subscriptions without reconnecting. Oracle readings and pool stats are broadcast and could use SSE, but sharing the connection avoids another transport, heartbeat, cursor store, and retry loop. If an SSE endpoint is added, it must preserve these frames and use the event `id` as `Last-Event-ID`.
+Every message is a flat JSON object. There is no nested `{ type, payload }` wrapper —
+the routing fields (`v`, `topic`, `type`, `id`, `seq`, `ts`) sit alongside `payload` at
+the top level.
 
-| Topic               | Type                        | Delivery                                         | Deduplication key                         |
-| ------------------- | --------------------------- | ------------------------------------------------ | ----------------------------------------- |
-| `oracle.readings`   | `oracle.reading.updated`    | Ordered, best effort; REST refresh after any gap | `id` (stable per source observation)      |
-| `claims.settlement` | `claims.settlement.updated` | Ordered, at least once with cursor replay        | `id` (stable per claim status transition) |
-| `pool.stats`        | `pool.stats.updated`        | Ordered, best effort; latest snapshot wins       | `id` (stable snapshot ID)                 |
-| `notifications`     | `notifications.created`     | Ordered, at least once with cursor replay        | `id` (same value across retries)          |
+| Field     | Type    | Required | Notes                                                        |
+| --------- | ------- | -------- | ------------------------------------------------------------ |
+| `v`       | integer | yes      | Protocol version. Always `1`.                                |
+| `topic`   | string  | yes      | Subscription topic, e.g. `oracle.readings`.                  |
+| `type`    | string  | yes      | Message type, e.g. `oracle.reading.updated`.                 |
+| `id`      | string  | yes      | Non-empty message identifier.                                |
+| `seq`     | integer | yes      | Monotonic sequence number, `>= 0`.                           |
+| `ts`      | string  | yes      | ISO-8601 date-time of when the message was produced.         |
+| `payload` | object  | yes      | Type-specific body (see below).                              |
 
-`seq` increases within one topic and deployment. Consumers discard duplicate `id` values. A frame with `seq` below the last applied sequence is out of order and ignored; a gap on a best-effort topic triggers a REST refresh. At-least-once topics request replay. Delivery order across topics is unspecified.
+Additional top-level properties are permitted (`additionalProperties: true`).
 
-## Common envelope and compatibility
+## Message types
 
-Every server frame carries `v`, `topic`, `type`, `id`, `seq`, `ts`, and object `payload`. `v` versions the envelope and payload together. Additive payload fields are allowed in v1 and clients ignore them. Breaking changes require v2. Clients ignore and log unknown topics, types, and versions; they never throw into the UI.
+### `oracle.reading.updated`
 
-`id` is the idempotency key. `ts` is an RFC 3339 UTC server timestamp for display and diagnostics only; clients do not use it for ordering because clocks can skew. UTF-8 frames are at most 64 KiB. The server closes oversized input with WebSocket code 1009. Schemas are in [`realtime.schema.json`](./realtime.schema.json); CI validates every named example fence.
+Topic: `oracle.readings`
 
-```json realtime-example:oracle.reading.updated
+```json
 {
   "v": 1,
   "topic": "oracle.readings",
   "type": "oracle.reading.updated",
-  "id": "weather-4-2026-10-21T19:00:00Z",
-  "seq": 4102,
-  "ts": "2026-10-21T19:00:01Z",
+  "id": "msg_01H...",
+  "seq": 42,
+  "ts": "2024-05-01T12:00:00Z",
   "payload": {
-    "coverageType": 4,
+    "coverageType": 1,
     "severity": "medium",
-    "value": 47.5,
-    "observedAt": "2026-10-21T19:00:00Z"
+    "value": 0.87,
+    "observedAt": "2024-05-01T11:59:58Z"
   }
 }
 ```
 
-```json realtime-example:claims.settlement.updated
+`payload` requires `coverageType` (integer), `severity`
+(`low` | `medium` | `high` | `triggered`), `value` (number), and `observedAt`
+(date-time).
+
+### `claims.settlement.updated`
+
+Topic: `claims.settlement`
+
+```json
 {
   "v": 1,
   "topic": "claims.settlement",
   "type": "claims.settlement.updated",
-  "id": "claim_73:paid",
-  "seq": 992,
-  "ts": "2026-10-21T19:01:12Z",
+  "id": "msg_01H...",
+  "seq": 43,
+  "ts": "2024-05-01T12:00:05Z",
   "payload": {
-    "claimId": "claim_73",
-    "policyId": "policy_19",
-    "status": "paid",
-    "txHash": "4da51c"
+    "claimId": "claim_123",
+    "policyId": "policy_456",
+    "status": "approved",
+    "txHash": null
   }
 }
 ```
 
-```json realtime-example:pool.stats.updated
+`payload` requires `claimId`, `policyId`, `status`
+(`pending` | `approved` | `paid` | `rejected`), and `txHash` (string or `null`).
+
+### `pool.stats.updated`
+
+Topic: `pool.stats`
+
+```json
 {
   "v": 1,
   "topic": "pool.stats",
   "type": "pool.stats.updated",
-  "id": "pool:ledger:814220",
-  "seq": 814220,
-  "ts": "2026-10-21T19:02:00Z",
+  "id": "msg_01H...",
+  "seq": 44,
+  "ts": "2024-05-01T12:00:10Z",
   "payload": {
-    "totalUsdc": "250000000000",
-    "lockedUsdc": "62500000000",
+    "totalUsdc": "1000000",
+    "lockedUsdc": "250000",
     "utilizationBps": 2500,
-    "apyBps": 840
+    "apyBps": 640
   }
 }
 ```
 
-```json realtime-example:notifications.created
+`payload` requires `totalUsdc` and `lockedUsdc` (decimal strings matching
+`^[0-9]+$`), `utilizationBps` (integer `0..10000`), and `apyBps` (integer `>= 0`).
+
+### `notifications.created`
+
+Topic: `notifications`
+
+```json
 {
   "v": 1,
   "topic": "notifications",
   "type": "notifications.created",
-  "id": "notification_984",
-  "seq": 214,
-  "ts": "2026-10-21T19:03:00Z",
+  "id": "msg_01H...",
+  "seq": 45,
+  "ts": "2024-05-01T12:00:15Z",
   "payload": {
-    "notificationId": "notification_984",
-    "account": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-    "kind": "claim_paid",
-    "title": "Claim paid",
-    "body": "Your payout has settled."
+    "notificationId": "ntf_789",
+    "account": "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV",
+    "kind": "claim",
+    "title": "Claim approved",
+    "body": "Your claim was approved."
   }
 }
 ```
 
-## Authentication and subscriptions
+`payload` requires `notificationId`, `account` (Stellar public key matching
+`^G[A-Z2-7]{55}$`), `kind`, and `title`; `body` is optional.
 
-After opening, the client sends `auth.challenge.request` with its public key. The server returns a short-lived SEP-10 challenge transaction. The client signs it through the active wallet and sends `auth.challenge.submit` with the signed XDR. The server responds with `auth.ok` containing an opaque connection-bound token and expiry, or a `system.error`. Tokens never appear in URLs. Anonymous connections may subscribe only to `oracle.readings` and `pool.stats`; `claims.settlement` and `notifications` require authentication and are restricted to the authenticated account.
+### `system.heartbeat`
 
-The client sends `subscribe` with `topics` and an optional `cursor` object mapping each topic to its last applied `seq`. Client control frames use the common envelope and a unique client-generated `id`; their payloads carry these fields. The server acknowledges with `subscribed`, including accepted and rejected topics.
+Topic: `system`
 
-## Resume and resynchronization
-
-The server retains at least 15 minutes of replay for claims and notifications. On reconnect, the client supplies each last applied sequence. The server replays retained messages in order, including duplicates at the cursor boundary. If a cursor is expired, unknown, ahead of the server, or from an earlier deployment, the server sends `system.error` code `RESYNC_REQUIRED`. The client clears that cursor, fetches REST, and subscribes again from the current head.
-
-Oracle and pool updates do not require replay because each update supersedes earlier state. On reconnect or a sequence gap the client fetches REST, records the announced current sequence, and resumes.
-
-## Heartbeats, errors, and backpressure
-
-The server sends a heartbeat every 25 seconds. A client receiving no frame for 60 seconds closes and reconnects with jittered exponential backoff.
-
-```json realtime-example:system.heartbeat
+```json
 {
   "v": 1,
   "topic": "system",
   "type": "system.heartbeat",
-  "id": "heartbeat:814221",
-  "seq": 814221,
-  "ts": "2026-10-21T19:03:25Z",
-  "payload": { "intervalMs": 25000 }
+  "id": "msg_01H...",
+  "seq": 46,
+  "ts": "2024-05-01T12:00:20Z",
+  "payload": { "intervalMs": 15000 }
 }
 ```
 
-Errors are connection-scoped unless their payload names a topic. A recoverable rate limit keeps the connection open and provides `retryAfterMs`; authentication failures and malformed input may close it.
+`payload` requires `intervalMs` (integer `>= 1000`).
 
-```json realtime-example:system.error
+### `system.error`
+
+Topic: `system`
+
+```json
 {
   "v": 1,
   "topic": "system",
   "type": "system.error",
-  "id": "error:rate:88",
-  "seq": 88,
-  "ts": "2026-10-21T19:03:26Z",
+  "id": "msg_01H...",
+  "seq": 47,
+  "ts": "2024-05-01T12:00:25Z",
   "payload": {
-    "code": "RATE_LIMITED",
-    "message": "Subscription update rate exceeded",
+    "code": "rate_limited",
+    "message": "Too many requests",
     "recoverable": true,
-    "retryAfterMs": 5000
+    "retryAfterMs": 2000
   }
 }
 ```
 
-Clients may change subscriptions at most five times per 10 seconds and send at most 20 control frames per minute. The server coalesces queued oracle and pool frames to the newest snapshot. It never silently drops claims or notifications: when a connection cannot drain 256 queued frames or 1 MiB, it sends `RESYNC_REQUIRED` when possible and closes with code 1013. Clients reconnect after the supplied delay and follow the resume rules above.
+`payload` requires `code`, `message`, and `recoverable`; `retryAfterMs` is optional.
