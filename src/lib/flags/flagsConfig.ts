@@ -1,26 +1,28 @@
-export interface FlagsDocument {
-  flags: Record<string, boolean>;
+import flagsJson from '../../../public/flags.json';
+
+/**
+ * Value returned for any flag that is not declared in `public/flags.json`.
+ *
+ * Unknown flags resolve to `false` so callers always receive a boolean and
+ * `if (useFeatureFlag('x'))` behaves predictably instead of silently taking
+ * the false branch on `undefined`.
+ */
+export const DEFAULT_FLAG_VALUE = false;
+
+type FlagsConfig = typeof flagsJson;
+
+/**
+ * Resolve a feature flag to a boolean.
+ *
+ * Declared flags in `public/flags.json` are read from the `flags` map; any
+ * key that is not declared (or whose value is not a boolean) resolves to
+ * {@link DEFAULT_FLAG_VALUE} (`false`). This function never returns
+ * `undefined`, so the result is safe to use directly in conditionals.
+ */
+export function resolveFlag(name: string): boolean {
+  const flags = (flagsJson as FlagsConfig).flags as Record<string, unknown>;
+  const value = flags?.[name];
+  return typeof value === 'boolean' ? value : DEFAULT_FLAG_VALUE;
 }
 
-/** Safe default if the remote flags source is unreachable — new/risky features default off. */
-export const DEFAULT_FLAGS: Record<string, boolean> = {
-  /** Realtime WebSocket connection (src/lib/realtime). Off until the backend ships /ws. */
-  realtime: false,
-  /** Legacy alias for `realtime`, kept so existing flag documents still work. */
-  "realtime-oracle": false,
-  "realtime-soroban-events": false,
-};
-
-export const FLAGS_ENDPOINT = "/flags.json";
-export const FLAGS_CACHE_TTL_MS = 5 * 60 * 1000;
-
-/** Reads a local override, e.g. NEXT_PUBLIC_FLAGS_OVERRIDE='{"realtime-oracle":true}'. */
-export function readLocalOverride(): Record<string, boolean> | null {
-  const raw = process.env.NEXT_PUBLIC_FLAGS_OVERRIDE;
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Record<string, boolean>;
-  } catch {
-    return null;
-  }
-}
+export default flagsJson;
