@@ -124,3 +124,31 @@ implements it. Point the client at the mock endpoint via the realtime endpoint
 configuration and enable `realtime.enabled` locally. The mock emits `snapshot`,
 `update`, and `heartbeat` envelopes matching the contract above so `merge.ts`
 and `shadow.ts` can be exercised end to end.
+
+### Realtime canary
+
+`scripts/realtime-canary.ts` is the alert source for the realtime transport. It
+connects to the realtime endpoint, waits for a `heartbeat`, and emits a named
+alert on any transport failure. **The script exits non-zero (`1`) when any
+transport failure occurs and `0` only on a fully successful run**, so it can be
+used directly as a CI gate.
+
+Run it against the local mock server to confirm a healthy path:
+
+```bash
+node scripts/realtime-canary.ts
+```
+
+Run it against a stopped endpoint to confirm the gate trips (exit code `1`).
+
+Alerts emitted by the canary (these names are the contract — keep them in sync
+with the script):
+
+| Alert | Meaning |
+| --- | --- |
+| `realtime_canary_connect_failed` | The transport could not establish a connection |
+| `realtime_canary_heartbeat_timeout` | Connected, but no `heartbeat` arrived in time |
+| `realtime_canary_transport_error` | The transport errored or closed unexpectedly |
+
+Any of the above causes a non-zero exit code, so CI alerts on the canary job
+failing.
