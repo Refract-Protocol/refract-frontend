@@ -23,7 +23,9 @@ export class WebSocketTransport implements RealtimeTransport {
     try {
       socket = new Impl(this.opts.url);
     } catch (err) {
-      queueMicrotask(() => this.finish({ code: 1006, reason: `connect failed: ${String(err)}` }));
+      queueMicrotask(() =>
+        this.finish({ code: 1006, reason: `connect failed: ${String(err)}`, source: "websocket" })
+      );
       return;
     }
     this.socket = socket;
@@ -36,7 +38,11 @@ export class WebSocketTransport implements RealtimeTransport {
     });
     socket.addEventListener("close", (event) => {
       if (this.socket !== socket) return;
-      this.finish({ code: event.code, reason: event.reason });
+      this.finish({
+        code: event.code,
+        reason: event.reason || "socket closed",
+        source: "websocket",
+      });
     });
     socket.addEventListener("error", () => {
       // A close event always follows; let it carry the code.
@@ -68,7 +74,7 @@ export class WebSocketTransport implements RealtimeTransport {
     this.send({ type: "unsubscribe", topics });
   }
 
-  private finish(info: { code: number; reason: string }): void {
+  private finish(info: { code: number; reason: string; source: "websocket" }): void {
     const callbacks = this.callbacks;
     this.socket = null;
     this.callbacks = null;
