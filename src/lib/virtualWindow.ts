@@ -20,3 +20,26 @@ export function computeWindow(
   const end = Math.min(count, first + visible + overscan);
   return { start, end: Math.max(end, start + 1), offsetTop: start * rowHeight, totalHeight: count * rowHeight };
 }
+
+/**
+ * Scrolls the container so the row at `index` is visible, keeping a small
+ * margin above/below. Used to bring off-screen rows into view when keyboard
+ * focus moves to them in a virtualized list.
+ */
+export function scrollIndexIntoView(
+  container: HTMLElement | null,
+  index: number,
+  rowHeight: number,
+  margin = 1,
+): void {
+  if (!container || rowHeight <= 0 || index < 0) return;
+  const rowTop = index * rowHeight;
+  const rowBottom = rowTop + rowHeight;
+  const viewTop = container.scrollTop;
+  const viewBottom = viewTop + container.clientHeight;
+  if (rowTop < viewTop + margin * rowHeight) {
+    container.scrollTop = Math.max(0, rowTop - margin * rowHeight);
+  } else if (rowBottom > viewBottom - margin * rowHeight) {
+    container.scrollTop = rowBottom - container.clientHeight + margin * rowHeight;
+  }
+}
