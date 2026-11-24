@@ -1,80 +1,72 @@
+import type { ReadonlyURLSearchParams } from "next/navigation";
+
+export const COVER_QUERY_KEYS = [
+  "page",
+  "type",
+  "sort",
+  "q",
+] as const;
+
+export type CoverQueryKey = (typeof COVER_QUERY_KEYS)[number];
+
 export interface CoverQueryParams {
-  type?: number;
-  amount?: string;
-  duration?: number;
-  flight?: string;
+  page?: number;
+  type?: string;
+  sort?: string;
+  q?: string;
 }
 
 export interface ParseQueryParamsOptions {
-  validTypeIds?: number[];
-  minAmount?: number;
-  maxAmount?: number;
-  minDuration?: number;
-  maxDuration?: number;
+  defaults?: CoverQueryParams;
 }
 
 export function parseCoverQueryParams(
-  searchParams: { get: (key: string) => string | null } | URLSearchParams,
+  searchParams: ReadonlyURLSearchParams,
   options: ParseQueryParamsOptions = {}
 ): CoverQueryParams {
-  const {
-    validTypeIds,
-    minAmount = 100,
-    maxAmount = 1_000_000,
-    minDuration = 1,
-    maxDuration = 365,
-  } = options;
+  const params: CoverQueryParams = { ...options.defaults };
 
-  const result: CoverQueryParams = {};
-
-  const typeParam = searchParams.get("type");
-  if (typeParam !== null && typeParam !== "") {
-    const parsedType = parseInt(typeParam, 10);
-    if (!isNaN(parsedType)) {
-      if (!validTypeIds || validTypeIds.includes(parsedType)) {
-        result.type = parsedType;
-      }
+  const page = searchParams.get("page");
+  if (page !== null) {
+    const parsed = Number.parseInt(page, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      params.page = parsed;
     }
   }
 
-  const amountParam = searchParams.get("amount");
-  if (amountParam !== null && amountParam !== "") {
-    const parsedAmount = parseFloat(amountParam);
-    if (!isNaN(parsedAmount) && parsedAmount > 0) {
-      const clamped = Math.max(minAmount, Math.min(parsedAmount, maxAmount));
-      result.amount = String(clamped);
-    }
+  const type = searchParams.get("type");
+  if (type !== null) {
+    params.type = type;
   }
 
-  const durationParam = searchParams.get("duration");
-  if (durationParam !== null && durationParam !== "") {
-    const parsedDuration = parseInt(durationParam, 10);
-    if (!isNaN(parsedDuration)) {
-      result.duration = Math.max(minDuration, Math.min(parsedDuration, maxDuration));
-    }
+  const sort = searchParams.get("sort");
+  if (sort !== null) {
+    params.sort = sort;
   }
 
-  const flightParam = searchParams.get("flight");
-  if (flightParam !== null && flightParam.trim().length > 0) {
-    result.flight = flightParam.trim().toUpperCase();
+  const q = searchParams.get("q");
+  if (q !== null) {
+    params.q = q;
   }
 
-  return result;
+  return params;
 }
 
 export function serializeCoverQueryParams(params: CoverQueryParams): string {
   const search = new URLSearchParams();
+
+  if (params.page !== undefined) {
+    search.set("page", String(params.page));
+  }
   if (params.type !== undefined) {
-    search.set("type", String(params.type));
+    search.set("type", params.type);
   }
-  if (params.amount !== undefined && params.amount !== "") {
-    search.set("amount", String(params.amount));
+  if (params.sort !== undefined) {
+    search.set("sort", params.sort);
   }
-  if (params.duration !== undefined) {
-    search.set("duration", String(params.duration));
+  if (params.q !== undefined) {
+    search.set("q", params.q);
   }
-  if (params.flight !== undefined && params.flight.trim() !== "") {
-    search.set("flight", params.flight.trim());
-  }
+
   return search.toString();
 }

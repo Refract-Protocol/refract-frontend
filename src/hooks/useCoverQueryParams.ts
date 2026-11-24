@@ -1,52 +1,37 @@
-"use client";
-
-import { useCallback, useEffect, useRef } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
+  COVER_QUERY_KEYS,
   parseCoverQueryParams,
-  serializeCoverQueryParams,
   type CoverQueryParams,
-  type ParseQueryParamsOptions,
-} from "@/lib/coverQueryParams";
+} from '@/lib/coverQueryParams';
 
-export function useCoverQueryParams(
-  currentState: CoverQueryParams,
-  options: ParseQueryParamsOptions = {}
-) {
-  const router = useRouter();
-  const pathname = usePathname();
+const acceptedKeys = new Set<string>(COVER_QUERY_KEYS);
+
+function warnUnknownKeys(searchParams: URLSearchParams): void {
+  if (process.env.NODE_ENV === 'production') {
+    return;
+  }
+
+  const warned = new Set<string>();
+
+  for (const key of searchParams.keys()) {
+    if (acceptedKeys.has(key) || warned.has(key)) {
+      continue;
+    }
+
+    warned.add(key);
+    console.warn(
+      `[useCoverQueryParams] Unknown query key "${key}". Accepted keys: ${COVER_QUERY_KEYS.join(', ')}.`,
+    );
+  }
+}
+
+export function useCoverQueryParams(): CoverQueryParams {
   const searchParams = useSearchParams();
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitialMount = useRef(true);
 
-  // Read initial values from URL on mount
-  const getInitialParams = useCallback(() => {
-    return parseCoverQueryParams(searchParams, options);
-  }, [searchParams, options]);
-
-  // Sync state to URL with debouncing (router.replace)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      const qs = serializeCoverQueryParams(currentState);
-      const newUrl = qs ? `${pathname}?${qs}` : pathname;
-      router.replace(newUrl, { scroll: false });
-    }, 300);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [currentState, pathname, router]);
-
-  return { getInitialParams };
+  return useMemo(() => {
+    warnUnknownKeys(searchParams);
+    return parseCoverQueryParams(searchParams);
+  }, [searchParams]);
 }
