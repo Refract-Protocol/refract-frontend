@@ -10,6 +10,8 @@
  *   latencyMs, duplicate, reorder, unknown (emit unknown topic/version frames),
  *   authFail (close 4401). Payloads are seeded; timestamps are synthetic
  *   (BASE_TS + seq * 1000), so output is identical run to run.
+ *
+ * Pass `--verbose` to log each connect/message/disconnect event with a timestamp.
  */
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
@@ -137,16 +139,25 @@ function decode(buf) {
 
 /**
  * Starts the server. `port: 0` (default) picks a free port. Resolves with
- * `{ url, port, connections(), close() }`.
+ * `{ url, port, connections(), close() }`. When `verbose` is true, each
+ * connect/message/disconnect event is logged with an ISO timestamp.
  */
 export async function startMockRealtimeServer({
   port = 0,
   host = "127.0.0.1",
   scenario = {},
+  verbose = false,
 } = {}) {
   const base = resolveScenario(scenario);
   let connections = 0;
+  let nextId = 1;
   const sockets = new Set();
+  const log = verbose
+    ? (event, id, detail) =>
+        console.log(
+          `[${new Date().toISOString()}] ${event} conn=${id}${detail ? ` ${detail}` : ""}`
+        )
+    : () => {};
   const server = createServer((_, res) => {
     res.writeHead(426).end("websocket only");
   });
@@ -163,8 +174,13 @@ export async function startMockRealtimeServer({
       `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`
     );
     connections++;
+    const id = nextId++;
     sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
+    log("connect", id, `path=${req.url}`);
+    socket.on("close", (code) => {
+      sockets.delete(socket);
+      log("disconnect", id, `code=${code}`);
+    });
     socket.on("error", () => {});
 
     if (sc.authFail) {
@@ -203,9 +219,11 @@ export async function startMockRealtimeServer({
       for (const { opcode, data } of frames) {
         if (opcode === 8) return socket.end(closeFrame(1000));
         if (opcode === 9) continue;
+        const text = data.toString();
+        log("message", id, text);
         let msg;
         try {
-          msg = JSON.parse(data.toString());
+          msg = JSON.parse(text);
         } catch {
           continue;
         }
@@ -243,13 +261,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         return [k, v];
       })
   );
-  const { port, ...scenario } = flags;
+  const { port, verbose, ...scenario } = flags;
   const srv = await startMockRealtimeServer({
     port: Number(port ?? process.env.MOCK_REALTIME_PORT ?? 0),
     scenario,
+    verbose: bool(verbose, false),
   });
   console.log(`MOCK_REALTIME_URL=${srv.url}`);
-  const stop = () => srv.close().then(() => process.exit(0));
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
+  if (bool(verbose, false)) console.log("verbose logging enabled");
+  const shutdown = () => srv.close().then(() => process.exit(0));
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }

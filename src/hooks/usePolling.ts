@@ -1,53 +1,89 @@
-"use client";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useCallback, useEffect, useRef } from "react";
+export interface UsePollingOptions {
+  /** Interval between polls in milliseconds. */
+  intervalMs?: number;
+  /** Whether polling is enabled. Defaults to true. */
+  enabled?: boolean;
+  /** Run the polled function immediately on mount. Defaults to true. */
+  immediate?: boolean;
+}
+
+export interface UsePollingResult<T> {
+  data: T | undefined;
+  error: Error | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  refresh: () => Promise<void>;
+}
+
+const DEFAULT_INTERVAL_MS = 15_000;
 
 /**
- * Runs an abortable fetch immediately and then at `intervalMs` while the tab
- * is visible. Slow requests are allowed to finish; ticks that occur while one
- * is in flight are skipped so requests can never overlap.
+ * Polls an async function on a fixed cadence, exposing the latest data and any
+ * error from the most recent poll. Errors are captured into state so callers
+ * can surface failures and back off; a successful poll clears the error.
  */
-export function usePolling(
-  fetcher: (signal: AbortSignal) => Promise<void>,
-  intervalMs: number,
-  enabled = true
-): { refresh: () => Promise<void> } {
-  const fetcherRef = useRef(fetcher);
-  const controllerRef = useRef<AbortController | null>(null);
-  const inFlightRef = useRef<Promise<void> | null>(null);
-  fetcherRef.current = fetcher;
+export function usePolling<T>(
+  fn: () => Promise<T>,
+  options: UsePollingOptions = {},
+): UsePollingResult<T> {
+  const { intervalMs = DEFAULT_INTERVAL_MS, enabled = true, immediate = true } = options;
 
-  const run = useCallback(async () => {
-    if (!enabled || inFlightRef.current) return inFlightRef.current ?? Promise.resolve();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    const request = fetcherRef.current(controller.signal).finally(() => {
-      if (inFlightRef.current === request) inFlightRef.current = null;
-      if (controllerRef.current === controller) controllerRef.current = null;
-    });
-    inFlightRef.current = request;
-    return request;
-  }, [enabled]);
+  const [data, setData] = useState<T | undefined>(undefined);
+  const [error, setError] = useState<Error | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState<boolean>(enabled && immediate);
+
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  const mountedRef = useRef(true);
+
+  const runPoll = useCallback(async () => {
+    try {
+      const result = await fnRef.current();
+      if (!mountedRef.current) return;
+      setData(result);
+      setError(undefined);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
-    void run();
 
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void run();
+    if (immediate) {
+      setIsLoading(true);
+      void runPoll();
+    }
+
+    const id = setInterval(() => {
+      void runPoll();
     }, intervalMs);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void run();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      controllerRef.current?.abort();
-      controllerRef.current = null;
-      inFlightRef.current = null;
-    };
-  }, [enabled, intervalMs, run]);
 
-  return { refresh: run };
+    return () => {
+      clearInterval(id);
+    };
+  }, [enabled, immediate, intervalMs, runPoll]);
+
+  return {
+    data,
+    error,
+    isLoading,
+    isError: error !== undefined,
+    refresh: runPoll,
+  };
 }
