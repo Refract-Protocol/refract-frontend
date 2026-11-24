@@ -9,3 +9,13 @@ In production builds, the override surface is active only for hosts named by the
 Lifecycle analytics are emitted through `setRealtimeAnalyticsSink` in `src/lib/analytics/realtime.ts`. They are batched into a microtask, deduplicated for one minute, bounded to 64 queued events, and suppressed for Do Not Track or Save-Data. Payloads contain only lifecycle name, coarse transport/topic/network dimensions, a flag bucket, and timestamp. Applications can attach a vendor-neutral sink without adding an SDK to the realtime client.
 
 To check a local QA session, open the app with `?realtime=sse`, confirm the amber badge reads “QA realtime: sse”, then use the reset action and confirm the badge disappears. The deterministic hostile-frame corpus is run with `npm test -- src/lib/realtime/decode.fuzz.test.ts`.
+
+## Reproducing transport bugs with the mock server
+
+`scripts/mock-realtime-server.mjs` is the mock used by `e2e/realtime-network.e2e.ts` and local dev. Start it with the `--verbose` flag to log each connection, received message, and disconnect with an ISO timestamp:
+
+```bash
+node scripts/mock-realtime-server.mjs --verbose
+```
+
+Then open `/dev/realtime` with `?realtime=mock` (and `&realtimeEndpoint=ws%3A%2F%2Flocalhost%3A8787` if the default port differs) to see exactly what the client sends. Without `--verbose` the server stays quiet.
