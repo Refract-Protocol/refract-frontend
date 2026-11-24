@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 export interface TourStep {
   /** Matches a `data-tour-id` attribute on the element to spotlight. */
@@ -72,6 +73,7 @@ export function Tour({ steps, open, onClose }: TourProps) {
   const [tooltipHeight, setTooltipHeight] = useState(0);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const step = steps[index];
 
   useEffect(() => {
@@ -87,7 +89,7 @@ export function Tour({ steps, open, onClose }: TourProps) {
       setRect(target ? target.getBoundingClientRect() : null);
       setTooltipHeight(tooltipRef.current?.offsetHeight ?? 0);
     };
-    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    target?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
     measure();
     const observer = new ResizeObserver(measure);
     if (target) observer.observe(target);
@@ -99,7 +101,7 @@ export function Tour({ steps, open, onClose }: TourProps) {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [open, step]);
+  }, [open, step, prefersReducedMotion]);
 
   useEffect(() => {
     if (open) tooltipRef.current?.focus();
@@ -131,7 +133,7 @@ export function Tour({ steps, open, onClose }: TourProps) {
     <>
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed z-[100] rounded-[10px] transition-all duration-200"
+        className={`pointer-events-none fixed z-[100] rounded-[10px]${prefersReducedMotion ? "" : " transition-all duration-200"}`}
         style={
           rect
             ? {

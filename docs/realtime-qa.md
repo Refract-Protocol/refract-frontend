@@ -6,6 +6,8 @@ In production builds, the override surface is active only for hosts named by the
 
 `ws` selects WebSocket, `sse` selects EventSource, `mock` uses the WebSocket protocol at the supplied endpoint, and `off` disables realtime. REST polling is used when a streaming API is unavailable or environment configuration selects REST. The expected frame shape is `{ "topic": "oracle_update", "payload": {}, "sequence": 1 }`. Frames larger than 256 KiB or nested more than 32 levels are dropped before application handlers run.
 
+To run the mock realtime server locally, start it directly with `node scripts/mock-realtime-server.mjs` (there is no `npm run dev:mock` script; `package.json` is the source of truth for available scripts). Point the client at it with `?realtime=mock&realtimeEndpoint=...`.
+
 Lifecycle analytics are emitted through `setRealtimeAnalyticsSink` in `src/lib/analytics/realtime.ts`. They are batched into a microtask, deduplicated for one minute, bounded to 64 queued events, and suppressed for Do Not Track or Save-Data. Payloads contain only lifecycle name, coarse transport/topic/network dimensions, a flag bucket, and timestamp. Applications can attach a vendor-neutral sink without adding an SDK to the realtime client.
 
 To check a local QA session, open the app with `?realtime=sse`, confirm the amber badge reads “QA realtime: sse”, then use the reset action and confirm the badge disappears. The deterministic hostile-frame corpus is run with `npm test -- src/lib/realtime/decode.fuzz.test.ts`.
