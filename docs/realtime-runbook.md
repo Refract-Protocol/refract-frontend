@@ -111,6 +111,36 @@ for this repo.
 - **reconnectCount** — rising counts indicate an unstable backend.
 - **fallbackActive** — `true` when serving from REST.
 
+### Synthetic canary (`scripts/realtime-canary.ts`)
+
+The canary runs every 15 minutes via `.github/workflows/realtime-canary.yml` and
+prints one structured JSON line per attempt. Fields to watch in alerts and
+dashboards:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `ok` | `boolean` | `true` = probe succeeded; `false` = all attempts failed |
+| `failure` | `"transport" \| "endpoint" \| "auth" \| "timeout"` | Set when `ok` is `false`; identifies where the probe failed |
+| `connectMs` | `number \| undefined` | Milliseconds from start to WebSocket `open`; absent if the socket never opened |
+| `firstEventMs` | `number \| undefined` | Milliseconds from start to the first matching topic message; absent on failure |
+| `url` | `string` | Endpoint under test |
+| `topic` | `string` | Topic subscribed to (default `"canary"`) |
+| `attempt` | `number` | Attempt number within the run (1 … `REALTIME_CANARY_ATTEMPTS`) |
+| `ts` | `string` | ISO-8601 timestamp of the attempt |
+
+**Failure values and their meaning:**
+
+- `endpoint` — could not open the socket (bad URL, DNS failure, TLS error, or
+  `REALTIME_CANARY_URL` unset).
+- `auth` — socket closed with code `1008`, `4401`, or `4403`; check
+  `REALTIME_CANARY_TOKEN`.
+- `transport` — socket opened but closed before a matching message arrived.
+- `timeout` — no matching message within `REALTIME_CANARY_TIMEOUT_MS`
+  (default 10 000 ms).
+
+The workflow exits 1 only when every attempt fails, so a single transient miss
+does not trigger an alert.
+
 ### Disabling a topic via flags
 
 Set `realtime.topics.<topic>` to `false` in `public/flags.json` (or override at
