@@ -22,8 +22,8 @@ export function RealtimeOverrideStatus() {
   }
   return (
     <div
-      role="status"
-      aria-label={`Realtime QA override: ${override.mode}`}
+      role="region"
+      aria-label={`Realtime QA override active: ${override.mode}`}
       className="fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-950 px-3 py-2 text-xs text-amber-100 shadow-lg"
     >
       <span>
