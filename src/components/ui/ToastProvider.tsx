@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { Toast, type ToastTone } from "./Toast";
+import { useAriaLive } from "./AriaLiveProvider";
 
 /** Options accepted by {@link useToast}'s `toast` function. */
 export interface ToastOptions {
@@ -49,8 +50,10 @@ const DEFAULT_DURATION = 5000;
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
+  const [assertiveAnnouncement, setAssertiveAnnouncement] = useState("");
   const idRef = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const { announce } = useAriaLive();
 
   const dismiss = useCallback((id: number) => {
     const timer = timers.current.get(id);
@@ -77,6 +80,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback(
     ({ title, description, tone = "neutral", duration = DEFAULT_DURATION, action }: ToastOptions) => {
       const id = (idRef.current += 1);
+      let isNew = false;
       setToasts((current) => {
         const duplicate = current.find(
           (item) => item.title === title && item.tone === tone,
@@ -85,12 +89,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           schedule(duplicate.id, duration);
           return current;
         }
+        isNew = true;
         schedule(id, duration);
         return [...current, { id, title, description, tone, duration, action }];
       });
+      // Announce once per new toast. Danger toasts are assertive; others are
+      // polite. The AriaLiveProvider handles polite; assertive goes through a
+      // simple text node so the screen reader interrupts for critical errors.
+      if (isNew) {
+        if (tone === "danger") {
+          setAssertiveAnnouncement(title);
+        } else {
+          announce(title);
+        }
+      }
       return id;
     },
-    [schedule],
+    [announce, schedule],
   );
 
   useEffect(() => {
@@ -109,6 +124,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* Text-only assertive live region for screen-reader announcements of
+          danger toasts. Kept separate from the visual toast container so a
+          complex component insertion never prevents the announcement. */}
+      <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        aria-relevant="additions text"
+        className="sr-only"
+      >
+        {assertiveAnnouncement}
+      </div>
       <div
         aria-live="polite"
         aria-atomic="false"

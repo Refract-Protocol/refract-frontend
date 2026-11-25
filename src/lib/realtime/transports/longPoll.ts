@@ -40,6 +40,8 @@ export interface LongPollTransportOptions {
   defaultTimeoutMs?: number;
   /** Extra time allowed past the server hold timeout before the client aborts. */
   timeoutGraceMs?: number;
+  /** Alias for `backoffBaseMs`. Delay (ms) before the first retry. */
+  reconnectDelay?: number;
   backoffBaseMs?: number;
   backoffMaxMs?: number;
   /** Consecutive failures tolerated before reporting the transport closed. */
@@ -103,7 +105,7 @@ export class LongPollTransport implements RealtimeTransport {
       fetchImpl: options.fetchImpl ?? ((...args) => fetch(...args)),
       defaultTimeoutMs: options.defaultTimeoutMs ?? 25_000,
       timeoutGraceMs: options.timeoutGraceMs ?? 5_000,
-      backoffBaseMs: options.backoffBaseMs ?? 1_000,
+      backoffBaseMs: options.backoffBaseMs ?? options.reconnectDelay ?? 1_000,
       backoffMaxMs: options.backoffMaxMs ?? 30_000,
       maxConsecutiveFailures: options.maxConsecutiveFailures ?? 5,
       maxConcurrentRequests: options.maxConcurrentRequests ?? 1,

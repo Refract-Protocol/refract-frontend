@@ -42,6 +42,14 @@ export interface RealtimeTransport {
 
 export interface TransportFactory {
   kind: TransportKind;
+  /**
+   * Base delay (ms) before the first reconnect attempt. The transport uses
+   * exponential backoff starting from this value, capped at a fixed maximum.
+   * For WebSocket and SSE the client's backoff policy applies this value;
+   * for long-poll the transport itself reads it as `backoffBaseMs`.
+   * Defaults to 1 000 ms when unset.
+   */
+  reconnectDelay?: number;
   isSupported(): boolean;
   create(): RealtimeTransport;
 }
