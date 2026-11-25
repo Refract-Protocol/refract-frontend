@@ -76,7 +76,11 @@ export function useFocusTrap(
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener("keydown", handleKeyDown);
-      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+      if (
+        previouslyFocused &&
+        typeof previouslyFocused.focus === "function" &&
+        previouslyFocused.isConnected
+      ) {
         previouslyFocused.focus();
       }
     };

@@ -1,3 +1,17 @@
+// scripts/gen-realtime-types.mjs
+//
+// Generates TypeScript types and Zod schemas for the realtime subsystem from
+// the OpenAPI spec at docs/realtime.schema.json (or $REALTIME_OPENAPI_SPEC).
+//
+// Usage:
+//   node scripts/gen-realtime-types.mjs           # generate; refuse if the
+//                                                 # existing file differs
+//   node scripts/gen-realtime-types.mjs --force   # overwrite unconditionally
+//   node scripts/gen-realtime-types.mjs --check   # exit 1 if files are stale
+//
+// The script exits non-zero (and prints a diff summary) if the on-disk files
+// contain manual edits and --force was not passed. Run with --force to discard
+// those edits; run with --check in CI to catch stale generated files.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -6,6 +20,7 @@ const specPath = resolve(root, process.env.REALTIME_OPENAPI_SPEC ?? "openapi/ref
 const outPath = resolve(root, "src/lib/realtime/generated/schemas.ts");
 const indexPath = resolve(root, "src/lib/realtime/generated/index.ts");
 const check = process.argv.includes("--check");
+const force = process.argv.includes("--force");
 const spec = readFileSync(specPath, "utf8");
 if (
   !/^openapi:\s*3\./m.test(spec) ||
@@ -123,6 +138,38 @@ if (check) {
     process.exitCode = 1;
   }
 } else {
-  writeFileSync(outPath, output);
-  writeFileSync(indexPath, indexOutput);
+  // Guard against silently discarding hand-edited files unless --force was passed.
+  let existingSchemas = null;
+  let existingIndex = null;
+  try { existingSchemas = readFileSync(outPath, "utf8"); } catch { /* new file */ }
+  try { existingIndex = readFileSync(indexPath, "utf8"); } catch { /* new file */ }
+
+  const schemasChanged = existingSchemas !== null && existingSchemas !== output;
+  const indexChanged = existingIndex !== null && existingIndex !== indexOutput;
+
+  if ((schemasChanged || indexChanged) && !force) {
+    if (schemasChanged) {
+      console.error(`${outPath} has been modified since it was last generated.`);
+      const existingLines = existingSchemas.split("\n");
+      const newLines = output.split("\n");
+      const maxLen = Math.max(existingLines.length, newLines.length);
+      let diffCount = 0;
+      for (let i = 0; i < maxLen; i++) {
+        if (existingLines[i] !== newLines[i]) {
+          if (diffCount < 5) console.error(`  line ${i + 1}: - ${existingLines[i] ?? "(missing)"}`);
+          if (diffCount < 5) console.error(`  line ${i + 1}: + ${newLines[i] ?? "(missing)"}`);
+          diffCount++;
+        }
+      }
+      if (diffCount > 5) console.error(`  ... and ${diffCount - 5} more differing lines`);
+    }
+    if (indexChanged) {
+      console.error(`${indexPath} has been modified since it was last generated.`);
+    }
+    console.error("Run with --force to overwrite, or revert manual edits first.");
+    process.exitCode = 1;
+  } else {
+    writeFileSync(outPath, output);
+    writeFileSync(indexPath, indexOutput);
+  }
 }
