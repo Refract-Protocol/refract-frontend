@@ -7,6 +7,13 @@ export interface WebSocketTransportOptions {
   url: string;
   /** Injectable for tests and the chaos harness. Defaults to the global WebSocket. */
   WebSocketImpl?: WebSocketCtor;
+  /**
+   * Base reconnect delay (ms). WebSocket reconnect policy is managed by the
+   * client's backoff config (`BackoffConfig.baseDelayMs`), not this transport.
+   * Declaring the option here aligns the interface with the transport contract;
+   * the client reads it from `TransportFactory.reconnectDelay`.
+   */
+  reconnectDelay?: number;
 }
 
 export class WebSocketTransport implements RealtimeTransport {

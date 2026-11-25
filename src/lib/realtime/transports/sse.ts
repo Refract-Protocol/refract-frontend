@@ -7,6 +7,13 @@ export interface SseTransportOptions {
   /** Endpoint, e.g. `${API_BASE_URL}/realtime/sse`. Topics and cursors go in the query string. */
   url: string;
   EventSourceImpl?: EventSourceCtor;
+  /**
+   * Base reconnect delay (ms). SSE reconnect policy is managed by the client's
+   * backoff config (`BackoffConfig.baseDelayMs`), not this transport.
+   * Declaring the option here aligns the interface with the transport contract;
+   * the client reads it from `TransportFactory.reconnectDelay`.
+   */
+  reconnectDelay?: number;
 }
 
 /**
