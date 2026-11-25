@@ -61,6 +61,12 @@ export interface RealtimeClientOptions {
   maxAttempts?: number;
   baseBackoffMs?: number;
   maxBackoffMs?: number;
+  /**
+   * Alias for `baseBackoffMs`. The initial reconnect delay in milliseconds
+   * before exponential back-off is applied. Matches the documented
+   * `reconnectDelay` option (issue #546).
+   */
+  reconnectDelay?: number;
 }
 
 const OPEN = 1;
@@ -117,7 +123,7 @@ export class RealtimeClient {
     this.scopeDebounceMs = opts.scopeDebounceMs ?? 250;
     this.degradedAttempts = opts.degradedAttempts ?? 2;
     this.maxAttempts = opts.maxAttempts ?? 6;
-    this.baseBackoffMs = opts.baseBackoffMs ?? 1_000;
+    this.baseBackoffMs = opts.baseBackoffMs ?? opts.reconnectDelay ?? 1_000;
     this.maxBackoffMs = opts.maxBackoffMs ?? 30_000;
     this.enabled = opts.createSocket === undefined;
   }
