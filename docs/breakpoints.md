@@ -2,16 +2,19 @@
 
 ## 1. Breakpoint Definitions
 
-Refract Protocol defines a custom `xs` mobile breakpoint alongside standard Tailwind CSS viewport tiers:
+Refract Protocol uses Tailwind CSS's default screen breakpoints (see `tailwind.config.ts`, which does
+not extend `theme.screens`). The `xs` tier at `420px` is not a named token in the config; components
+that need it use Tailwind's arbitrary-value syntax (`min-[420px]:…`).
 
 | Token | Min Width | Target Devices / Form Factors | Primary Layout Strategy |
 | :--- | :--- | :--- | :--- |
 | **`base`** | `< 420px` (360px min) | Compact mobile (iPhone SE, Galaxy S-series small) | Single-column stacked; sticky disabled; full-width buttons; 44px tap targets |
-| **`xs`** | `420px` | Standard mobile (iPhone 14/15/16, Pixel, Galaxy) | Compact 2-column stats; inline badge rows; horizontal stepper scrolling |
+| **`xs`** *(arbitrary)* | `420px` | Standard mobile (iPhone 14/15/16, Pixel, Galaxy) | Compact 2-column stats; inline badge rows; horizontal stepper scrolling |
 | **`sm`** | `640px` | Large mobile & phablets | 2-column cards; expanded quick-selection grids |
 | **`md`** | `768px` | Tablets & small laptops | Top navigation expanded; 3-column / 4-column metric grids |
 | **`lg`** | `1024px` | Desktop & Laptops | Multi-column split views (e.g. `grid-cols-[1fr_360px]`); sticky sidebar panels |
-| **`xl`** | `1280px`+ | Large Displays | Centered container max `1200px` with generous side padding |
+| **`xl`** | `1280px` | Large Displays | Centered container max `1200px` with generous side padding |
+| **`2xl`** | `1536px` | Very large displays | Reserved; use `xl` layout unless a viewport needs further adjustment |
 
 ---
 
