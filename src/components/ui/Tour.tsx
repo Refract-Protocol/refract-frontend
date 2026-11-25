@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 export interface TourStep {
   /** Matches a `data-tour-id` attribute on the element to spotlight. */
@@ -67,6 +68,7 @@ interface TourProps {
  * fully interactive — the tour points at controls without blocking them.
  */
 export function Tour({ steps, open, onClose }: TourProps) {
+  const reduced = usePrefersReducedMotion();
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [tooltipHeight, setTooltipHeight] = useState(0);
@@ -131,7 +133,7 @@ export function Tour({ steps, open, onClose }: TourProps) {
     <>
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed z-[100] rounded-[10px] transition-all duration-200"
+        className={`pointer-events-none fixed z-[100] rounded-[10px] ${reduced ? "" : "transition-all duration-200"}`}
         style={
           rect
             ? {

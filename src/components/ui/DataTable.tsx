@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "./Card";
+import { useAriaLive } from "./AriaLiveProvider";
 
 /**
  * A single column definition for {@link DataTable}.
@@ -111,6 +112,20 @@ export function DataTable<T>({
   className,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<SortState | null>(null);
+  const { announce } = useAriaLive();
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (sort) {
+      const column = columns.find((c) => c.key === sort.key);
+      const dir = sort.direction === "asc" ? "ascending" : "descending";
+      announce(`Sorted by ${column?.header ?? sort.key}, ${dir}`);
+    }
+  }, [sort, columns, announce]);
 
   const sortedRows = useMemo(() => {
     if (!sort) return rows;
