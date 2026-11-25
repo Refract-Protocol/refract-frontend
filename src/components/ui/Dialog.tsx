@@ -66,7 +66,15 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel)?.focus();
     return () => {
-      previouslyFocused.current?.focus?.();
+      // Defer the restore to the next animation frame so the browser has
+      // finished removing the portal from the DOM before we move focus.
+      // Without this, some browsers (notably Safari) move focus to <body>
+      // after the unmount and silently ignore the synchronous .focus() call
+      // that follows, leaving keyboard users at the top of the page (issue #547).
+      const target = previouslyFocused.current;
+      requestAnimationFrame(() => {
+        target?.focus?.();
+      });
     };
   }, [open]);
 

@@ -126,7 +126,12 @@ export function Modal({
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
       document.body.style.overflow = overflow;
-      previouslyFocused.current?.focus?.();
+      // Defer so Safari does not swallow the .focus() call that fires while
+      // the portal is still being removed from the DOM (issue #547).
+      const target = previouslyFocused.current;
+      requestAnimationFrame(() => {
+        target?.focus?.();
+      });
     };
   }, [open, handleKeyDown, initialFocusRef]);
 
