@@ -101,7 +101,10 @@ first message closes the connection. The next backoff attempt selects the lowest
 score, preserving configured order on ties. Failures dominate the score, followed
 by success age and time to first valid message. A valid first message resets the
 endpoint's failures and reconnect backoff. Exponential reconnect delays are capped
-at 30 seconds. Expose `selectedEndpoint` and `endpoints.health` for observability.
+at 30 seconds; this cap is a fixed internal constant, not a configurable option.
+There is no `reconnectDelay` transport option — reconnect timing is controlled
+solely by the client's internal backoff policy. Expose `selectedEndpoint` and
+`endpoints.health` for observability.
 
 After 60 seconds on a fallback, its socket closes and reconnect tries the preferred
 endpoint. This runs automatically without user action but occupies the same socket
