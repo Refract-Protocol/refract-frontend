@@ -9,3 +9,36 @@ Use a focused `<domain>Store.ts` for client state shared by unrelated component 
 - Reset store state and `localStorage` in each test. Cover actions, the serialized shape, explicit hydration, and importing/rendering without browser storage.
 
 `walletPreferencesStore.ts` is the reference implementation. It persists the remembered adapter and Ledger UI preference while `WalletProvider` continues to own Freighter/WalletConnect async connection state.
+
+## Example
+
+```ts
+// src/lib/store/counterStore.ts
+import { createAppStore } from "@/lib/store";   // ← import from the barrel, not @/lib/store/createStore
+
+interface CounterState {
+  count: number;
+  increment: () => void;
+}
+
+export const counterStore = createAppStore<CounterState>(
+  (set) => ({
+    count: 0,
+    increment: () => set((s) => ({ count: s.count + 1 })),
+  }),
+  "counter",
+);
+```
+
+```tsx
+// src/components/CounterButton.tsx
+import { useStoreSelector } from "@/lib/store";
+import { counterStore } from "@/lib/store/counterStore";
+
+export function CounterButton() {
+  // Select one field — avoids re-renders when unrelated state changes.
+  const count = useStoreSelector(counterStore, (s) => s.count);
+  const increment = useStoreSelector(counterStore, (s) => s.increment);
+  return <button type="button" onClick={increment}>{count}</button>;
+}
+```
