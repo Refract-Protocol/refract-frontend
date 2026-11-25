@@ -41,7 +41,7 @@ async function sampleNetwork(signal: AbortSignal): Promise<HealthSample> {
 /** Polls Horizon + Soroban RPC liveness; pauses while the tab is hidden. Never throws into render. */
 export function useNetworkHealth(): NetworkHealthState {
   const [state, setState] = useState<NetworkHealthState>({
-    health: "healthy",
+    health: "unknown",
     ledgerAgeSec: undefined,
   });
 
@@ -56,15 +56,18 @@ export function useNetworkHealth(): NetworkHealthState {
       ctrl = new AbortController();
       const abort = setTimeout(() => ctrl?.abort(), TIMEOUT_MS);
       let sample: HealthSample;
+      let fetchFailed = false;
       try {
         sample = await sampleNetwork(ctrl.signal);
       } catch {
+        fetchFailed = true;
         sample = { ledgerAgeSec: undefined, rpcOk: false };
       }
       clearTimeout(abort);
       if (cancelled) return;
+      const classified = fetchFailed ? "unreachable" : classifySample(ACTIVE_NETWORK.id, sample);
       setState((prev) => {
-        const next = nextHealth(prev.health, classifySample(ACTIVE_NETWORK.id, sample), streak);
+        const next = nextHealth(prev.health, classified, streak);
         streak = next.streak;
         return { health: next.health, ledgerAgeSec: sample.ledgerAgeSec };
       });

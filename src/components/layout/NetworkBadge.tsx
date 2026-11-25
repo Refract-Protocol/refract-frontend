@@ -3,11 +3,19 @@
 import { ACTIVE_NETWORK } from "@/lib/network";
 import { useNetworkHealth } from "@/hooks/useNetworkHealth";
 
-const LABEL = { healthy: "Healthy", degraded: "Degraded", unavailable: "Unavailable" } as const;
+const LABEL = {
+  healthy: "Healthy",
+  degraded: "Degraded",
+  unavailable: "Unavailable",
+  unreachable: "Unreachable",
+  unknown: "Unknown",
+} as const;
 const COLOR = {
   healthy: "bg-green-500",
   degraded: "bg-yellow-500",
   unavailable: "bg-red-500",
+  unreachable: "bg-red-700",
+  unknown: "bg-gray-400",
 } as const;
 
 /** Navbar network badge with a live health state; text label, not colour alone. */
