@@ -15,7 +15,21 @@ and operated per [`docs/realtime/runbook.md`](docs/realtime/runbook.md). Because
 the backend contract is documented but not yet implemented upstream in
 `refract-backend`, develop against the local mock server:
 
-1. Start the mock server locally (see the runbook).
+1. Start the canonical mock server:
+
+   ```sh
+   npx tsx scripts/mock-realtime-server.ts --port 4010
+   ```
+
+   The server listens on `ws://127.0.0.1:4010/ws` (WebSocket) and
+   `GET /api/v1/realtime/poll` (long-poll) and prints its URL on startup.
+   It supports scripted fault injection via `POST /__control`.
+
+   > **Note on `scripts/mock-realtime-server.mjs`:** This is an older,
+   > dependency-free reference implementation used by some unit tests that
+   > need a minimal in-process server. It does not support the long-poll
+   > transport or the `/__control` fault-injection endpoint. Use
+   > `mock-realtime-server.ts` for local development.
 2. Enable the flags you need in `public/flags.json` — `realtime.enabled: true`
    and the per-topic flag `realtime.topics.<topic>: true`. Both default to
    `false`.
