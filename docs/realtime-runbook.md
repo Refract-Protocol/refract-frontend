@@ -124,3 +124,29 @@ implements it. Point the client at the mock endpoint via the realtime endpoint
 configuration and enable `realtime.enabled` locally. The mock emits `snapshot`,
 `update`, and `heartbeat` envelopes matching the contract above so `merge.ts`
 and `shadow.ts` can be exercised end to end.
+
+### Synthetic canary (`scripts/realtime-canary.ts`)
+
+The canary script runs a one-shot connect → subscribe → first-event probe against
+the live realtime endpoint. It prints one structured JSON line and exits `1` only
+after all retry attempts fail.
+
+**Output fields:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `ok` | boolean | `true` if the first event was received within `timeoutMs` |
+| `failure` | string | Failure category when `ok` is `false` (see below) |
+| `connectMs` | number? | Time to WebSocket open, ms |
+| `firstEventMs` | number? | Time to first matching topic event, ms |
+| `attempt` | number | Which attempt this result is from (1-indexed) |
+| `ts` | ISO string | Wall-clock timestamp of this probe |
+
+**`failure` values emitted by the canary:**
+
+| Value | Meaning | First step |
+| --- | --- | --- |
+| `"endpoint"` | WebSocket connect threw (bad URL, DNS, TLS) or `REALTIME_CANARY_URL` is unset | Check the endpoint URL and network path |
+| `"transport"` | WebSocket closed before the first event was received (server-side close) | Check server logs for rejected connections |
+| `"auth"` | Server sent a `4401` close code (token rejected) | Rotate `REALTIME_CANARY_TOKEN` or check auth config |
+| `"timeout"` | First event did not arrive within `timeoutMs` (default 10 s) | Check backend event throughput; increase `REALTIME_CANARY_TIMEOUT_MS` if the endpoint is slow |

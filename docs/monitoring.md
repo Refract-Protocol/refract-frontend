@@ -47,3 +47,19 @@ stack traces.
 - Request bodies
 - URL query strings (request URL, query string, and breadcrumb URLs)
 - User email and IP address
+
+## Sentry initialisation entry points
+
+Sentry is initialised once per runtime from three files at the repo root:
+
+| File | Runtime |
+|---|---|
+| `sentry.client.config.ts` | Browser (Next.js client bundle) |
+| `sentry.server.config.ts` | Node.js server (API routes, SSR) |
+| `sentry.edge.config.ts` | Edge runtime (middleware) |
+
+Each entry point calls `Sentry.init()` and wires the `beforeSend` hook to the
+scrubber in `src/lib/monitoring/scrub.ts`. **When adding a new field to a Sentry
+event**, check whether it contains PII or secrets — if it does, add a scrub rule
+to `src/lib/monitoring/scrub.ts` before shipping, then update the "Kept" /
+"Redacted" lists in the Data scrubbing section above.
