@@ -2,16 +2,17 @@
 
 ## 1. Breakpoint Definitions
 
-Refract Protocol defines a custom `xs` mobile breakpoint alongside standard Tailwind CSS viewport tiers:
+The breakpoints in effect are the Tailwind CSS v3 defaults, because `tailwind.config.ts` defines no `theme.screens`:
 
 | Token | Min Width | Target Devices / Form Factors | Primary Layout Strategy |
 | :--- | :--- | :--- | :--- |
-| **`base`** | `< 420px` (360px min) | Compact mobile (iPhone SE, Galaxy S-series small) | Single-column stacked; sticky disabled; full-width buttons; 44px tap targets |
-| **`xs`** | `420px` | Standard mobile (iPhone 14/15/16, Pixel, Galaxy) | Compact 2-column stats; inline badge rows; horizontal stepper scrolling |
 | **`sm`** | `640px` | Large mobile & phablets | 2-column cards; expanded quick-selection grids |
 | **`md`** | `768px` | Tablets & small laptops | Top navigation expanded; 3-column / 4-column metric grids |
 | **`lg`** | `1024px` | Desktop & Laptops | Multi-column split views (e.g. `grid-cols-[1fr_360px]`); sticky sidebar panels |
-| **`xl`** | `1280px`+ | Large Displays | Centered container max `1200px` with generous side padding |
+| **`xl`** | `1280px` | Large Displays | Centered container max `1200px` with generous side padding |
+| **`2xl`** | `1536px` | Extra-large displays | Centered container max `1200px` with generous side padding |
+
+Note: `base` and `xs` are not defined in `tailwind.config.ts`, so `xs:` classes currently generate no CSS.
 
 ---
 
@@ -30,9 +31,9 @@ Refract Protocol defines a custom `xs` mobile breakpoint alongside standard Tail
 
 ### 3. Provide Capital (`/provide`)
 - **Stats Overview**: 2 columns on mobile, 4 columns on `sm`+.
-- **Capital Allocation Canvas**: Centered on mobile; 2-column split with legend on `xs` (`420px`+).
+- **Capital Allocation Canvas**: Centered on mobile; 2-column split with legend on `sm` (`640px`+).
 - **Deposit/Withdraw Action Card**: Sticky on desktop (`lg:sticky lg:top-20`), stacked inline on mobile to avoid viewport overflow.
-- **Utilization Bar & Subtitles**: Flex wraps to vertical on `< 420px` and horizontal on `xs`+.
+- **Utilization Bar & Subtitles**: Flex wraps to vertical on mobile and horizontal on `sm`+.
 
 ### 4. Dashboard (`/dashboard`)
 - **Portfolio Risk & Stat Cards**: 2 columns on mobile, 4 columns on `sm`+.
